@@ -174,12 +174,12 @@ export default function SalesPage() {
               <Input id="note" placeholder="e.g. rain, event day" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-3">
-            <span className="text-sm font-medium text-orange-900">Total for this entry</span>
-            <span className="text-lg font-semibold text-orange-700">{idr(total)}</span>
+          <div className="flex items-center justify-between rounded-lg bg-[#e9e2d0] px-4 py-3">
+            <span className="text-sm font-medium text-[#1f3a2f]">Total for this entry</span>
+            <span className="text-lg font-semibold text-[#1f3a2f]">{idr(total)}</span>
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleSave} disabled={saving} className="bg-orange-500 hover:bg-orange-600">
+            <Button onClick={handleSave} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
               {saving ? "Saving…" : editingId ? "Update entry" : "Save entry"}
             </Button>
             {editingId && (

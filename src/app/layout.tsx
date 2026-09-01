@@ -27,7 +27,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f97316",
+  themeColor: "#1f3a2f",
   width: "device-width",
   initialScale: 1,
 };
@@ -38,7 +38,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-orange-50/40">
+      <body className="min-h-full flex flex-col bg-[#f7f2e9]">
         <SwRegister />
         <Nav />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-20 pt-4 sm:pb-8">

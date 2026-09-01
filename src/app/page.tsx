@@ -73,19 +73,19 @@ export default function Dashboard() {
           icon={<Wallet className="size-4" />}
           label="Today"
           value={idr(todayTotal)}
-          color="bg-orange-500"
+          color="bg-[#1f3a2f]"
         />
         <StatCard
           icon={<TrendingUp className="size-4" />}
           label="This week"
           value={idr(weekTotal)}
-          color="bg-amber-500"
+          color="bg-[#4a6b52]"
         />
         <StatCard
           icon={<TrendingUp className="size-4" />}
           label="This month"
           value={idr(monthTotal)}
-          color="bg-emerald-500"
+          color="bg-[#8a7a4f]"
         />
       </div>
 
@@ -94,7 +94,7 @@ export default function Dashboard() {
           <CardTitle>Sales trend (last 14 entries)</CardTitle>
           <Link
             href="/sales"
-            className="flex items-center gap-1 text-sm font-medium text-orange-600 hover:underline"
+            className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
           >
             View recap <ArrowRight className="size-3.5" />
           </Link>
@@ -122,9 +122,9 @@ export default function Dashboard() {
                 <Line
                   type="monotone"
                   dataKey="total"
-                  stroke="#f97316"
+                  stroke="#1f3a2f"
                   strokeWidth={2.5}
-                  dot={{ r: 3, fill: "#f97316" }}
+                  dot={{ r: 3, fill: "#1f3a2f" }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -135,12 +135,12 @@ export default function Dashboard() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <UtensilsCrossed className="size-4 text-orange-500" />
+            <UtensilsCrossed className="size-4 text-[#1f3a2f]" />
             Top items this month ({monthQty} sold)
           </CardTitle>
           <Link
             href="/items"
-            className="flex items-center gap-1 text-sm font-medium text-orange-600 hover:underline"
+            className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
           >
             View recap <ArrowRight className="size-3.5" />
           </Link>
@@ -153,7 +153,7 @@ export default function Dashboard() {
               {topItems.map(([name, qty], idx) => (
                 <li key={name} className="flex items-center justify-between py-2">
                   <div className="flex items-center gap-3">
-                    <span className="flex size-6 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-600">
+                    <span className="flex size-6 items-center justify-center rounded-full bg-[#e9e2d0] text-xs font-semibold text-[#1f3a2f]">
                       {idx + 1}
                     </span>
                     <span className="text-sm font-medium text-neutral-800">{name}</span>

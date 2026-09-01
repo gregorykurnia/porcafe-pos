@@ -173,7 +173,7 @@ export default function ItemsPage() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
+            <Button size="sm" className="bg-[#1f3a2f] hover:bg-[#16291f]">
               <Plus className="size-4" /> New item
             </Button>
           </DialogTrigger>
@@ -196,7 +196,7 @@ export default function ItemsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={addMenuItem} className="bg-orange-500 hover:bg-orange-600">
+              <Button onClick={addMenuItem} className="bg-[#1f3a2f] hover:bg-[#16291f]">
                 Add item
               </Button>
             </DialogFooter>
@@ -239,7 +239,7 @@ export default function ItemsPage() {
                   <Input type="number" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} />
                 </div>
               </div>
-              <Button onClick={logSale} className="bg-orange-500 hover:bg-orange-600">
+              <Button onClick={logSale} className="bg-[#1f3a2f] hover:bg-[#16291f]">
                 Log sale
               </Button>
             </>
