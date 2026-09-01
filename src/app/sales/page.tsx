@@ -24,10 +24,18 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { Trash2, Download } from "lucide-react";
+import { Trash2, Download, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
+
+type SortKey = "date" | "bca" | "cash" | "soundbox" | "other" | "total";
+type SortDir = "asc" | "desc";
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ArrowUpDown className="size-3.5 text-neutral-300" />;
+  return dir === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />;
+}
 
 export default function SalesPage() {
   const [entries, setEntries] = useState<SalesEntry[]>([]);
@@ -42,6 +50,17 @@ export default function SalesPage() {
   const [note, setNote] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   function refresh() {
     setLoading(true);
@@ -128,6 +147,16 @@ export default function SalesPage() {
     label: period === "day" ? g.label.slice(0, 6) : g.label.replace("Week of ", ""),
     total: g.total,
   }));
+
+  const sortedEntries = useMemo(() => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    return [...entries].sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return ((av as number) - (bv as number)) * dir;
+    });
+  }, [entries, sortKey, sortDir]);
 
   function exportCSV() {
     downloadCSV(
@@ -257,24 +286,40 @@ export default function SalesPage() {
       {/* History */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent entries</CardTitle>
+          <CardTitle>All entries</CardTitle>
+          <p className="text-xs text-neutral-400">Click a row to edit it. Click a column header to sort.</p>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">BCA</TableHead>
-                  <TableHead className="text-right">Cash</TableHead>
-                  <TableHead className="text-right">Soundbox</TableHead>
-                  <TableHead className="text-right">Other</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  {(
+                    [
+                      ["date", "Date", ""],
+                      ["bca", "BCA", "text-right"],
+                      ["cash", "Cash", "text-right"],
+                      ["soundbox", "Soundbox", "text-right"],
+                      ["other", "Other", "text-right"],
+                      ["total", "Total", "text-right"],
+                    ] as [SortKey, string, string][]
+                  ).map(([key, label, align]) => (
+                    <TableHead key={key} className={align}>
+                      <button
+                        type="button"
+                        onClick={() => toggleSort(key)}
+                        className={`inline-flex items-center gap-1 hover:text-neutral-900 ${align === "text-right" ? "flex-row-reverse" : ""}`}
+                      >
+                        {label}
+                        <SortIcon active={sortKey === key} dir={sortDir} />
+                      </button>
+                    </TableHead>
+                  ))}
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {entries.slice(0, 30).map((e) => (
+                {sortedEntries.map((e) => (
                   <TableRow key={e.id} className="cursor-pointer" onClick={() => editEntry(e)}>
                     <TableCell className="font-medium">{formatDisplay(e.date)}</TableCell>
                     <TableCell className="text-right text-neutral-500">{e.bca ? idr(e.bca) : "—"}</TableCell>
