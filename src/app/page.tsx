@@ -12,6 +12,7 @@ import {
   subDays,
   subWeeks,
   subMonths,
+  addDays,
 } from "date-fns";
 import {
   ResponsiveContainer,
@@ -86,6 +87,12 @@ export default function Dashboard() {
 
   const monthDaysLogged = sales.filter((s) => monthKey(s.date) === thisMonth).length;
   const avgPerDay = monthDaysLogged > 0 ? monthTotal / monthDaysLogged : 0;
+
+  const allTimeTotal = sales.reduce((a, s) => a + s.total, 0);
+  const weekRangeLabel = `${format(parseISO(thisWeek), "d MMM")} – ${format(
+    addDays(parseISO(thisWeek), 6),
+    "d MMM"
+  )}`;
 
   const trend = useMemo(() => {
     const sorted = [...sales].sort((a, b) => a.date.localeCompare(b.date));
@@ -172,8 +179,9 @@ export default function Dashboard() {
               Loading…
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-              <RecapStat label="Revenue" value={idr(monthTotal)} />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
+              <RecapStat label="All-time revenue" value={idr(allTimeTotal)} />
+              <RecapStat label="Month revenue" value={idr(monthTotal)} />
               <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
               <RecapStat label="Avg per portion" value={idr(avgOrderValue)} />
               <RecapStat
@@ -204,6 +212,7 @@ export default function Dashboard() {
         <StatCard
           icon={<TrendingUp className="size-4" />}
           label="This week"
+          range={weekRangeLabel}
           value={idr(weekTotal)}
           color="bg-[#4a6b52]"
           delta={pctDelta(weekTotal, lastWeekTotal)}
@@ -453,6 +462,7 @@ function pctDelta(current: number, previous: number): number | null {
 function StatCard({
   icon,
   label,
+  range,
   value,
   color,
   delta,
@@ -460,6 +470,7 @@ function StatCard({
 }: {
   icon: React.ReactNode;
   label: string;
+  range?: string;
   value: string;
   color: string;
   delta?: number | null;
@@ -471,7 +482,10 @@ function StatCard({
         <div className={`mb-2 flex size-7 items-center justify-center rounded-full ${color} text-white`}>
           {icon}
         </div>
-        <p className="text-xs text-neutral-500">{label}</p>
+        <p className="text-xs text-neutral-500">
+          {label}
+          {range && <span className="text-neutral-400"> · {range}</span>}
+        </p>
         <p className="text-lg font-semibold text-neutral-900 sm:text-xl">{value}</p>
         {delta !== undefined && delta !== null && (
           <div
