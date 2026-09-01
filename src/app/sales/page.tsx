@@ -122,10 +122,10 @@ function EditableRow({
   return (
     <TableRow className={saving ? "opacity-50" : undefined}>
       <TableCell className="p-1">{cellInput("date", "date")}</TableCell>
-      <TableCell className="p-1">{cellInput("bca", "number")}</TableCell>
-      <TableCell className="p-1">{cellInput("cash", "number")}</TableCell>
-      <TableCell className="p-1">{cellInput("soundbox", "number")}</TableCell>
-      <TableCell className="p-1">{cellInput("other", "number")}</TableCell>
+      <TableCell className="p-1 text-right">{cellInput("bca", "number")}</TableCell>
+      <TableCell className="p-1 text-right">{cellInput("cash", "number")}</TableCell>
+      <TableCell className="p-1 text-right">{cellInput("soundbox", "number")}</TableCell>
+      <TableCell className="p-1 text-right">{cellInput("other", "number")}</TableCell>
       <TableCell className="text-right font-semibold">{idr(displayTotal)}</TableCell>
       <TableCell className="p-1">{cellInput("note", "text")}</TableCell>
       <TableCell>
@@ -230,6 +230,20 @@ export default function SalesPage() {
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
   }, [entries, period]);
 
+  const stats = useMemo(() => {
+    const totals = grouped.map((g) => g.total);
+    const n = totals.length;
+    if (n === 0) return { mean: 0, stdDev: 0, min: 0, max: 0 };
+    const mean = totals.reduce((s, v) => s + v, 0) / n;
+    const variance = totals.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
+    return {
+      mean,
+      stdDev: Math.sqrt(variance),
+      min: Math.min(...totals),
+      max: Math.max(...totals),
+    };
+  }, [grouped]);
+
   const chartData = grouped.slice(-20).map((g) => ({
     label: period === "day" ? g.label.slice(0, 6) : g.label.replace("Week of ", ""),
     total: g.total,
@@ -330,6 +344,22 @@ export default function SalesPage() {
               <TabsTrigger value="month">By month</TabsTrigger>
             </TabsList>
           </Tabs>
+
+          {grouped.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ["Mean", stats.mean],
+                ["Std dev", stats.stdDev],
+                ["Min", stats.min],
+                ["Max", stats.max],
+              ].map(([label, value]) => (
+                <div key={label as string} className="rounded-lg bg-neutral-50 px-3 py-2">
+                  <p className="text-xs text-neutral-500">{label}</p>
+                  <p className="text-sm font-semibold text-neutral-900">{idr(value as number)}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
           {chartData.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-neutral-400">
