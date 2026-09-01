@@ -47,6 +47,8 @@ import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
 
+const ITEM_CATEGORIES = ["Main", "Add On"] as const;
+
 type EditableMenuItemField = "name" | "category" | "price";
 type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
 
@@ -72,9 +74,10 @@ function EditableMenuItemRow({
     setDraft((d) => ({ ...d, [field]: value }));
   }
 
-  async function commit() {
-    if (Object.keys(draft).length === 0) return;
-    const name = (draft.name ?? item.name).trim();
+  async function commit(overrides?: MenuItemDraft) {
+    const merged = { ...draft, ...overrides };
+    if (Object.keys(merged).length === 0) return;
+    const name = (merged.name ?? item.name).trim();
     if (!name) {
       toast.error("Name can't be empty");
       setDraft({});
@@ -85,8 +88,8 @@ function EditableMenuItemRow({
       await upsertMenuItem({
         id: item.id,
         name,
-        category: (draft.category ?? item.category).trim() || "Uncategorized",
-        price: draft.price !== undefined ? (draft.price ? parseFloat(draft.price) : null) : item.price,
+        category: (merged.category ?? item.category).trim() || "Uncategorized",
+        price: merged.price !== undefined ? (merged.price ? parseFloat(merged.price) : null) : item.price,
         active: item.active,
       });
       setDraft({});
@@ -107,7 +110,7 @@ function EditableMenuItemRow({
         value={fieldValue(field)}
         disabled={saving}
         onChange={(e) => setField(field, e.target.value)}
-        onBlur={commit}
+        onBlur={() => commit()}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
@@ -121,7 +124,27 @@ function EditableMenuItemRow({
   return (
     <TableRow className={saving ? "opacity-50" : undefined}>
       <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
-      <TableCell className="p-1">{cellInput("category", "text")}</TableCell>
+      <TableCell className="p-1">
+        <Select
+          value={fieldValue("category")}
+          disabled={saving}
+          onValueChange={(v) => {
+            setField("category", v);
+            commit({ category: v });
+          }}
+        >
+          <SelectTrigger size="sm" className="h-8 w-full border-transparent bg-transparent hover:border-neutral-200">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ITEM_CATEGORIES.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
       <TableCell className="p-1 text-right">{cellInput("price", "number")}</TableCell>
       <TableCell>
         <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
@@ -263,7 +286,7 @@ export default function ItemsPage() {
   // manage item dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState("");
+  const [newCategory, setNewCategory] = useState<string>(ITEM_CATEGORIES[0]);
   const [newPrice, setNewPrice] = useState("");
 
   function refresh() {
@@ -286,13 +309,13 @@ export default function ItemsPage() {
     }
     await upsertMenuItem({
       name: newName.trim(),
-      category: newCategory.trim() || "Uncategorized",
+      category: newCategory || "Uncategorized",
       price: newPrice ? parseFloat(newPrice) : null,
       active: true,
     });
     toast.success("Item added");
     setNewName("");
-    setNewCategory("");
+    setNewCategory(ITEM_CATEGORIES[0]);
     setNewPrice("");
     setDialogOpen(false);
     refresh();
@@ -358,6 +381,20 @@ export default function ItemsPage() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [sales]);
 
+  const dailyMainPortions = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of sales) {
+      if (s.category !== "Main") continue;
+      map.set(s.date, (map.get(s.date) ?? 0) + s.qty);
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 14)
+      .map(([date, qty]) => ({ date, qty }));
+  }, [sales]);
+
+  const todayMainPortions = dailyMainPortions.find((d) => d.date === todayISO())?.qty ?? 0;
+
   function exportCSV() {
     downloadCSV(
       `porcafe-items-${period}-${todayISO()}.csv`,
@@ -389,7 +426,18 @@ export default function ItemsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Category</Label>
-                <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="e.g. Coffee" />
+                <Select value={newCategory} onValueChange={setNewCategory}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ITEM_CATEGORIES.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Price (optional)</Label>
@@ -444,6 +492,43 @@ export default function ItemsPage() {
                 Log sale
               </Button>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Daily Main portions recap */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily portions sold (Main)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <p className="text-xs text-neutral-500">Today</p>
+            <p className="text-2xl font-semibold text-neutral-900">{todayMainPortions} portions</p>
+          </div>
+          {dailyMainPortions.length === 0 ? (
+            <p className="py-4 text-center text-sm text-neutral-400">
+              {loading ? "Loading…" : "No Main-category sales logged yet"}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Portions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailyMainPortions.map((d) => (
+                    <TableRow key={d.date}>
+                      <TableCell className="font-medium">{formatDisplay(d.date)}</TableCell>
+                      <TableCell className="text-right">{d.qty}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
