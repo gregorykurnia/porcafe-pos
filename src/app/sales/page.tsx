@@ -31,18 +31,13 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { Trash2, Download, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
 
 type SortKey = "date" | "bca" | "cash" | "soundbox" | "other" | "total";
 type SortDir = "asc" | "desc";
-
-function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active) return <ArrowUpDown className="size-3.5 text-neutral-300" />;
-  return dir === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />;
-}
 
 type EditableField = "date" | "bca" | "cash" | "soundbox" | "other" | "note";
 type Draft = Partial<Record<EditableField, string>>;
@@ -434,22 +429,23 @@ export default function SalesPage() {
                 <TableRow>
                   {(
                     [
-                      ["date", "Date", "", "w-36"],
-                      ["bca", "BCA", "text-right", "w-28"],
-                      ["cash", "Cash", "text-right", "w-28"],
-                      ["soundbox", "Soundbox", "text-right", "w-28"],
-                      ["other", "Other", "text-right", "w-28"],
-                      ["total", "Total", "text-right", "w-32"],
-                    ] as [SortKey, string, string, string][]
-                  ).map(([key, label, align, width]) => (
-                    <TableHead key={key} className={`${align} ${width}`}>
+                      ["date", "Date", "w-36"],
+                      ["bca", "BCA", "w-28"],
+                      ["cash", "Cash", "w-28"],
+                      ["soundbox", "Soundbox", "w-28"],
+                      ["other", "Other", "w-28"],
+                      ["total", "Total", "w-32"],
+                    ] as [SortKey, string, string][]
+                  ).map(([key, label, width]) => (
+                    <TableHead key={key} className={`text-center ${width}`}>
                       <button
                         type="button"
                         onClick={() => toggleSort(key)}
-                        className={`inline-flex items-center gap-1 hover:text-neutral-900 ${align === "text-right" ? "flex-row-reverse" : ""}`}
+                        className={`w-full text-center hover:text-neutral-900 ${
+                          sortKey === key ? "font-semibold text-neutral-900" : ""
+                        }`}
                       >
                         {label}
-                        <SortIcon active={sortKey === key} dir={sortDir} />
                       </button>
                     </TableHead>
                   ))}
