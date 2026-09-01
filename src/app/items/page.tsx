@@ -31,7 +31,15 @@ import {
   deleteItemSale,
 } from "@/lib/data";
 import type { MenuItem, ItemSale } from "@/lib/types";
-import { todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
+import {
+  todayISO,
+  toISODate,
+  weekKey,
+  monthKey,
+  formatDisplay,
+  formatWeekDisplay,
+  formatMonthDisplay,
+} from "@/lib/dates";
 import { downloadCSV } from "@/lib/csv";
 import {
   ResponsiveContainer,
@@ -42,7 +50,8 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { Trash2, Download, Plus } from "lucide-react";
+import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
@@ -278,6 +287,10 @@ export default function ItemsPage() {
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
 
+  // Main-portions navigator
+  const [mainPeriod, setMainPeriod] = useState<Period>("day");
+  const [mainCursor, setMainCursor] = useState(todayISO());
+
   // quantity entry form
   const [date, setDate] = useState(todayISO());
   const [selectedItemId, setSelectedItemId] = useState<string>("");
@@ -381,19 +394,44 @@ export default function ItemsPage() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [sales]);
 
-  const dailyMainPortions = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of sales) {
-      if (s.category !== "Main") continue;
-      map.set(s.date, (map.get(s.date) ?? 0) + s.qty);
-    }
-    return [...map.entries()]
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .slice(0, 14)
-      .map(([date, qty]) => ({ date, qty }));
-  }, [sales]);
+  // Live item -> category lookup, so recaps stay correct even if a sale was
+  // logged before its item's category was set/changed (the sale record keeps
+  // whatever category it was logged with, but this map reflects the current one).
+  const categoryByItemId = useMemo(
+    () => new Map(menuItems.map((m) => [m.id, m.category])),
+    [menuItems]
+  );
+  const mainSales = useMemo(
+    () => sales.filter((s) => (categoryByItemId.get(s.itemId) ?? s.category) === "Main"),
+    [sales, categoryByItemId]
+  );
 
-  const todayMainPortions = dailyMainPortions.find((d) => d.date === todayISO())?.qty ?? 0;
+  const mainPeriodSummary = useMemo(() => {
+    const key =
+      mainPeriod === "day" ? mainCursor : mainPeriod === "week" ? weekKey(mainCursor) : monthKey(mainCursor);
+    const label =
+      mainPeriod === "day"
+        ? formatDisplay(mainCursor)
+        : mainPeriod === "week"
+          ? formatWeekDisplay(key)
+          : formatMonthDisplay(key);
+    const total = mainSales
+      .filter(
+        (s) =>
+          (mainPeriod === "day" ? s.date : mainPeriod === "week" ? weekKey(s.date) : monthKey(s.date)) === key
+      )
+      .reduce((a, s) => a + s.qty, 0);
+    return { label, total };
+  }, [mainSales, mainPeriod, mainCursor]);
+
+  function navigateMainPeriod(dir: 1 | -1) {
+    setMainCursor((c) => {
+      const d = parseISO(c);
+      if (mainPeriod === "day") return toISODate(dir === 1 ? addDays(d, 1) : subDays(d, 1));
+      if (mainPeriod === "week") return toISODate(dir === 1 ? addWeeks(d, 1) : subWeeks(d, 1));
+      return toISODate(dir === 1 ? addMonths(d, 1) : subMonths(d, 1));
+    });
+  }
 
   function exportCSV() {
     downloadCSV(
@@ -496,39 +534,49 @@ export default function ItemsPage() {
         </CardContent>
       </Card>
 
-      {/* Daily Main portions recap */}
+      {/* Main portions navigator */}
       <Card>
-        <CardHeader>
-          <CardTitle>Daily portions sold (Main)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <p className="text-xs text-neutral-500">Today</p>
-            <p className="text-2xl font-semibold text-neutral-900">{todayMainPortions} portions</p>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+          <CardTitle>Portions sold (Main)</CardTitle>
+          <div className="flex items-center gap-2">
+            <Tabs
+              value={mainPeriod}
+              onValueChange={(v) => {
+                setMainPeriod(v as Period);
+                setMainCursor(todayISO());
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="day">Day</TabsTrigger>
+                <TabsTrigger value="week">Week</TabsTrigger>
+                <TabsTrigger value="month">Month</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {mainCursor !== todayISO() && (
+              <Button variant="outline" size="sm" onClick={() => setMainCursor(todayISO())}>
+                Today
+              </Button>
+            )}
           </div>
-          {dailyMainPortions.length === 0 ? (
-            <p className="py-4 text-center text-sm text-neutral-400">
-              {loading ? "Loading…" : "No Main-category sales logged yet"}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Portions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {dailyMainPortions.map((d) => (
-                    <TableRow key={d.date}>
-                      <TableCell className="font-medium">{formatDisplay(d.date)}</TableCell>
-                      <TableCell className="text-right">{d.qty}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)}>
+              <ChevronLeft className="size-4" />
+            </Button>
+            <div className="text-center">
+              <p className="text-sm text-neutral-500">{mainPeriodSummary.label}</p>
+              <p className="text-3xl font-semibold text-neutral-900">
+                {mainPeriodSummary.total}{" "}
+                <span className="text-base font-normal text-neutral-500">portions</span>
+              </p>
             </div>
+            <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)}>
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          {mainSales.length === 0 && !loading && (
+            <p className="mt-4 text-center text-sm text-neutral-400">No Main-category sales logged yet</p>
           )}
         </CardContent>
       </Card>
