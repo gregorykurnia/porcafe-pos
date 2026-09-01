@@ -12,6 +12,11 @@ import {
 import { db } from "./firebase";
 import type { SalesEntry, MenuItem, ItemSale } from "./types";
 
+// Firestore rejects `undefined` field values (e.g. an omitted optional field).
+function omitUndefined<T extends object>(obj: T): T {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
+}
+
 // ---------- Sales Entries ----------
 
 const salesCol = collection(db, "salesEntries");
@@ -27,10 +32,11 @@ export async function upsertSalesEntry(
   const total = entry.bca + entry.cash + entry.soundbox + entry.other;
   if (entry.id) {
     const { id, ...rest } = entry;
-    await setDoc(doc(db, "salesEntries", id), { ...rest, total }, { merge: true });
+    await setDoc(doc(db, "salesEntries", id), omitUndefined({ ...rest, total }), { merge: true });
     return id;
   }
-  const ref = await addDoc(salesCol, { ...entry, total, createdAt: Date.now() });
+  const { id: _id, ...rest } = entry;
+  const ref = await addDoc(salesCol, omitUndefined({ ...rest, total, createdAt: Date.now() }));
   return ref.id;
 }
 
@@ -52,10 +58,11 @@ export async function upsertMenuItem(
 ) {
   if (item.id) {
     const { id, ...rest } = item;
-    await setDoc(doc(db, "menuItems", id), rest, { merge: true });
+    await setDoc(doc(db, "menuItems", id), omitUndefined(rest), { merge: true });
     return id;
   }
-  const ref = await addDoc(itemsCol, { ...item, createdAt: Date.now() });
+  const { id: _id, ...rest } = item;
+  const ref = await addDoc(itemsCol, omitUndefined({ ...rest, createdAt: Date.now() }));
   return ref.id;
 }
 
@@ -82,10 +89,11 @@ export async function upsertItemSale(
 ) {
   if (sale.id) {
     const { id, ...rest } = sale;
-    await setDoc(doc(db, "itemSales", id), rest, { merge: true });
+    await setDoc(doc(db, "itemSales", id), omitUndefined(rest), { merge: true });
     return id;
   }
-  const ref = await addDoc(itemSalesCol, { ...sale, createdAt: Date.now() });
+  const { id: _id, ...rest } = sale;
+  const ref = await addDoc(itemSalesCol, omitUndefined({ ...rest, createdAt: Date.now() }));
   return ref.id;
 }
 
