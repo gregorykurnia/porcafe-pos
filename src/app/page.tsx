@@ -30,6 +30,8 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowDown,
+  Trophy,
+  Package,
 } from "lucide-react";
 
 // Payment-method categorical colors (dataviz skill: fixed hue order, never cycled)
@@ -39,6 +41,10 @@ const PAYMENT_COLORS: Record<string, string> = {
   Soundbox: "#1baf7a", // slot 3 aqua
   Other: "#eda100", // slot 4 yellow
 };
+
+// Fixed categorical order for item categories - first 4 slots, rest fold into "Other"
+const CATEGORY_COLOR_SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
+const CATEGORY_OTHER_COLOR = "#898781";
 
 export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
@@ -119,6 +125,33 @@ export default function Dashboard() {
     .filter((i) => monthKey(i.date) === thisMonth)
     .reduce((a, i) => a + i.qty, 0);
 
+  const categoryBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const i of items.filter((i) => monthKey(i.date) === thisMonth)) {
+      map.set(i.category || "Uncategorized", (map.get(i.category || "Uncategorized") ?? 0) + i.qty);
+    }
+    const sorted = [...map.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 4);
+    const rest = sorted.slice(4).reduce((a, [, qty]) => a + qty, 0);
+    const rows = top.map(([label, qty], idx) => ({
+      label,
+      qty,
+      color: CATEGORY_COLOR_SLOTS[idx],
+    }));
+    if (rest > 0) rows.push({ label: "Other", qty: rest, color: CATEGORY_OTHER_COLOR });
+    const sum = rows.reduce((a, r) => a + r.qty, 0);
+    return rows.map((r) => ({ ...r, pct: sum > 0 ? r.qty / sum : 0 }));
+  }, [items, thisMonth]);
+
+  const bestDay = useMemo(() => {
+    const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
+    if (monthSales.length === 0) return null;
+    return monthSales.reduce((best, s) => (s.total > best.total ? s : best), monthSales[0]);
+  }, [sales, thisMonth]);
+
+  const daysElapsed = Number(today.slice(-2));
+  const avgOrderValue = monthQty > 0 ? monthTotal / monthQty : 0;
+
   return (
     <div className="space-y-6">
       <div>
@@ -126,7 +159,40 @@ export default function Dashboard() {
         <p className="text-sm text-neutral-500">Overview of Charred by Porcafe</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Card className="border-[#1f3a2f]/15 bg-[#f6f4ec]">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-[#1f3a2f]">
+            <Trophy className="size-4" />
+            {formatMonthLabel(thisMonth)} at a glance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex h-16 items-center justify-center text-sm text-neutral-400">
+              Loading…
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              <RecapStat label="Revenue" value={idr(monthTotal)} />
+              <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
+              <RecapStat label="Avg per portion" value={idr(avgOrderValue)} />
+              <RecapStat
+                label="Best day"
+                value={bestDay ? idr(bestDay.total) : "—"}
+                sub={bestDay ? formatDayLabel(bestDay.date) : undefined}
+              />
+              <RecapStat
+                label="Best seller"
+                value={topItems[0]?.name ?? "—"}
+                sub={topItems[0] ? `${topItems[0].qty} sold` : undefined}
+              />
+              <RecapStat label="Days logged" value={`${monthDaysLogged} / ${daysElapsed}`} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           icon={<Wallet className="size-4" />}
           label="Today"
@@ -156,6 +222,12 @@ export default function Dashboard() {
           label="Avg / day this month"
           value={idr(avgPerDay)}
           color="bg-[#5a6b8a]"
+        />
+        <StatCard
+          icon={<Package className="size-4" />}
+          label="Portions this month"
+          value={monthQty.toLocaleString("id-ID")}
+          color="bg-[#1f3a2f]"
         />
       </div>
 
@@ -264,49 +336,111 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <UtensilsCrossed className="size-4 text-[#1f3a2f]" />
-            Top items this month ({monthQty} sold)
-          </CardTitle>
-          <Link
-            href="/items"
-            className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
-          >
-            View recap <ArrowRight className="size-3.5" />
-          </Link>
-        </CardHeader>
-        <CardContent>
-          {topItems.length === 0 ? (
-            <EmptyChart label="No item sales logged yet" />
-          ) : (
-            <ul className="space-y-3">
-              {topItems.map((item, idx) => (
-                <li key={item.name} className="flex items-center gap-3">
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#e9e2d0] text-xs font-semibold text-[#1f3a2f]">
-                    {idx + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-neutral-800">
-                        {item.name}
-                      </span>
-                      <span className="shrink-0 text-sm text-neutral-500">{item.qty} sold</span>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <UtensilsCrossed className="size-4 text-[#1f3a2f]" />
+              Top items this month ({monthQty} sold)
+            </CardTitle>
+            <Link
+              href="/items"
+              className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
+            >
+              View recap <ArrowRight className="size-3.5" />
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {topItems.length === 0 ? (
+              <EmptyChart label="No item sales logged yet" />
+            ) : (
+              <ul className="space-y-3">
+                {topItems.map((item, idx) => (
+                  <li key={item.name} className="flex items-center gap-3">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#e9e2d0] text-xs font-semibold text-[#1f3a2f]">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-neutral-800">
+                          {item.name}
+                        </span>
+                        <span className="shrink-0 text-sm text-neutral-500">{item.qty} sold</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                        <div
+                          className="h-full rounded-full bg-[#1f3a2f]"
+                          style={{ width: `${Math.max(item.pct * 100, 4)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
-                      <div
-                        className="h-full rounded-full bg-[#1f3a2f]"
-                        style={{ width: `${Math.max(item.pct * 100, 4)}%` }}
-                      />
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Category mix this month</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {categoryBreakdown.length === 0 ? (
+              <EmptyChart label="No item sales logged yet" />
+            ) : (
+              <div className="space-y-4">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-neutral-100">
+                  {categoryBreakdown.map((d) => (
+                    <div
+                      key={d.label}
+                      style={{ width: `${d.pct * 100}%`, backgroundColor: d.color }}
+                      className="h-full first:ml-0 [&:not(:first-child)]:ml-[2px]"
+                    />
+                  ))}
+                </div>
+                <ul className="space-y-2.5">
+                  {categoryBreakdown.map((d) => (
+                    <li key={d.label} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: d.color }}
+                        />
+                        <span className="text-neutral-700">{d.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-neutral-500">
+                        <span>{d.qty} sold</span>
+                        <span className="w-10 text-right text-xs text-neutral-400">
+                          {Math.round(d.pct * 100)}%
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function formatMonthLabel(monthISO: string): string {
+  return format(parseISO(`${monthISO}-01`), "MMMM yyyy");
+}
+
+function formatDayLabel(dateISO: string): string {
+  return format(parseISO(dateISO), "d MMM");
+}
+
+function RecapStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <p className="text-xs text-[#1f3a2f]/60">{label}</p>
+      <p className="truncate text-base font-semibold text-[#1f3a2f]">{value}</p>
+      {sub && <p className="text-xs text-[#1f3a2f]/50">{sub}</p>}
     </div>
   );
 }
