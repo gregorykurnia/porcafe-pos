@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -251,6 +251,11 @@ export default function SalesPage() {
     });
   }, [entries, sortKey, sortDir, monthFilter]);
 
+  const grandTotal = useMemo(
+    () => sortedEntries.reduce((sum, e) => sum + e.total, 0),
+    [sortedEntries]
+  );
+
   function exportCSV() {
     downloadCSV(
       `porcafe-sales-${period}-${todayISO()}.csv`,
@@ -427,6 +432,17 @@ export default function SalesPage() {
                   <EditableRow key={e.id} entry={e} onSaved={refresh} onDelete={removeEntry} />
                 ))}
               </TableBody>
+              {sortedEntries.length > 0 && (
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={5} className="font-medium">
+                      Grand total{monthFilter !== "all" ? ` (${formatMonthDisplay(monthFilter)})` : ""}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{idr(grandTotal)}</TableCell>
+                    <TableCell colSpan={2}></TableCell>
+                  </TableRow>
+                </TableFooter>
+              )}
             </Table>
             {sortedEntries.length === 0 && !loading && (
               <p className="py-6 text-center text-sm text-neutral-400">
