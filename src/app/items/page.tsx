@@ -291,6 +291,10 @@ export default function ItemsPage() {
   const [mainPeriod, setMainPeriod] = useState<Period>("day");
   const [mainCursor, setMainCursor] = useState(todayISO());
 
+  // Recent item sales filter
+  const [recentFilter, setRecentFilter] = useState<"all" | Period>("all");
+  const [recentCursor, setRecentCursor] = useState(todayISO());
+
   // quantity entry form
   const [date, setDate] = useState(todayISO());
   const [selectedItemId, setSelectedItemId] = useState<string>("");
@@ -432,6 +436,35 @@ export default function ItemsPage() {
       return toISODate(dir === 1 ? addMonths(d, 1) : subMonths(d, 1));
     });
   }
+
+  function navigateRecent(dir: 1 | -1) {
+    setRecentCursor((c) => {
+      const d = parseISO(c);
+      if (recentFilter === "week") return toISODate(dir === 1 ? addWeeks(d, 1) : subWeeks(d, 1));
+      if (recentFilter === "month") return toISODate(dir === 1 ? addMonths(d, 1) : subMonths(d, 1));
+      return toISODate(dir === 1 ? addDays(d, 1) : subDays(d, 1));
+    });
+  }
+
+  const recentFilteredSales = useMemo(() => {
+    if (recentFilter === "all") return sales.slice(0, 30);
+    const key =
+      recentFilter === "day" ? recentCursor : recentFilter === "week" ? weekKey(recentCursor) : monthKey(recentCursor);
+    return sales.filter(
+      (s) => (recentFilter === "day" ? s.date : recentFilter === "week" ? weekKey(s.date) : monthKey(s.date)) === key
+    );
+  }, [sales, recentFilter, recentCursor]);
+
+  const recentFilterLabel = useMemo(() => {
+    if (recentFilter === "all") return null;
+    const key =
+      recentFilter === "day" ? recentCursor : recentFilter === "week" ? weekKey(recentCursor) : monthKey(recentCursor);
+    return recentFilter === "day"
+      ? formatDisplay(recentCursor)
+      : recentFilter === "week"
+        ? formatWeekDisplay(key)
+        : formatMonthDisplay(key);
+  }, [recentFilter, recentCursor]);
 
   function exportCSV() {
     downloadCSV(
@@ -682,10 +715,44 @@ export default function ItemsPage() {
 
       {/* Recent item sales */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <CardTitle>Recent item sales</CardTitle>
+          <div className="flex items-center gap-2">
+            <Tabs
+              value={recentFilter}
+              onValueChange={(v) => {
+                setRecentFilter(v as "all" | Period);
+                setRecentCursor(todayISO());
+              }}
+            >
+              <TabsList>
+                <TabsTrigger value="all">All</TabsTrigger>
+                <TabsTrigger value="day">Day</TabsTrigger>
+                <TabsTrigger value="week">Week</TabsTrigger>
+                <TabsTrigger value="month">Month</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </CardHeader>
         <CardContent>
+          {recentFilter !== "all" && (
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <Button variant="outline" size="icon" onClick={() => navigateRecent(-1)}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-neutral-700">{recentFilterLabel}</p>
+                {recentCursor !== todayISO() && (
+                  <Button variant="ghost" size="sm" onClick={() => setRecentCursor(todayISO())}>
+                    Today
+                  </Button>
+                )}
+              </div>
+              <Button variant="outline" size="icon" onClick={() => navigateRecent(1)}>
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -697,7 +764,7 @@ export default function ItemsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sales.slice(0, 30).map((s) => (
+                {recentFilteredSales.map((s) => (
                   <EditableItemSaleRow
                     key={s.id}
                     sale={s}
@@ -708,7 +775,11 @@ export default function ItemsPage() {
                 ))}
               </TableBody>
             </Table>
-            {sales.length === 0 && !loading && <p className="py-6 text-center text-sm text-neutral-400">No item sales yet</p>}
+            {recentFilteredSales.length === 0 && !loading && (
+              <p className="py-6 text-center text-sm text-neutral-400">
+                {recentFilter === "all" ? "No item sales yet" : "No item sales in this period"}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
