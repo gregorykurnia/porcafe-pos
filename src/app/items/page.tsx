@@ -31,7 +31,7 @@ import {
   deleteItemSale,
 } from "@/lib/data";
 import type { MenuItem, ItemSale } from "@/lib/types";
-import { idr, todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
+import { todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
 import { downloadCSV } from "@/lib/csv";
 import {
   ResponsiveContainer,
@@ -46,6 +46,207 @@ import { Trash2, Download, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
+
+type EditableMenuItemField = "name" | "category" | "price";
+type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
+
+function EditableMenuItemRow({
+  item,
+  onSaved,
+  onDelete,
+}: {
+  item: MenuItem;
+  onSaved: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState<MenuItemDraft>({});
+  const [saving, setSaving] = useState(false);
+
+  function fieldValue(field: EditableMenuItemField): string {
+    if (field in draft) return draft[field] ?? "";
+    if (field === "price") return item.price !== null ? String(item.price) : "";
+    return item[field] ?? "";
+  }
+
+  function setField(field: EditableMenuItemField, value: string) {
+    setDraft((d) => ({ ...d, [field]: value }));
+  }
+
+  async function commit() {
+    if (Object.keys(draft).length === 0) return;
+    const name = (draft.name ?? item.name).trim();
+    if (!name) {
+      toast.error("Name can't be empty");
+      setDraft({});
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertMenuItem({
+        id: item.id,
+        name,
+        category: (draft.category ?? item.category).trim() || "Uncategorized",
+        price: draft.price !== undefined ? (draft.price ? parseFloat(draft.price) : null) : item.price,
+        active: item.active,
+      });
+      setDraft({});
+      onSaved();
+    } catch (err) {
+      console.error("Failed to save item:", err);
+      toast.error(err instanceof Error ? `Failed to save item: ${err.message}` : "Failed to save item");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cellInput(field: EditableMenuItemField, type: "text" | "number") {
+    return (
+      <Input
+        type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
+        value={fieldValue(field)}
+        disabled={saving}
+        onChange={(e) => setField(field, e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300 ${
+          type === "number" ? "text-right" : ""
+        }`}
+      />
+    );
+  }
+
+  return (
+    <TableRow className={saving ? "opacity-50" : undefined}>
+      <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
+      <TableCell className="p-1">{cellInput("category", "text")}</TableCell>
+      <TableCell className="p-1 text-right">{cellInput("price", "number")}</TableCell>
+      <TableCell>
+        <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
+          <Trash2 className="size-4 text-neutral-400" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+type EditableSaleField = "date" | "itemId" | "qty";
+type SaleDraft = Partial<Record<EditableSaleField, string>>;
+
+function EditableItemSaleRow({
+  sale,
+  menuItems,
+  onSaved,
+  onDelete,
+}: {
+  sale: ItemSale;
+  menuItems: MenuItem[];
+  onSaved: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState<SaleDraft>({});
+  const [saving, setSaving] = useState(false);
+
+  function fieldValue(field: EditableSaleField): string {
+    if (field in draft) return draft[field] ?? "";
+    if (field === "qty") return String(sale.qty);
+    if (field === "itemId") return sale.itemId;
+    return sale.date;
+  }
+
+  function setField(field: EditableSaleField, value: string) {
+    setDraft((d) => ({ ...d, [field]: value }));
+  }
+
+  async function commit(overrides?: SaleDraft) {
+    const merged = { ...draft, ...overrides };
+    if (Object.keys(merged).length === 0) return;
+    const itemId = merged.itemId ?? sale.itemId;
+    const item = menuItems.find((m) => m.id === itemId);
+    if (!item) {
+      toast.error("Item not found");
+      setDraft({});
+      return;
+    }
+    setSaving(true);
+    try {
+      await upsertItemSale({
+        id: sale.id,
+        date: merged.date ?? sale.date,
+        itemId: item.id,
+        itemName: item.name,
+        category: item.category,
+        qty: merged.qty !== undefined ? parseFloat(merged.qty) || 0 : sale.qty,
+      });
+      setDraft({});
+      onSaved();
+    } catch (err) {
+      console.error("Failed to save sale:", err);
+      toast.error(err instanceof Error ? `Failed to save sale: ${err.message}` : "Failed to save sale");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TableRow className={saving ? "opacity-50" : undefined}>
+      <TableCell className="p-1">
+        <Input
+          type="date"
+          value={fieldValue("date")}
+          disabled={saving}
+          onChange={(e) => {
+            setField("date", e.target.value);
+            commit({ date: e.target.value });
+          }}
+          className="h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300"
+        />
+      </TableCell>
+      <TableCell className="p-1">
+        <Select
+          value={fieldValue("itemId")}
+          disabled={saving}
+          onValueChange={(v) => {
+            setField("itemId", v);
+            commit({ itemId: v });
+          }}
+        >
+          <SelectTrigger size="sm" className="h-8 w-full border-transparent bg-transparent hover:border-neutral-200">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {menuItems.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                {m.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </TableCell>
+      <TableCell className="p-1 text-right">
+        <Input
+          type="number"
+          inputMode="numeric"
+          value={fieldValue("qty")}
+          disabled={saving}
+          onChange={(e) => setField("qty", e.target.value)}
+          onBlur={() => commit()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="h-8 border-transparent bg-transparent px-1.5 text-right hover:border-neutral-200 focus:border-neutral-300"
+        />
+      </TableCell>
+      <TableCell>
+        <Button variant="ghost" size="icon" onClick={() => onDelete(sale.id)}>
+          <Trash2 className="size-4 text-neutral-400" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function ItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -337,16 +538,7 @@ export default function ItemsPage() {
               </TableHeader>
               <TableBody>
                 {menuItems.map((m) => (
-                  <TableRow key={m.id}>
-                    <TableCell className="font-medium">{m.name}</TableCell>
-                    <TableCell className="text-neutral-500">{m.category}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{m.price ? idr(m.price) : "—"}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => removeMenuItem(m.id)}>
-                        <Trash2 className="size-4 text-neutral-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onDelete={removeMenuItem} />
                 ))}
               </TableBody>
             </Table>
@@ -373,16 +565,13 @@ export default function ItemsPage() {
               </TableHeader>
               <TableBody>
                 {sales.slice(0, 30).map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-medium">{formatDisplay(s.date)}</TableCell>
-                    <TableCell>{s.itemName}</TableCell>
-                    <TableCell className="text-right">{s.qty}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" onClick={() => removeSale(s.id)}>
-                        <Trash2 className="size-4 text-neutral-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <EditableItemSaleRow
+                    key={s.id}
+                    sale={s}
+                    menuItems={menuItems}
+                    onSaved={refresh}
+                    onDelete={removeSale}
+                  />
                 ))}
               </TableBody>
             </Table>
