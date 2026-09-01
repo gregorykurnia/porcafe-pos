@@ -74,8 +74,9 @@ export default function SalesPage() {
       toast.success(editingId ? "Entry updated" : "Entry saved");
       resetForm();
       refresh();
-    } catch {
-      toast.error("Failed to save entry");
+    } catch (err) {
+      console.error("Failed to save entry:", err);
+      toast.error(err instanceof Error ? `Failed to save entry: ${err.message}` : "Failed to save entry");
     } finally {
       setSaving(false);
     }
