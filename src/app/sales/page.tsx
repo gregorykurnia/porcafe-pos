@@ -429,20 +429,20 @@ export default function SalesPage() {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="table-fixed">
               <TableHeader>
                 <TableRow>
                   {(
                     [
-                      ["date", "Date", ""],
-                      ["bca", "BCA", "text-right"],
-                      ["cash", "Cash", "text-right"],
-                      ["soundbox", "Soundbox", "text-right"],
-                      ["other", "Other", "text-right"],
-                      ["total", "Total", "text-right"],
-                    ] as [SortKey, string, string][]
-                  ).map(([key, label, align]) => (
-                    <TableHead key={key} className={align}>
+                      ["date", "Date", "", "w-36"],
+                      ["bca", "BCA", "text-right", "w-28"],
+                      ["cash", "Cash", "text-right", "w-28"],
+                      ["soundbox", "Soundbox", "text-right", "w-28"],
+                      ["other", "Other", "text-right", "w-28"],
+                      ["total", "Total", "text-right", "w-32"],
+                    ] as [SortKey, string, string, string][]
+                  ).map(([key, label, align, width]) => (
+                    <TableHead key={key} className={`${align} ${width}`}>
                       <button
                         type="button"
                         onClick={() => toggleSort(key)}
@@ -454,7 +454,7 @@ export default function SalesPage() {
                     </TableHead>
                   ))}
                   <TableHead>Note</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
