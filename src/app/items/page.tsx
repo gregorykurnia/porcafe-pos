@@ -567,52 +567,75 @@ export default function ItemsPage() {
         </CardContent>
       </Card>
 
-      {/* Main portions navigator */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle>Portions sold (Main)</CardTitle>
-          <div className="flex items-center gap-2">
-            <Tabs
-              value={mainPeriod}
-              onValueChange={(v) => {
-                setMainPeriod(v as Period);
-                setMainCursor(todayISO());
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value="day">Day</TabsTrigger>
-                <TabsTrigger value="week">Week</TabsTrigger>
-                <TabsTrigger value="month">Month</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            {mainCursor !== todayISO() && (
-              <Button variant="outline" size="sm" onClick={() => setMainCursor(todayISO())}>
-                Today
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between gap-3">
-            <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)}>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <div className="text-center">
-              <p className="text-sm text-neutral-500">{mainPeriodSummary.label}</p>
-              <p className="text-3xl font-semibold text-neutral-900">
-                {mainPeriodSummary.total}{" "}
-                <span className="text-base font-normal text-neutral-500">portions</span>
-              </p>
+      {/* Main portions navigator + Top sellers */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+            <CardTitle>Portions sold (Main)</CardTitle>
+            <div className="flex items-center gap-2">
+              <Tabs
+                value={mainPeriod}
+                onValueChange={(v) => {
+                  setMainPeriod(v as Period);
+                  setMainCursor(todayISO());
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="day">Day</TabsTrigger>
+                  <TabsTrigger value="week">Week</TabsTrigger>
+                  <TabsTrigger value="month">Month</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {mainCursor !== todayISO() && (
+                <Button variant="outline" size="sm" onClick={() => setMainCursor(todayISO())}>
+                  Today
+                </Button>
+              )}
             </div>
-            <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)}>
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-          {mainSales.length === 0 && !loading && (
-            <p className="mt-4 text-center text-sm text-neutral-400">No Main-category sales logged yet</p>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="flex flex-1 flex-col justify-center">
+            <div className="flex items-center justify-between gap-3">
+              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)}>
+                <ChevronLeft className="size-4" />
+              </Button>
+              <div className="text-center">
+                <p className="text-sm text-neutral-500">{mainPeriodSummary.label}</p>
+                <p className="text-4xl font-semibold text-neutral-900">
+                  {mainPeriodSummary.total}{" "}
+                  <span className="text-base font-normal text-neutral-500">portions</span>
+                </p>
+              </div>
+              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)}>
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+            {mainSales.length === 0 && !loading && (
+              <p className="mt-4 text-center text-sm text-neutral-400">No Main-category sales logged yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top sellers (all time)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topSellers.length === 0 ? (
+              <p className="py-4 text-center text-sm text-neutral-400">No data yet</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(160, topSellers.length * 32)}>
+                <BarChart data={topSellers.map(([name, qty]) => ({ name, qty }))} layout="vertical" margin={{ left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" horizontal={false} />
+                  <XAxis type="number" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis dataKey="name" type="category" fontSize={12} tickLine={false} axisLine={false} width={110} />
+                  <Tooltip />
+                  <Bar dataKey="qty" fill="#fb923c" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Recap */}
       <Card>
@@ -658,28 +681,6 @@ export default function ItemsPage() {
                 <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
                 <Tooltip />
                 <Bar dataKey="qty" fill="#f97316" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Top sellers */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Top sellers (all time)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {topSellers.length === 0 ? (
-            <p className="py-4 text-center text-sm text-neutral-400">No data yet</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={Math.max(160, topSellers.length * 36)}>
-              <BarChart data={topSellers.map(([name, qty]) => ({ name, qty }))} layout="vertical" margin={{ left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" horizontal={false} />
-                <XAxis type="number" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis dataKey="name" type="category" fontSize={12} tickLine={false} axisLine={false} width={110} />
-                <Tooltip />
-                <Bar dataKey="qty" fill="#fb923c" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
