@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   listSalesEntries,
   upsertSalesEntry,
   deleteSalesEntry,
@@ -37,6 +44,99 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   return dir === "asc" ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />;
 }
 
+type EditableField = "date" | "bca" | "cash" | "soundbox" | "other" | "note";
+type Draft = Partial<Record<EditableField, string>>;
+
+function EditableRow({
+  entry,
+  onSaved,
+  onDelete,
+}: {
+  entry: SalesEntry;
+  onSaved: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState<Draft>({});
+  const [saving, setSaving] = useState(false);
+
+  function fieldValue(field: EditableField): string {
+    if (field in draft) return draft[field] ?? "";
+    if (field === "note") return entry.note ?? "";
+    return field === "date" ? entry.date : entry[field] ? String(entry[field]) : "";
+  }
+
+  function setField(field: EditableField, value: string) {
+    setDraft((d) => ({ ...d, [field]: value }));
+  }
+
+  async function commit() {
+    if (Object.keys(draft).length === 0) return;
+    setSaving(true);
+    try {
+      await upsertSalesEntry({
+        id: entry.id,
+        date: draft.date ?? entry.date,
+        bca: draft.bca !== undefined ? parseFloat(draft.bca) || 0 : entry.bca,
+        cash: draft.cash !== undefined ? parseFloat(draft.cash) || 0 : entry.cash,
+        soundbox: draft.soundbox !== undefined ? parseFloat(draft.soundbox) || 0 : entry.soundbox,
+        other: draft.other !== undefined ? parseFloat(draft.other) || 0 : entry.other,
+        note: (draft.note !== undefined ? draft.note : entry.note) || undefined,
+      });
+      setDraft({});
+      onSaved();
+    } catch (err) {
+      console.error("Failed to save entry:", err);
+      toast.error(err instanceof Error ? `Failed to save entry: ${err.message}` : "Failed to save entry");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const displayTotal =
+    (draft.bca !== undefined || draft.cash !== undefined || draft.soundbox !== undefined || draft.other !== undefined)
+      ? (parseFloat(fieldValue("bca")) || 0) +
+        (parseFloat(fieldValue("cash")) || 0) +
+        (parseFloat(fieldValue("soundbox")) || 0) +
+        (parseFloat(fieldValue("other")) || 0)
+      : entry.total;
+
+  function cellInput(field: EditableField, type: "date" | "number" | "text") {
+    return (
+      <Input
+        type={type}
+        inputMode={type === "number" ? "decimal" : undefined}
+        value={fieldValue(field)}
+        disabled={saving}
+        onChange={(e) => setField(field, e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300 ${
+          type === "number" ? "text-right" : ""
+        }`}
+      />
+    );
+  }
+
+  return (
+    <TableRow className={saving ? "opacity-50" : undefined}>
+      <TableCell className="p-1">{cellInput("date", "date")}</TableCell>
+      <TableCell className="p-1">{cellInput("bca", "number")}</TableCell>
+      <TableCell className="p-1">{cellInput("cash", "number")}</TableCell>
+      <TableCell className="p-1">{cellInput("soundbox", "number")}</TableCell>
+      <TableCell className="p-1">{cellInput("other", "number")}</TableCell>
+      <TableCell className="text-right font-semibold">{idr(displayTotal)}</TableCell>
+      <TableCell className="p-1">{cellInput("note", "text")}</TableCell>
+      <TableCell>
+        <Button variant="ghost" size="icon" onClick={() => onDelete(entry.id)}>
+          <Trash2 className="size-4 text-neutral-400" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function SalesPage() {
   const [entries, setEntries] = useState<SalesEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,10 +148,10 @@ export default function SalesPage() {
   const [soundbox, setSoundbox] = useState("");
   const [other, setOther] = useState("");
   const [note, setNote] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [monthFilter, setMonthFilter] = useState<string>("all");
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -82,7 +182,6 @@ export default function SalesPage() {
     setSaving(true);
     try {
       await upsertSalesEntry({
-        id: editingId ?? undefined,
         date,
         bca: parseFloat(bca) || 0,
         cash: parseFloat(cash) || 0,
@@ -90,7 +189,7 @@ export default function SalesPage() {
         other: parseFloat(other) || 0,
         note: note || undefined,
       });
-      toast.success(editingId ? "Entry updated" : "Entry saved");
+      toast.success("Entry saved");
       resetForm();
       refresh();
     } catch (err) {
@@ -108,23 +207,11 @@ export default function SalesPage() {
     setSoundbox("");
     setOther("");
     setNote("");
-    setEditingId(null);
-  }
-
-  function editEntry(e: SalesEntry) {
-    setEditingId(e.id);
-    setDate(e.date);
-    setBca(e.bca ? String(e.bca) : "");
-    setCash(e.cash ? String(e.cash) : "");
-    setSoundbox(e.soundbox ? String(e.soundbox) : "");
-    setOther(e.other ? String(e.other) : "");
-    setNote(e.note ?? "");
   }
 
   async function removeEntry(id: string) {
     await deleteSalesEntry(id);
     toast.success("Entry deleted");
-    if (editingId === id) resetForm();
     refresh();
   }
 
@@ -148,15 +235,21 @@ export default function SalesPage() {
     total: g.total,
   }));
 
+  const monthOptions = useMemo(() => {
+    const keys = new Set(entries.map((e) => monthKey(e.date)));
+    return [...keys].sort().reverse();
+  }, [entries]);
+
   const sortedEntries = useMemo(() => {
     const dir = sortDir === "asc" ? 1 : -1;
-    return [...entries].sort((a, b) => {
+    const filtered = monthFilter === "all" ? entries : entries.filter((e) => monthKey(e.date) === monthFilter);
+    return [...filtered].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
       return ((av as number) - (bv as number)) * dir;
     });
-  }, [entries, sortKey, sortDir]);
+  }, [entries, sortKey, sortDir, monthFilter]);
 
   function exportCSV() {
     downloadCSV(
@@ -175,7 +268,7 @@ export default function SalesPage() {
       {/* Entry form */}
       <Card>
         <CardHeader>
-          <CardTitle>{editingId ? "Edit entry" : "New daily entry"}</CardTitle>
+          <CardTitle>New daily entry</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -210,13 +303,8 @@ export default function SalesPage() {
           </div>
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
-              {saving ? "Saving…" : editingId ? "Update entry" : "Save entry"}
+              {saving ? "Saving…" : "Save entry"}
             </Button>
-            {editingId && (
-              <Button variant="outline" onClick={resetForm}>
-                Cancel
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -285,9 +373,24 @@ export default function SalesPage() {
 
       {/* History */}
       <Card>
-        <CardHeader>
-          <CardTitle>All entries</CardTitle>
-          <p className="text-xs text-neutral-400">Click a row to edit it. Click a column header to sort.</p>
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+          <div>
+            <CardTitle>All entries</CardTitle>
+            <p className="text-xs text-neutral-400">Click a cell to edit it. Click a column header to sort.</p>
+          </div>
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger size="sm" className="w-[160px]">
+              <SelectValue placeholder="All months" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All months</SelectItem>
+              {monthOptions.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {formatMonthDisplay(m)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -315,36 +418,20 @@ export default function SalesPage() {
                       </button>
                     </TableHead>
                   ))}
+                  <TableHead>Note</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedEntries.map((e) => (
-                  <TableRow key={e.id} className="cursor-pointer" onClick={() => editEntry(e)}>
-                    <TableCell className="font-medium">{formatDisplay(e.date)}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{e.bca ? idr(e.bca) : "—"}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{e.cash ? idr(e.cash) : "—"}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{e.soundbox ? idr(e.soundbox) : "—"}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{e.other ? idr(e.other) : "—"}</TableCell>
-                    <TableCell className="text-right font-semibold">{idr(e.total)}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          removeEntry(e.id);
-                        }}
-                      >
-                        <Trash2 className="size-4 text-neutral-400" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                  <EditableRow key={e.id} entry={e} onSaved={refresh} onDelete={removeEntry} />
                 ))}
               </TableBody>
             </Table>
-            {entries.length === 0 && !loading && (
-              <p className="py-6 text-center text-sm text-neutral-400">No entries yet</p>
+            {sortedEntries.length === 0 && !loading && (
+              <p className="py-6 text-center text-sm text-neutral-400">
+                {entries.length === 0 ? "No entries yet" : "No entries in this month"}
+              </p>
             )}
           </div>
         </CardContent>
