@@ -319,6 +319,8 @@ function TicketScanDialog({
   const [nobu, setNobu] = useState("");
   const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
   const [existingOther, setExistingOther] = useState(0);
+  const [step, setStep] = useState<"items" | "revenue">("items");
+  const [itemsSaved, setItemsSaved] = useState(false);
 
   function reset() {
     setScanning(false);
@@ -331,6 +333,8 @@ function TicketScanDialog({
     setNobu("");
     setExistingEntryId(null);
     setExistingOther(0);
+    setStep("items");
+    setItemsSaved(false);
   }
 
   async function handleFile(file: File) {
@@ -383,9 +387,9 @@ function TicketScanDialog({
     setDraftItems((rows) => rows.filter((_, i) => i !== idx));
   }
 
-  async function confirmSave() {
+  async function confirmItems() {
     const validRows = draftItems.filter((r) => r.menuItemId && parseFloat(r.qty) > 0);
-    if (validRows.length === 0 && !cash && !bca && !nobu) {
+    if (validRows.length === 0) {
       toast.error("Nothing to save");
       return;
     }
@@ -402,6 +406,21 @@ function TicketScanDialog({
           qty: parseFloat(row.qty),
         });
       }
+      toast.success("Item sales saved — now review the revenue split");
+      setItemsSaved(true);
+      onDone();
+      setStep("revenue");
+    } catch (err) {
+      console.error("Failed to save item sales:", err);
+      toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmRevenue() {
+    setSaving(true);
+    try {
       await upsertSalesEntry({
         id: existingEntryId ?? undefined,
         date: scanDate,
@@ -410,12 +429,12 @@ function TicketScanDialog({
         soundbox: parseFloat(nobu) || 0,
         other: existingOther,
       });
-      toast.success("Ticket saved to item sales and Sales revenue");
+      toast.success("Revenue logged to Sales recap");
       setOpen(false);
       reset();
       onDone();
     } catch (err) {
-      console.error("Failed to save scan:", err);
+      console.error("Failed to save sales entry:", err);
       toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
     } finally {
       setSaving(false);
@@ -437,7 +456,13 @@ function TicketScanDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Scan daily ticker sheet</DialogTitle>
+          <DialogTitle>
+            {previewUrl && step === "revenue"
+              ? "Step 2: Review revenue split"
+              : previewUrl
+                ? "Step 1: Review items sold"
+                : "Scan daily ticker sheet"}
+          </DialogTitle>
         </DialogHeader>
 
         {!previewUrl ? (
@@ -463,7 +488,12 @@ function TicketScanDialog({
               <img src={previewUrl} alt="Ticket preview" className="h-24 w-24 rounded-md object-cover border" />
               <div className="flex-1 space-y-1.5">
                 <Label>Date</Label>
-                <Input type="date" value={scanDate} onChange={(e) => setScanDate(e.target.value)} />
+                <Input
+                  type="date"
+                  value={scanDate}
+                  disabled={itemsSaved}
+                  onChange={(e) => setScanDate(e.target.value)}
+                />
                 {existingEntryId && (
                   <p className="text-xs text-amber-600">
                     A Sales entry already exists for this date — saving will update it.
@@ -474,89 +504,103 @@ function TicketScanDialog({
 
             {scanning ? (
               <p className="py-6 text-center text-sm text-neutral-400">Reading ticket…</p>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label>Items sold</Label>
-                  <div className="overflow-x-auto rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Menu item</TableHead>
-                          <TableHead className="text-right w-24">Qty</TableHead>
-                          <TableHead className="w-10"></TableHead>
+            ) : step === "items" ? (
+              <div className="space-y-2">
+                <Label>Items sold</Label>
+                <p className="text-xs text-neutral-500">
+                  Confirm each row matches the correct menu item, then save. You&apos;ll review the Cash/BCA/Nobu
+                  revenue split next.
+                </p>
+                <div className="overflow-x-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Menu item</TableHead>
+                        <TableHead className="text-right w-24">Qty</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {draftItems.map((row, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell className="p-1">
+                            <Select
+                              value={row.menuItemId}
+                              onValueChange={(v) => updateDraft(idx, { menuItemId: v })}
+                            >
+                              <SelectTrigger size="sm" className="h-8 w-full">
+                                <SelectValue placeholder={`"${row.rawName}" — no match`} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {menuItems.map((m) => (
+                                  <SelectItem key={m.id} value={m.id}>
+                                    {m.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="p-1">
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              value={row.qty}
+                              onChange={(e) => updateDraft(idx, { qty: e.target.value })}
+                              className="h-8 text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="p-1">
+                            <Button variant="ghost" size="icon" onClick={() => removeDraft(idx)}>
+                              <X className="size-4 text-neutral-400" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {draftItems.map((row, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell className="p-1">
-                              <Select
-                                value={row.menuItemId}
-                                onValueChange={(v) => updateDraft(idx, { menuItemId: v })}
-                              >
-                                <SelectTrigger size="sm" className="h-8 w-full">
-                                  <SelectValue placeholder={`"${row.rawName}" — no match`} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {menuItems.map((m) => (
-                                    <SelectItem key={m.id} value={m.id}>
-                                      {m.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className="p-1">
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                value={row.qty}
-                                onChange={(e) => updateDraft(idx, { qty: e.target.value })}
-                                className="h-8 text-right"
-                              />
-                            </TableCell>
-                            <TableCell className="p-1">
-                              <Button variant="ghost" size="icon" onClick={() => removeDraft(idx)}>
-                                <X className="size-4 text-neutral-400" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {draftItems.length === 0 && (
-                      <p className="py-4 text-center text-sm text-neutral-400">No items detected</p>
-                    )}
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {draftItems.length === 0 && (
+                    <p className="py-4 text-center text-sm text-neutral-400">No items detected</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  Item sales for {scanDate} saved. Now review the payment-method split before it&apos;s logged to
+                  Sales recap.
+                </div>
+                <Label>Revenue (this sheet)</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-neutral-500">Cash</Label>
+                    <Input type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-neutral-500">BCA</Label>
+                    <Input type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
+                    <Input type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Revenue (this sheet)</Label>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-neutral-500">Cash</Label>
-                      <Input type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-neutral-500">BCA</Label>
-                      <Input type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
-                      <Input type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-              </>
+                <p className="text-xs text-neutral-500">
+                  Total: {(parseFloat(cash) || 0) + (parseFloat(bca) || 0) + (parseFloat(nobu) || 0)}
+                </p>
+              </div>
             )}
           </div>
         )}
 
         <DialogFooter>
-          {previewUrl && !scanning && (
-            <Button onClick={confirmSave} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
-              {saving ? "Saving…" : "Save to item sales & revenue"}
+          {previewUrl && !scanning && step === "items" && (
+            <Button onClick={confirmItems} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+              {saving ? "Saving…" : "Save item sales & continue"}
+            </Button>
+          )}
+          {previewUrl && !scanning && step === "revenue" && (
+            <Button onClick={confirmRevenue} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+              {saving ? "Saving…" : "Confirm & log to Sales recap"}
             </Button>
           )}
         </DialogFooter>
