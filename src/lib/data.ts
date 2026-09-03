@@ -44,6 +44,12 @@ export async function deleteSalesEntry(id: string) {
   await deleteDoc(doc(db, "salesEntries", id));
 }
 
+export async function getSalesEntryByDate(date: string): Promise<SalesEntry | null> {
+  const snap = await getDocs(query(salesCol, where("date", "==", date)));
+  const d = snap.docs[0];
+  return d ? { id: d.id, ...(d.data() as Omit<SalesEntry, "id">) } : null;
+}
+
 // ---------- Menu Items ----------
 
 const itemsCol = collection(db, "menuItems");

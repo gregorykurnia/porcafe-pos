@@ -29,6 +29,8 @@ import {
   listItemSales,
   upsertItemSale,
   deleteItemSale,
+  getSalesEntryByDate,
+  upsertSalesEntry,
 } from "@/lib/data";
 import type { MenuItem, ItemSale } from "@/lib/types";
 import {
@@ -51,7 +53,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
@@ -280,6 +282,289 @@ function EditableItemSaleRow({
   );
 }
 
+type ScanDraftItem = {
+  menuItemId: string;
+  rawName: string;
+  qty: string;
+};
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // strip the "data:image/jpeg;base64," prefix
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function TicketScanDialog({
+  menuItems,
+  onDone,
+}: {
+  menuItems: MenuItem[];
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [scanDate, setScanDate] = useState(todayISO());
+  const [draftItems, setDraftItems] = useState<ScanDraftItem[]>([]);
+  const [cash, setCash] = useState("");
+  const [bca, setBca] = useState("");
+  const [nobu, setNobu] = useState("");
+  const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
+  const [existingOther, setExistingOther] = useState(0);
+
+  function reset() {
+    setScanning(false);
+    setSaving(false);
+    setPreviewUrl(null);
+    setScanDate(todayISO());
+    setDraftItems([]);
+    setCash("");
+    setBca("");
+    setNobu("");
+    setExistingEntryId(null);
+    setExistingOther(0);
+  }
+
+  async function handleFile(file: File) {
+    setPreviewUrl(URL.createObjectURL(file));
+    setScanning(true);
+    try {
+      const imageBase64 = await fileToBase64(file);
+      const res = await fetch("/api/scan-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          mediaType: file.type || "image/jpeg",
+          menuItems: menuItems.map((m) => ({ id: m.id, name: m.name, category: m.category, price: m.price })),
+        }),
+      });
+      if (!res.ok) throw new Error(`Scan failed (${res.status})`);
+      const result = await res.json();
+      if (result.date) setScanDate(result.date);
+      setDraftItems(
+        (result.items ?? []).map((it: { menuItemId: string | null; rawName: string; qty: number }) => ({
+          menuItemId: it.menuItemId ?? "",
+          rawName: it.rawName,
+          qty: String(it.qty ?? ""),
+        }))
+      );
+      setCash(String(result.cash ?? ""));
+      setBca(String(result.bca ?? ""));
+      setNobu(String(result.nobu ?? ""));
+
+      const existing = await getSalesEntryByDate(result.date ?? todayISO());
+      if (existing) {
+        setExistingEntryId(existing.id);
+        setExistingOther(existing.other);
+      }
+      toast.success("Ticket scanned — review before saving");
+    } catch (err) {
+      console.error("Scan failed:", err);
+      toast.error(err instanceof Error ? err.message : "Scan failed");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  function updateDraft(idx: number, patch: Partial<ScanDraftItem>) {
+    setDraftItems((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+
+  function removeDraft(idx: number) {
+    setDraftItems((rows) => rows.filter((_, i) => i !== idx));
+  }
+
+  async function confirmSave() {
+    const validRows = draftItems.filter((r) => r.menuItemId && parseFloat(r.qty) > 0);
+    if (validRows.length === 0 && !cash && !bca && !nobu) {
+      toast.error("Nothing to save");
+      return;
+    }
+    setSaving(true);
+    try {
+      for (const row of validRows) {
+        const item = menuItems.find((m) => m.id === row.menuItemId);
+        if (!item) continue;
+        await upsertItemSale({
+          date: scanDate,
+          itemId: item.id,
+          itemName: item.name,
+          category: item.category,
+          qty: parseFloat(row.qty),
+        });
+      }
+      await upsertSalesEntry({
+        id: existingEntryId ?? undefined,
+        date: scanDate,
+        cash: parseFloat(cash) || 0,
+        bca: parseFloat(bca) || 0,
+        soundbox: parseFloat(nobu) || 0,
+        other: existingOther,
+      });
+      toast.success("Ticket saved to item sales and Sales revenue");
+      setOpen(false);
+      reset();
+      onDone();
+    } catch (err) {
+      console.error("Failed to save scan:", err);
+      toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) reset();
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          <ScanLine className="size-4" /> Scan ticket
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Scan daily ticker sheet</DialogTitle>
+        </DialogHeader>
+
+        {!previewUrl ? (
+          <div className="space-y-3">
+            <p className="text-sm text-neutral-500">
+              Upload or photograph the handwritten ticker sheet. Claude will read the item quantities and
+              Cash/BCA/Nobu totals for you to review before saving.
+            </p>
+            <Input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFile(file);
+              }}
+            />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={previewUrl} alt="Ticket preview" className="h-24 w-24 rounded-md object-cover border" />
+              <div className="flex-1 space-y-1.5">
+                <Label>Date</Label>
+                <Input type="date" value={scanDate} onChange={(e) => setScanDate(e.target.value)} />
+                {existingEntryId && (
+                  <p className="text-xs text-amber-600">
+                    A Sales entry already exists for this date — saving will update it.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {scanning ? (
+              <p className="py-6 text-center text-sm text-neutral-400">Reading ticket…</p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Items sold</Label>
+                  <div className="overflow-x-auto rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Menu item</TableHead>
+                          <TableHead className="text-right w-24">Qty</TableHead>
+                          <TableHead className="w-10"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {draftItems.map((row, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="p-1">
+                              <Select
+                                value={row.menuItemId}
+                                onValueChange={(v) => updateDraft(idx, { menuItemId: v })}
+                              >
+                                <SelectTrigger size="sm" className="h-8 w-full">
+                                  <SelectValue placeholder={`"${row.rawName}" — no match`} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {menuItems.map((m) => (
+                                    <SelectItem key={m.id} value={m.id}>
+                                      {m.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                value={row.qty}
+                                onChange={(e) => updateDraft(idx, { qty: e.target.value })}
+                                className="h-8 text-right"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Button variant="ghost" size="icon" onClick={() => removeDraft(idx)}>
+                                <X className="size-4 text-neutral-400" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {draftItems.length === 0 && (
+                      <p className="py-4 text-center text-sm text-neutral-400">No items detected</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Revenue (this sheet)</Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-neutral-500">Cash</Label>
+                      <Input type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-neutral-500">BCA</Label>
+                      <Input type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
+                      <Input type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          {previewUrl && !scanning && (
+            <Button onClick={confirmSave} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+              {saving ? "Saving…" : "Save to item sales & revenue"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [sales, setSales] = useState<ItemSale[]>([]);
@@ -480,6 +765,8 @@ export default function ItemsPage() {
           <h1 className="text-2xl font-semibold text-neutral-900">Menu Items</h1>
           <p className="text-sm text-neutral-500">Track quantity sold per item</p>
         </div>
+        <div className="flex items-center gap-2">
+        <TicketScanDialog menuItems={menuItems} onDone={refresh} />
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="bg-[#1f3a2f] hover:bg-[#16291f]">
@@ -522,6 +809,7 @@ export default function ItemsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Quantity entry */}
