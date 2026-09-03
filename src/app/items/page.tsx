@@ -351,8 +351,8 @@ function TicketScanDialog({
           menuItems: menuItems.map((m) => ({ id: m.id, name: m.name, category: m.category, price: m.price })),
         }),
       });
-      if (!res.ok) throw new Error(`Scan failed (${res.status})`);
       const result = await res.json();
+      if (!res.ok) throw new Error(result?.error || `Scan failed (${res.status})`);
       if (result.date) setScanDate(result.date);
       setDraftItems(
         (result.items ?? []).map((it: { menuItemId: string | null; rawName: string; qty: number }) => ({

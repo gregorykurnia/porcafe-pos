@@ -57,6 +57,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing image" }, { status: 400 });
   }
 
+  const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+  if (mediaType && !SUPPORTED_MEDIA_TYPES.includes(mediaType)) {
+    return NextResponse.json(
+      {
+        error: `Unsupported image format "${mediaType}". Please use JPEG, PNG, GIF, or WEBP (on iPhone, switch Camera > Formats to "Most Compatible" so photos save as JPEG instead of HEIC).`,
+      },
+      { status: 400 }
+    );
+  }
+
+  try {
+    return await scanTicket(imageBase64, mediaType, menuItems);
+  } catch (err) {
+    console.error("scan-ticket failed:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: `Scan failed: ${message}` }, { status: 500 });
+  }
+}
+
+async function scanTicket(
+  imageBase64: string,
+  mediaType: string,
+  menuItems: { id: string; name: string; category: string; price: number | null }[]
+) {
   const catalog = menuItems
     .map((m) => `${m.id} | ${m.name} | ${m.category} | price=${m.price ?? "unknown"}`)
     .join("\n");
