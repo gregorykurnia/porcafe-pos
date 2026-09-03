@@ -529,7 +529,9 @@ function TicketScanDialog({
             </div>
 
             {scanning ? (
-              <p className="py-6 text-center text-sm text-neutral-400">Reading ticket…</p>
+              <p className="py-6 text-center text-sm text-neutral-400">
+                Reading ticket… this can take 30-60s while it carefully counts tally marks.
+              </p>
             ) : step === "items" ? (
               <div className="space-y-2">
                 <Label>Items sold</Label>

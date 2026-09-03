@@ -95,7 +95,7 @@ async function scanTicket(
     providerOptions: {
       anthropic: {
         thinking: { type: "adaptive" },
-        effort: "high",
+        effort: "medium",
       },
     },
     messages: [
