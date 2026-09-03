@@ -27,6 +27,7 @@ import {
   upsertMenuItem,
   deleteMenuItem,
   listItemSales,
+  listItemSalesByDate,
   upsertItemSale,
   deleteItemSale,
   getSalesEntryByDate,
@@ -416,10 +417,16 @@ function TicketScanDialog({
     }
     setSaving(true);
     try {
+      // Re-scanning the same ticket (or the same date) must overwrite that date's
+      // per-item quantity, not add another row on top of it — otherwise every
+      // rescan double-counts. Look up what's already logged for this date first.
+      const existingForDate = await listItemSalesByDate(scanDate);
+      const existingByItemId = new Map(existingForDate.map((s) => [s.itemId, s]));
       for (const row of rowsWithQty) {
         const item = menuItems.find((m) => m.id === row.menuItemId);
         if (!item) continue;
         await upsertItemSale({
+          id: existingByItemId.get(item.id)?.id,
           date: scanDate,
           itemId: item.id,
           itemName: item.name,
