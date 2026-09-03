@@ -65,12 +65,63 @@ import {
   CartesianGrid,
 } from "recharts";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy } from "lucide-react";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
+
+type SortDir = "asc" | "desc";
+type Sort<K extends string> = { key: K; dir: SortDir } | null;
+
+function SortableHead<K extends string>({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: K;
+  sort: Sort<K>;
+  onSort: (key: K) => void;
+  className?: string;
+}) {
+  const active = sort?.key === sortKey;
+  const Icon = active ? (sort!.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 hover:text-neutral-900 ${
+          className?.includes("text-right") ? "flex-row-reverse" : ""
+        } ${active ? "text-neutral-900" : ""}`}
+      >
+        {label}
+        <Icon className={`size-3 ${active ? "" : "text-neutral-300"}`} />
+      </button>
+    </TableHead>
+  );
+}
+
+function toggleSort<K extends string>(
+  current: Sort<K>,
+  key: K,
+  setSort: (s: Sort<K>) => void
+) {
+  if (current?.key === key) {
+    setSort(current.dir === "asc" ? { key, dir: "desc" } : null);
+  } else {
+    setSort({ key, dir: "asc" });
+  }
+}
+
+function cmp(a: string | number, b: string | number): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b));
+}
 
 type EditableMenuItemField = "name" | "category" | "price";
 type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
@@ -183,11 +234,13 @@ type SaleDraft = Partial<Record<EditableSaleField, string>>;
 
 function EditableItemSaleRow({
   sale,
+  category,
   menuItems,
   onSaved,
   onDelete,
 }: {
   sale: ItemSale;
+  category: string;
   menuItems: MenuItem[];
   onSaved: () => void;
   onDelete: (id: string) => void;
@@ -271,6 +324,7 @@ function EditableItemSaleRow({
           </SelectContent>
         </Select>
       </TableCell>
+      <TableCell className="p-1 text-neutral-500">{category}</TableCell>
       <TableCell className="p-1 text-right">
         <Input
           type="number"
@@ -650,6 +704,8 @@ export default function ItemsPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
+  const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
+  const [saleSort, setSaleSort] = useState<Sort<"date" | "item" | "category" | "qty">>(null);
 
   // Main-portions navigator
   const [mainPeriod, setMainPeriod] = useState<Period>("day");
@@ -829,6 +885,30 @@ export default function ItemsPage() {
         ? formatWeekDisplay(key)
         : formatMonthDisplay(key);
   }, [recentFilter, recentCursor]);
+
+  const sortedMenuItems = useMemo(() => {
+    if (!menuSort) return menuItems;
+    const { key, dir } = menuSort;
+    const sorted = [...menuItems].sort((a, b) => {
+      const va = key === "price" ? (a.price ?? -Infinity) : a[key];
+      const vb = key === "price" ? (b.price ?? -Infinity) : b[key];
+      return cmp(va, vb);
+    });
+    return dir === "asc" ? sorted : sorted.reverse();
+  }, [menuItems, menuSort]);
+
+  const sortedRecentSales = useMemo(() => {
+    if (!saleSort) return recentFilteredSales;
+    const { key, dir } = saleSort;
+    const sorted = [...recentFilteredSales].sort((a, b) => {
+      const va =
+        key === "item" ? a.itemName : key === "category" ? (categoryByItemId.get(a.itemId) ?? a.category) : a[key];
+      const vb =
+        key === "item" ? b.itemName : key === "category" ? (categoryByItemId.get(b.itemId) ?? b.category) : b[key];
+      return cmp(va, vb);
+    });
+    return dir === "asc" ? sorted : sorted.reverse();
+  }, [recentFilteredSales, saleSort, categoryByItemId]);
 
   function exportCSV() {
     downloadCSV(
@@ -1086,14 +1166,20 @@ export default function ItemsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
+                  <SortableHead label="Name" sortKey="name" sort={menuSort} onSort={(k) => toggleSort(menuSort, k, setMenuSort)} />
+                  <SortableHead label="Category" sortKey="category" sort={menuSort} onSort={(k) => toggleSort(menuSort, k, setMenuSort)} />
+                  <SortableHead
+                    label="Price"
+                    sortKey="price"
+                    sort={menuSort}
+                    onSort={(k) => toggleSort(menuSort, k, setMenuSort)}
+                    className="text-right"
+                  />
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {menuItems.map((m) => (
+                {sortedMenuItems.map((m) => (
                   <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onDelete={removeMenuItem} />
                 ))}
               </TableBody>
@@ -1147,17 +1233,25 @@ export default function ItemsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
+                  <SortableHead label="Date" sortKey="date" sort={saleSort} onSort={(k) => toggleSort(saleSort, k, setSaleSort)} />
+                  <SortableHead label="Item" sortKey="item" sort={saleSort} onSort={(k) => toggleSort(saleSort, k, setSaleSort)} />
+                  <SortableHead label="Category" sortKey="category" sort={saleSort} onSort={(k) => toggleSort(saleSort, k, setSaleSort)} />
+                  <SortableHead
+                    label="Qty"
+                    sortKey="qty"
+                    sort={saleSort}
+                    onSort={(k) => toggleSort(saleSort, k, setSaleSort)}
+                    className="text-right"
+                  />
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentFilteredSales.map((s) => (
+                {sortedRecentSales.map((s) => (
                   <EditableItemSaleRow
                     key={s.id}
                     sale={s}
+                    category={categoryByItemId.get(s.itemId) ?? s.category}
                     menuItems={menuItems}
                     onSaved={refresh}
                     onDelete={removeSale}
