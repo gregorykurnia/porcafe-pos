@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { listSalesEntries, listItemSales } from "@/lib/data";
-import type { SalesEntry, ItemSale } from "@/lib/types";
+import { listSalesEntries, listItemSales, listMonthlyAdjustments } from "@/lib/data";
+import type { SalesEntry, ItemSale, MonthlyAdjustment } from "@/lib/types";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import {
   format,
@@ -50,13 +50,15 @@ const CATEGORY_OTHER_COLOR = "#898781";
 export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
   const [items, setItems] = useState<ItemSale[]>([]);
+  const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([listSalesEntries(), listItemSales()])
-      .then(([s, i]) => {
+    Promise.all([listSalesEntries(), listItemSales(), listMonthlyAdjustments()])
+      .then(([s, i, a]) => {
         setSales(s);
         setItems(i);
+        setAdjustments(a);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -89,6 +91,13 @@ export default function Dashboard() {
   const avgPerDay = monthDaysLogged > 0 ? monthTotal / monthDaysLogged : 0;
 
   const allTimeTotal = sales.reduce((a, s) => a + s.total, 0);
+
+  // Bank-reconciliation selisih: folded only into this month's and the
+  // all-time total, never into avgPerDay/delta/trend/paymentMix/bestDay.
+  const monthAdjustment = adjustments.find((a) => a.month === thisMonth)?.amount ?? 0;
+  const allAdjustments = adjustments.reduce((a, x) => a + x.amount, 0);
+  const monthTotalWithAdjustment = monthTotal + monthAdjustment;
+  const allTimeTotalWithAdjustment = allTimeTotal + allAdjustments;
   const weekRangeLabel = `${format(parseISO(thisWeek), "d MMM")} – ${format(
     addDays(parseISO(thisWeek), 6),
     "d MMM"
@@ -180,8 +189,8 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
-              <RecapStat label="All-time revenue" value={idr(allTimeTotal)} />
-              <RecapStat label="Month revenue" value={idr(monthTotal)} />
+              <RecapStat label="All-time revenue" value={idr(allTimeTotalWithAdjustment)} />
+              <RecapStat label="Month revenue" value={idr(monthTotalWithAdjustment)} />
               <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
               <RecapStat label="Avg per portion" value={idr(avgOrderValue)} />
               <RecapStat
@@ -221,7 +230,7 @@ export default function Dashboard() {
         <StatCard
           icon={<TrendingUp className="size-4" />}
           label="This month"
-          value={idr(monthTotal)}
+          value={idr(monthTotalWithAdjustment)}
           color="bg-[#8a7a4f]"
           delta={pctDelta(monthTotal, lastMonthTotal)}
           deltaLabel="vs last month"

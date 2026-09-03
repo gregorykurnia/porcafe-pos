@@ -18,8 +18,10 @@ import {
   listSalesEntries,
   upsertSalesEntry,
   deleteSalesEntry,
+  listMonthlyAdjustments,
+  upsertMonthlyAdjustment,
 } from "@/lib/data";
-import type { SalesEntry } from "@/lib/types";
+import type { SalesEntry, MonthlyAdjustment } from "@/lib/types";
 import { idr, todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
 import { downloadCSV } from "@/lib/csv";
 import {
@@ -132,8 +134,72 @@ function EditableRow({
   );
 }
 
+function SelisihEditor({
+  month,
+  existing,
+  onSaved,
+}: {
+  month: string;
+  existing: MonthlyAdjustment | undefined;
+  onSaved: () => void;
+}) {
+  const [amount, setAmount] = useState(existing ? String(existing.amount) : "");
+  const [note, setNote] = useState(existing?.note ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await upsertMonthlyAdjustment(month, parseFloat(amount) || 0, note || undefined);
+      toast.success("Selisih saved");
+      onSaved();
+    } catch (err) {
+      console.error("Failed to save selisih:", err);
+      toast.error(err instanceof Error ? `Failed to save selisih: ${err.message}` : "Failed to save selisih");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-lg bg-neutral-50 p-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="selisih">Selisih ({formatMonthDisplay(month)})</Label>
+        <Input
+          id="selisih"
+          type="number"
+          inputMode="decimal"
+          placeholder="0"
+          value={amount}
+          disabled={saving}
+          onChange={(e) => setAmount(e.target.value)}
+          className="w-36"
+        />
+      </div>
+      <div className="min-w-40 flex-1 space-y-1.5">
+        <Label htmlFor="selisih-note">Note (optional)</Label>
+        <Input
+          id="selisih-note"
+          placeholder="e.g. bank reconciliation gap"
+          value={note}
+          disabled={saving}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+      <Button size="sm" onClick={save} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+        {saving ? "Saving…" : "Save selisih"}
+      </Button>
+      <p className="w-full text-xs text-neutral-400">
+        Added only to this month&apos;s and the grand total below — never to daily entries, so it won&apos;t appear
+        in the recap chart or affect per-day stats.
+      </p>
+    </div>
+  );
+}
+
 export default function SalesPage() {
   const [entries, setEntries] = useState<SalesEntry[]>([]);
+  const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("day");
 
@@ -159,8 +225,11 @@ export default function SalesPage() {
 
   function refresh() {
     setLoading(true);
-    listSalesEntries()
-      .then(setEntries)
+    Promise.all([listSalesEntries(), listMonthlyAdjustments()])
+      .then(([e, a]) => {
+        setEntries(e);
+        setAdjustments(a);
+      })
       .finally(() => setLoading(false));
   }
 
@@ -260,9 +329,17 @@ export default function SalesPage() {
     });
   }, [entries, sortKey, sortDir, monthFilter]);
 
+  const currentAdjustment =
+    monthFilter === "all"
+      ? adjustments.reduce((a, x) => a + x.amount, 0)
+      : (adjustments.find((a) => a.month === monthFilter)?.amount ?? 0);
+
+  // Bank-reconciliation selisih is added only here, on the grand total —
+  // never into `grouped`/`chartData`/`stats`, so it can't spike a chart or
+  // skew mean/stddev/min/max/best-day.
   const grandTotal = useMemo(
-    () => sortedEntries.reduce((sum, e) => sum + e.total, 0),
-    [sortedEntries]
+    () => sortedEntries.reduce((sum, e) => sum + e.total, 0) + currentAdjustment,
+    [sortedEntries, currentAdjustment]
   );
 
   function exportCSV() {
@@ -422,6 +499,16 @@ export default function SalesPage() {
             </SelectContent>
           </Select>
         </CardHeader>
+        {monthFilter !== "all" && (
+          <CardContent className="border-b pb-4">
+            <SelisihEditor
+              key={monthFilter}
+              month={monthFilter}
+              existing={adjustments.find((a) => a.month === monthFilter)}
+              onSaved={refresh}
+            />
+          </CardContent>
+        )}
         <CardContent>
           <div className="overflow-x-auto">
             <Table className="table-fixed">
