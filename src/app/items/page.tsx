@@ -53,7 +53,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X } from "lucide-react";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
@@ -760,16 +760,16 @@ export default function ItemsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Menu Items</h1>
-          <p className="text-sm text-neutral-500">Track quantity sold per item</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">Menu Items</h1>
+          <p className="mt-0.5 text-sm text-neutral-500">Track quantity sold per item</p>
         </div>
         <div className="flex items-center gap-2">
         <TicketScanDialog menuItems={menuItems} onDone={refresh} />
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" className="bg-[#1f3a2f] hover:bg-[#16291f]">
+            <Button size="sm" className="bg-[#1f3a2f] shadow-sm shadow-[#1f3a2f]/20 hover:bg-[#16291f]">
               <Plus className="size-4" /> New item
             </Button>
           </DialogTrigger>
@@ -859,7 +859,12 @@ export default function ItemsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-            <CardTitle>Portions sold (Main)</CardTitle>
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-600">
+                <Soup className="size-4" />
+              </span>
+              <CardTitle>Portions sold (Main)</CardTitle>
+            </div>
             <div className="flex items-center gap-2">
               <Tabs
                 value={mainPeriod}
@@ -888,7 +893,7 @@ export default function ItemsPage() {
               </Button>
               <div className="text-center">
                 <p className="text-sm text-neutral-500">{mainPeriodSummary.label}</p>
-                <p className="text-4xl font-semibold text-neutral-900">
+                <p className="text-5xl font-semibold tracking-tight text-neutral-900">
                   {mainPeriodSummary.total}{" "}
                   <span className="text-base font-normal text-neutral-500">portions</span>
                 </p>
@@ -905,7 +910,12 @@ export default function ItemsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Top sellers (all time)</CardTitle>
+            <div className="flex items-center gap-2.5">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                <Trophy className="size-4" />
+              </span>
+              <CardTitle>Top sellers (all time)</CardTitle>
+            </div>
           </CardHeader>
           <CardContent>
             {topSellers.length === 0 ? (
@@ -916,8 +926,14 @@ export default function ItemsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" horizontal={false} />
                   <XAxis type="number" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis dataKey="name" type="category" fontSize={12} tickLine={false} axisLine={false} width={110} />
-                  <Tooltip />
-                  <Bar dataKey="qty" fill="#fb923c" radius={[0, 4, 4, 0]} />
+                  <Tooltip contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
+                      fontSize: 12,
+                    }}
+                    cursor={{ fill: "rgba(0,0,0,0.03)" }} />
+                  <Bar dataKey="qty" fill="#fb923c" radius={[0, 6, 6, 0]} maxBarSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -967,8 +983,14 @@ export default function ItemsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" vertical={false} />
                 <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
-                <Tooltip />
-                <Bar dataKey="qty" fill="#f97316" radius={[4, 4, 0, 0]} />
+                <Tooltip contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
+                      fontSize: 12,
+                    }}
+                    cursor={{ fill: "rgba(0,0,0,0.03)" }} />
+                <Bar dataKey="qty" fill="#f97316" radius={[6, 6, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           )}

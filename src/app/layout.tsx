@@ -41,7 +41,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-[#f7f2e9]">
         <SwRegister />
         <Nav />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-20 pt-4 sm:pb-8">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-6 sm:pb-10">
           {children}
         </main>
         <Toaster />

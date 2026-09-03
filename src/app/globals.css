@@ -49,31 +49,32 @@
 }
 
 :root {
-  --background: oklch(0.97 0.014 90);
-  --foreground: oklch(0.28 0.035 165);
-  --card: oklch(0.99 0.008 90);
-  --card-foreground: oklch(0.28 0.035 165);
-  --popover: oklch(0.99 0.008 90);
-  --popover-foreground: oklch(0.28 0.035 165);
-  --primary: oklch(0.28 0.035 165);
-  --primary-foreground: oklch(0.97 0.014 90);
-  --secondary: oklch(0.93 0.018 90);
+  --background: oklch(0.965 0.012 85);
+  --foreground: oklch(0.24 0.03 165);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.03 165);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.03 165);
+  --primary: oklch(0.28 0.045 165);
+  --primary-foreground: oklch(0.98 0.01 90);
+  --secondary: oklch(0.94 0.016 90);
   --secondary-foreground: oklch(0.28 0.035 165);
-  --muted: oklch(0.93 0.018 90);
-  --muted-foreground: oklch(0.45 0.03 165);
-  --accent: oklch(0.9 0.03 145);
-  --accent-foreground: oklch(0.28 0.035 165);
+  --muted: oklch(0.955 0.012 90);
+  --muted-foreground: oklch(0.5 0.025 165);
+  --accent: oklch(0.9 0.04 145);
+  --accent-foreground: oklch(0.24 0.035 165);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.87 0.02 90);
-  --input: oklch(0.87 0.02 90);
-  --ring: oklch(0.45 0.03 165);
+  --border: oklch(0.9 0.014 90);
+  --input: oklch(0.88 0.016 90);
+  --ring: oklch(0.55 0.05 165);
   --chart-1: oklch(0.28 0.035 165);
   --chart-2: oklch(0.45 0.06 150);
   --chart-3: oklch(0.6 0.08 135);
   --chart-4: oklch(0.75 0.05 90);
   --chart-5: oklch(0.85 0.03 90);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.93 0.018 90);
+  --radius: 0.875rem;
+  --shadow-card: 0 1px 2px oklch(0.28 0.03 165 / 0.04), 0 8px 24px -12px oklch(0.28 0.03 165 / 0.12);
+  --sidebar: oklch(0.94 0.016 90);
   --sidebar-foreground: oklch(0.28 0.035 165);
   --sidebar-primary: oklch(0.28 0.035 165);
   --sidebar-primary-foreground: oklch(0.97 0.014 90);
@@ -126,5 +127,11 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  [data-slot="card"] {
+    box-shadow: var(--shadow-card);
   }
 }
