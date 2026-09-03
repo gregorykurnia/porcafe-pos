@@ -280,6 +280,9 @@ export default function SalesPage() {
   }
 
   // ---- Recap aggregation ----
+  // Selisih is folded in only when grouping "by month" (period === "month"),
+  // since a month is the unit it was recorded for. It never touches the
+  // "by day"/"by week" buckets, so it can't read as a single-day/week spike.
   const grouped = useMemo(() => {
     const map = new Map<string, { key: string; label: string; total: number; count: number }>();
     for (const e of entries) {
@@ -291,8 +294,14 @@ export default function SalesPage() {
       cur.count += 1;
       map.set(key, cur);
     }
+    if (period === "month") {
+      for (const a of adjustments) {
+        const cur = map.get(a.month);
+        if (cur) cur.total += a.amount;
+      }
+    }
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-  }, [entries, period]);
+  }, [entries, period, adjustments]);
 
   const stats = useMemo(() => {
     const totals = grouped.map((g) => g.total);
