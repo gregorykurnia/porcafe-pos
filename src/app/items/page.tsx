@@ -860,7 +860,7 @@ export default function ItemsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-600">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#1f3a2f]/10 text-[#1f3a2f]">
                 <Soup className="size-4" />
               </span>
               <CardTitle>Portions sold (Main)</CardTitle>
@@ -911,7 +911,7 @@ export default function ItemsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#3d6b53]/15 text-[#3d6b53]">
                 <Trophy className="size-4" />
               </span>
               <CardTitle>Top sellers (all time)</CardTitle>
@@ -933,7 +933,7 @@ export default function ItemsPage() {
                       fontSize: 12,
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                  <Bar dataKey="qty" fill="#fb923c" radius={[0, 6, 6, 0]} maxBarSize={22} />
+                  <Bar dataKey="qty" fill="#3d6b53" radius={[0, 6, 6, 0]} maxBarSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -990,7 +990,7 @@ export default function ItemsPage() {
                       fontSize: 12,
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                <Bar dataKey="qty" fill="#f97316" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="qty" fill="#1f3a2f" radius={[6, 6, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           )}
