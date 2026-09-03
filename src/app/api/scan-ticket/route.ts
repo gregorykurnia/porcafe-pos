@@ -118,7 +118,9 @@ STAGE 1 — Raw observation. Go row by row, top to bottom (Main section first in
 
 STAGE 2 — Numbers + self-check. Convert each row's observation to numbers and output ONE line per row in exactly this format:
 
-ROW | <item name as written> | cash_qty=<number> | bca_qty=<number> | nobu_qty=<number> | grand_total_qty=<number written in the Grand Total column for this row> | jumlah_cash_rupiah=<number or blank>
+ROW | section=<MAIN or ADDON> | <item name as written> | cash_qty=<number> | bca_qty=<number> | nobu_qty=<number> | grand_total_qty=<number written in the Grand Total column for this row> | jumlah_cash_rupiah=<number or blank>
+
+"section" is MAIN for every row in the numbered top section, ADDON for every row in the unlabeled section below the gap — this matters downstream for matching each row to the correct catalog category, so never mix them up.
 
 Then explicitly verify, for every row, that cash_qty + bca_qty + nobu_qty == grand_total_qty. If any row fails this check, go back to your Stage 1 observation for that row, re-examine it, and correct the numbers before finalizing — do not output a row where the arithmetic doesn't match what's printed in its Grand Total cell.
 
@@ -151,7 +153,7 @@ ${transcript}
 Current menu item catalog in this app (id | name | category | price):
 ${catalog}
 
-For each ROW line, produce one item entry: match its item name to the closest catalog entry by meaning (sheet "Nanban" = catalog "Chicken Nanban", sheet "Crispy Pork Belly Mentai" must NOT be read as "Mental" — match to "Crispy Pork Belly Mentai"; if genuinely no close match, set menuItemId to null). Carry over cashQty/bcaQty/nobuQty/qty exactly as given. Skip rows where grand_total_qty is 0 or blank.
+For each ROW line, produce one item entry: match its item name to the closest catalog entry by meaning (sheet "Nanban" = catalog "Chicken Nanban", sheet "Crispy Pork Belly Mentai" must NOT be read as "Mental" — match to "Crispy Pork Belly Mentai"; if genuinely no close match, set menuItemId to null). A row's "section" restricts which catalog entries it may match: section=MAIN may only match a catalog entry whose category is "Main", section=ADDON may only match one whose category is "Add On" — never cross-match between them even if a name superficially resembles an item in the other category; if the correctly-categorized catalog has no good match, set menuItemId to null rather than matching the wrong category. Carry over cashQty/bcaQty/nobuQty/qty exactly as given. Skip rows where grand_total_qty is 0 or blank.
 
 Sum every row's jumlah_cash_rupiah into cashFromSheet (null if none of the rows had a value). Convert DATE to ISO YYYY-MM-DD (sheet format is DD-MM-YY, e.g. "02-08-26" = 2026-08-02).`,
   });

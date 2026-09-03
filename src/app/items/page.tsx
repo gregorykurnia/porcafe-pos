@@ -42,6 +42,17 @@ import {
   formatWeekDisplay,
   formatMonthDisplay,
 } from "@/lib/dates";
+import { isValid as isValidDate } from "date-fns";
+
+// OCR-returned dates aren't guaranteed to be strict zero-padded YYYY-MM-DD (e.g. the
+// model may emit "2026-8-2"). date-fns parses/displays that fine, but every filter in
+// this app does exact string equality on `date`, so a non-canonical string silently
+// breaks day filters and same-date lookups. Always normalize before storing.
+function normalizeISODate(raw: string | null | undefined): string {
+  if (!raw) return todayISO();
+  const d = parseISO(raw);
+  return isValidDate(d) ? toISODate(d) : todayISO();
+}
 import { downloadCSV } from "@/lib/csv";
 import {
   ResponsiveContainer,
@@ -353,7 +364,8 @@ function TicketScanDialog({
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result?.error || `Scan failed (${res.status})`);
-      if (result.date) setScanDate(result.date);
+      const normDate = normalizeISODate(result.date);
+      setScanDate(normDate);
       setDraftItems(
         (result.items ?? []).map((it: { menuItemId: string | null; rawName: string; qty: number }) => ({
           menuItemId: it.menuItemId ?? "",
@@ -365,7 +377,7 @@ function TicketScanDialog({
       setBca(String(result.bca ?? ""));
       setNobu(String(result.nobu ?? ""));
 
-      const existing = await getSalesEntryByDate(result.date ?? todayISO());
+      const existing = await getSalesEntryByDate(normDate);
       if (existing) {
         setExistingEntryId(existing.id);
         setExistingOther(existing.other);
@@ -388,14 +400,23 @@ function TicketScanDialog({
   }
 
   async function confirmItems() {
-    const validRows = draftItems.filter((r) => r.menuItemId && parseFloat(r.qty) > 0);
-    if (validRows.length === 0) {
+    const rowsWithQty = draftItems.filter((r) => parseFloat(r.qty) > 0);
+    const unmatched = rowsWithQty.filter((r) => !r.menuItemId);
+    if (unmatched.length > 0) {
+      toast.error(
+        `Match every row before saving — no menu item selected for: ${unmatched
+          .map((r) => `"${r.rawName}"`)
+          .join(", ")}`
+      );
+      return;
+    }
+    if (rowsWithQty.length === 0) {
       toast.error("Nothing to save");
       return;
     }
     setSaving(true);
     try {
-      for (const row of validRows) {
+      for (const row of rowsWithQty) {
         const item = menuItems.find((m) => m.id === row.menuItemId);
         if (!item) continue;
         await upsertItemSale({
@@ -409,6 +430,11 @@ function TicketScanDialog({
       toast.success("Item sales saved — now review the revenue split");
       setItemsSaved(true);
       onDone();
+      // scanDate may have been edited since the initial OCR-date lookup — refresh
+      // which SalesEntry (if any) this revenue confirm should merge into.
+      const existing = await getSalesEntryByDate(scanDate);
+      setExistingEntryId(existing?.id ?? null);
+      setExistingOther(existing?.other ?? 0);
       setStep("revenue");
     } catch (err) {
       console.error("Failed to save item sales:", err);
