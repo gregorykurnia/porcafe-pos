@@ -26,7 +26,6 @@ import {
 import {
   listMenuItems,
   upsertMenuItem,
-  deleteMenuItem,
   getDailyItemLog,
   upsertDailyItemLog,
   listItemSales,
@@ -73,6 +72,7 @@ import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
+type CatalogStatus = "active" | "archived" | "all";
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
 
@@ -133,11 +133,11 @@ type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
 function EditableMenuItemRow({
   item,
   onSaved,
-  onDelete,
+  onToggleActive,
 }: {
   item: MenuItem;
   onSaved: () => void;
-  onDelete: (id: string) => void;
+  onToggleActive: (id: string, active: boolean) => void;
 }) {
   const [draft, setDraft] = useState<MenuItemDraft>({});
   const [saving, setSaving] = useState(false);
@@ -200,7 +200,7 @@ function EditableMenuItemRow({
   }
 
   return (
-    <TableRow className={saving ? "opacity-50" : undefined}>
+    <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-neutral-50/70"}`}>
       <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
       <TableCell className="p-1">
         <Select
@@ -225,8 +225,17 @@ function EditableMenuItemRow({
       </TableCell>
       <TableCell className="p-1 text-right">{cellInput("price", "number")}</TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
-          <Trash2 className="size-4 text-neutral-400" />
+        <Badge variant={item.active ? "default" : "outline"}>{item.active ? "Active" : "Archived"}</Badge>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onToggleActive(item.id, !item.active)}
+          disabled={saving}
+          aria-label={`${item.active ? "Archive" : "Restore"} ${item.name}`}
+        >
+          {item.active ? "Archive" : "Restore"}
         </Button>
       </TableCell>
     </TableRow>
@@ -730,6 +739,9 @@ export default function ItemsPage() {
   const [dailySaving, setDailySaving] = useState(false);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState("all");
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("active");
   const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
   const [saleSort, setSaleSort] = useState<Sort<"date" | "item" | "category" | "qty">>(null);
 
@@ -828,10 +840,23 @@ export default function ItemsPage() {
     refresh();
   }
 
-  async function removeMenuItem(id: string) {
-    await deleteMenuItem(id);
-    toast.success("Item removed");
-    refresh();
+  async function toggleMenuItemActive(id: string, active: boolean) {
+    const item = menuItems.find((menuItem) => menuItem.id === id);
+    if (!item) return;
+    try {
+      await upsertMenuItem({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        price: item.price,
+        active,
+      });
+      toast.success(active ? `${item.name} restored` : `${item.name} archived`);
+      refresh();
+    } catch (err) {
+      console.error("Failed to update item status:", err);
+      toast.error(err instanceof Error ? `Could not update item: ${err.message}` : "Could not update item");
+    }
   }
 
   const activeMenuItems = useMemo(
@@ -1017,16 +1042,36 @@ export default function ItemsPage() {
         : formatMonthDisplay(key);
   }, [recentFilter, recentCursor]);
 
+  const catalogCategories = useMemo(() => {
+    const categories = new Set(menuItems.map((item) => item.category).filter(Boolean));
+    const standard = ITEM_CATEGORIES.filter((category) => categories.has(category));
+    const other = [...categories].filter((category) => !ITEM_CATEGORIES.includes(category as (typeof ITEM_CATEGORIES)[number])).sort();
+    return [...standard, ...other];
+  }, [menuItems]);
+
   const sortedMenuItems = useMemo(() => {
-    if (!menuSort) return menuItems;
+    const normalizedQuery = catalogQuery.trim().toLocaleLowerCase();
+    const filtered = menuItems.filter((item) => {
+      const matchesQuery =
+        !normalizedQuery ||
+        item.name.toLocaleLowerCase().includes(normalizedQuery) ||
+        item.category.toLocaleLowerCase().includes(normalizedQuery);
+      const matchesCategory = catalogCategory === "all" || item.category === catalogCategory;
+      const matchesStatus =
+        catalogStatus === "all" ||
+        (catalogStatus === "active" ? item.active !== false : item.active === false);
+      return matchesQuery && matchesCategory && matchesStatus;
+    });
+
+    if (!menuSort) return filtered;
     const { key, dir } = menuSort;
-    const sorted = [...menuItems].sort((a, b) => {
+    const sorted = [...filtered].sort((a, b) => {
       const va = key === "price" ? (a.price ?? -Infinity) : a[key];
       const vb = key === "price" ? (b.price ?? -Infinity) : b[key];
       return cmp(va, vb);
     });
     return dir === "asc" ? sorted : sorted.reverse();
-  }, [menuItems, menuSort]);
+  }, [catalogCategory, catalogQuery, catalogStatus, menuItems, menuSort]);
 
   const sortedRecentSales = useMemo(() => {
     if (!saleSort) return recentFilteredSales;
@@ -1356,10 +1401,46 @@ export default function ItemsPage() {
       {activeView === "catalog" && (
       /* Menu items management */
       <Card>
-        <CardHeader>
-          <CardTitle>Menu items</CardTitle>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle>Catalog</CardTitle>
+            <p className="mt-1 text-sm text-neutral-500">Manage the items available in daily entry and scanning.</p>
+          </div>
+          <Badge variant="outline">{menuItems.filter((item) => item.active !== false).length} active</Badge>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
+            <Input
+              aria-label="Search menu items"
+              placeholder="Search by item or category…"
+              value={catalogQuery}
+              onChange={(event) => setCatalogQuery(event.target.value)}
+            />
+            <Select value={catalogCategory} onValueChange={setCatalogCategory}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {catalogCategories.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={catalogStatus} onValueChange={(value) => setCatalogStatus(value as CatalogStatus)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="all">All statuses</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -1373,16 +1454,21 @@ export default function ItemsPage() {
                     onSort={(k) => toggleSort(menuSort, k, setMenuSort)}
                     className="text-right"
                   />
-                  <TableHead></TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedMenuItems.map((m) => (
-                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onDelete={removeMenuItem} />
+                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onToggleActive={toggleMenuItemActive} />
                 ))}
               </TableBody>
             </Table>
-            {menuItems.length === 0 && <p className="py-6 text-center text-sm text-neutral-400">No menu items yet</p>}
+            {sortedMenuItems.length === 0 && (
+              <p className="py-8 text-center text-sm text-neutral-400">
+                {menuItems.length === 0 ? "No menu items yet — use New item to create your catalog." : "No items match these filters."}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
