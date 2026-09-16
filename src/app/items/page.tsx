@@ -752,6 +752,10 @@ export default function ItemsPage() {
   // Recent item sales filter
   const [recentFilter, setRecentFilter] = useState<"all" | Period>("all");
   const [recentCursor, setRecentCursor] = useState(todayISO());
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyCategory, setHistoryCategory] = useState("all");
+  const [historyFrom, setHistoryFrom] = useState("");
+  const [historyTo, setHistoryTo] = useState("");
 
   // quantity entry form
   const [date, setDate] = useState(todayISO());
@@ -1023,13 +1027,34 @@ export default function ItemsPage() {
   }
 
   const recentFilteredSales = useMemo(() => {
-    if (recentFilter === "all") return sales.slice(0, 30);
+    const normalizedQuery = historyQuery.trim().toLocaleLowerCase();
+    const filtered = sales.filter((sale) => {
+      const category = categoryByItemId.get(sale.itemId) ?? sale.category;
+      const matchesQuery =
+        !normalizedQuery ||
+        sale.itemName.toLocaleLowerCase().includes(normalizedQuery) ||
+        category.toLocaleLowerCase().includes(normalizedQuery);
+      const matchesCategory = historyCategory === "all" || category === historyCategory;
+      const matchesFrom = !historyFrom || sale.date >= historyFrom;
+      const matchesTo = !historyTo || sale.date <= historyTo;
+      return matchesQuery && matchesCategory && matchesFrom && matchesTo;
+    });
+
+    if (recentFilter === "all") return filtered;
     const key =
       recentFilter === "day" ? recentCursor : recentFilter === "week" ? weekKey(recentCursor) : monthKey(recentCursor);
-    return sales.filter(
+    return filtered.filter(
       (s) => (recentFilter === "day" ? s.date : recentFilter === "week" ? weekKey(s.date) : monthKey(s.date)) === key
     );
-  }, [sales, recentFilter, recentCursor]);
+  }, [categoryByItemId, historyCategory, historyFrom, historyQuery, historyTo, recentCursor, recentFilter, sales]);
+
+  const historyCategories = useMemo(() => {
+    const categories = new Set<string>();
+    for (const sale of sales) categories.add(categoryByItemId.get(sale.itemId) ?? sale.category);
+    return [...categories].sort();
+  }, [categoryByItemId, sales]);
+
+  const historyHasFilters = Boolean(historyQuery || historyCategory !== "all" || historyFrom || historyTo);
 
   const recentFilterLabel = useMemo(() => {
     if (recentFilter === "all") return null;
@@ -1090,6 +1115,18 @@ export default function ItemsPage() {
     downloadCSV(
       `porcafe-items-${period}-${todayISO()}.csv`,
       grouped.map((g) => ({ period: g.label, qty: g.qty }))
+    );
+  }
+
+  function exportHistoryCSV() {
+    downloadCSV(
+      `porcafe-item-history-${todayISO()}.csv`,
+      sortedRecentSales.map((sale) => ({
+        date: sale.date,
+        item: sale.itemName,
+        category: categoryByItemId.get(sale.itemId) ?? sale.category,
+        qty: sale.qty,
+      }))
     );
   }
 
@@ -1478,7 +1515,10 @@ export default function ItemsPage() {
       /* Recent item sales */
       <Card>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle>Recent item sales</CardTitle>
+          <div>
+            <CardTitle>History</CardTitle>
+            <p className="mt-1 text-sm text-neutral-500">Review and correct recorded item quantities.</p>
+          </div>
           <div className="flex items-center gap-2">
             <Tabs
               value={recentFilter}
@@ -1496,7 +1536,7 @@ export default function ItemsPage() {
             </Tabs>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           {recentFilter !== "all" && (
             <div className="mb-3 flex items-center justify-between gap-3">
               <Button variant="outline" size="icon" onClick={() => navigateRecent(-1)}>
@@ -1515,6 +1555,67 @@ export default function ItemsPage() {
               </Button>
             </div>
           )}
+
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem]">
+            <Input
+              aria-label="Search item history"
+              placeholder="Search item or category…"
+              value={historyQuery}
+              onChange={(event) => setHistoryQuery(event.target.value)}
+            />
+            <Select value={historyCategory} onValueChange={setHistoryCategory}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {historyCategories.map((category) => (
+                  <SelectItem key={category} value={category}>
+                    {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="History start date"
+              type="date"
+              value={historyFrom}
+              onChange={(event) => setHistoryFrom(event.target.value)}
+            />
+            <Input
+              aria-label="History end date"
+              type="date"
+              value={historyTo}
+              onChange={(event) => setHistoryTo(event.target.value)}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <p className="text-neutral-500">
+              {sortedRecentSales.length} {sortedRecentSales.length === 1 ? "entry" : "entries"}
+              {historyHasFilters ? " match the current filters" : " shown"}
+            </p>
+            <div className="flex items-center gap-2">
+              {historyHasFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setHistoryQuery("");
+                    setHistoryCategory("all");
+                    setHistoryFrom("");
+                    setHistoryTo("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={exportHistoryCSV} disabled={sortedRecentSales.length === 0}>
+                <Download className="size-3.5" /> Export CSV
+              </Button>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
