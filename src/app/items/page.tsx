@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ import {
   listMenuItems,
   upsertMenuItem,
   deleteMenuItem,
+  getDailyItemLog,
+  upsertDailyItemLog,
   listItemSales,
   listItemSalesByDate,
   upsertItemSale,
@@ -33,7 +36,7 @@ import {
   getSalesEntryByDate,
   upsertSalesEntry,
 } from "@/lib/data";
-import type { MenuItem, ItemSale } from "@/lib/types";
+import type { DailyItemLog, MenuItem, ItemSale } from "@/lib/types";
 import {
   todayISO,
   toISODate,
@@ -704,6 +707,10 @@ export default function ItemsPage() {
   const [sales, setSales] = useState<ItemSale[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<ItemsView>("daily");
+  const [dailyLog, setDailyLog] = useState<DailyItemLog | null>(null);
+  const [dailyQuantities, setDailyQuantities] = useState<Record<string, string>>({});
+  const [dailyLoadedDate, setDailyLoadedDate] = useState("");
+  const [dailySaving, setDailySaving] = useState(false);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
   const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
@@ -719,8 +726,6 @@ export default function ItemsPage() {
 
   // quantity entry form
   const [date, setDate] = useState(todayISO());
-  const [selectedItemId, setSelectedItemId] = useState<string>("");
-  const [qty, setQty] = useState("");
 
   // manage item dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -734,12 +739,58 @@ export default function ItemsPage() {
       .then(([m, s]) => {
         setMenuItems(m);
         setSales(s);
-        if (!selectedItemId && m.length) setSelectedItemId(m[0].id);
       })
       .finally(() => setLoading(false));
   }
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listMenuItems(), listItemSales()])
+      .then(([m, s]) => {
+        if (cancelled) return;
+        setMenuItems(m);
+        setSales(s);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("Failed to load menu items:", err);
+          toast.error("Could not load menu items");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDailyItemLog(date)
+      .then((log) => {
+        if (cancelled) return;
+        setDailyLog(log);
+        setDailyQuantities(
+          Object.fromEntries(
+            Object.entries(log?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
+          )
+        );
+        setDailyLoadedDate(date);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("Failed to load daily item log:", err);
+          toast.error("Could not load this day");
+          setDailyLoadedDate(date);
+        }
+      })
+
+    return () => {
+      cancelled = true;
+    };
+  }, [date]);
 
   async function addMenuItem() {
     if (!newName.trim()) {
@@ -766,22 +817,83 @@ export default function ItemsPage() {
     refresh();
   }
 
-  async function logSale() {
-    const item = menuItems.find((m) => m.id === selectedItemId);
-    if (!item || !qty || parseFloat(qty) <= 0) {
-      toast.error("Select an item and quantity");
+  const activeMenuItems = useMemo(
+    () => menuItems.filter((item) => item.active !== false),
+    [menuItems]
+  );
+
+  const dailyTotal = useMemo(
+    () => Object.values(dailyQuantities).reduce((total, value) => total + (parseFloat(value) || 0), 0),
+    [dailyQuantities]
+  );
+
+  const dailySections = useMemo(() => {
+    const knownCategories = new Set<string>(ITEM_CATEGORIES);
+    const sections: { category: string; items: MenuItem[] }[] = ITEM_CATEGORIES.map((category) => ({
+      category,
+      items: activeMenuItems.filter((item) => item.category === category),
+    }));
+    const otherItems = activeMenuItems.filter((item) => !knownCategories.has(item.category));
+    if (otherItems.length) sections.push({ category: "Other", items: otherItems });
+    return sections.filter((section) => section.items.length > 0);
+  }, [activeMenuItems]);
+
+  const dailyLoading = dailyLoadedDate !== date;
+
+  const dailyHasChanges = useMemo(() => {
+    if (!dailyLog) return false;
+    return activeMenuItems.some(
+      (item) => (parseFloat(dailyQuantities[item.id] ?? "") || 0) !== (dailyLog.quantities[item.id] ?? 0)
+    );
+  }, [activeMenuItems, dailyLog, dailyQuantities]);
+
+  async function saveDailyLog(
+    status: "draft" | "complete" | "no_sales",
+    quantities = dailyQuantities
+  ) {
+    if (activeMenuItems.length === 0) {
+      toast.error("Add a menu item first");
       return;
     }
-    await upsertItemSale({
+
+    const nextQuantities = { ...(dailyLog?.quantities ?? {}) };
+    for (const item of activeMenuItems) {
+      const value = parseFloat(quantities[item.id] ?? "");
+      if (status === "no_sales" || !Number.isFinite(value) || value <= 0) {
+        delete nextQuantities[item.id];
+      } else {
+        nextQuantities[item.id] = value;
+      }
+    }
+
+    const savedQuantities = status === "no_sales" ? {} : nextQuantities;
+    const totalQty = Object.values(savedQuantities).reduce((total, value) => total + value, 0);
+    const now = Date.now();
+    const savedLog: DailyItemLog = {
+      id: date,
       date,
-      itemId: item.id,
-      itemName: item.name,
-      category: item.category,
-      qty: parseFloat(qty),
-    });
-    toast.success("Sale logged");
-    setQty("");
-    refresh();
+      quantities: savedQuantities,
+      totalQty,
+      status,
+      source: "manual",
+      createdAt: dailyLog?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    setDailySaving(true);
+    try {
+      await upsertDailyItemLog(savedLog);
+      setDailyLog(savedLog);
+      setDailyQuantities(
+        Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
+      );
+      toast.success(status === "no_sales" ? "No sales saved" : `Day ${status === "complete" ? "completed" : "saved"}`);
+    } catch (err) {
+      console.error("Failed to save daily item log:", err);
+      toast.error(err instanceof Error ? `Could not save day: ${err.message}` : "Could not save this day");
+    } finally {
+      setDailySaving(false);
+    }
   }
 
   async function removeSale(id: string) {
@@ -989,43 +1101,90 @@ export default function ItemsPage() {
       {activeView === "daily" && (
       /* Quantity entry */
       <Card>
-        <CardHeader>
-          <CardTitle>Log today&apos;s quantities</CardTitle>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle>Daily quantities</CardTitle>
+            <p className="mt-1 text-sm text-neutral-500">Enter every item sold for the selected date.</p>
+          </div>
+          <Badge variant={!dailyHasChanges && dailyLog?.status === "complete" ? "default" : "outline"}>
+            {dailyHasChanges ? "Unsaved changes" : dailyLog?.status === "no_sales" ? "No sales" : dailyLog?.status === "complete" ? "Complete" : dailyLog ? "Draft" : "Not saved"}
+          </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          {menuItems.length === 0 ? (
-            <p className="text-sm text-neutral-400">Add a menu item first to start logging sales.</p>
+          <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl bg-neutral-50 p-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="daily-log-date">Date</Label>
+              <Input
+                id="daily-log-date"
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                className="w-[10.5rem] bg-white"
+              />
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Total portions</p>
+              <p className="text-2xl font-semibold tracking-tight text-neutral-900">{dailyTotal}</p>
+            </div>
+          </div>
+
+          {dailyLoading ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-neutral-500">Loading this day…</div>
+          ) : activeMenuItems.length === 0 ? (
+            <p className="text-sm text-neutral-400">Add an active menu item in Catalog to start logging sales.</p>
           ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label>Date</Label>
-                  <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                </div>
-                <div className="col-span-2 sm:col-span-2 space-y-1.5">
-                  <Label>Item</Label>
-                  <Select value={selectedItemId} onValueChange={setSelectedItemId}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {menuItems.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          {m.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Qty</Label>
-                  <Input type="number" inputMode="numeric" placeholder="0" value={qty} onChange={(e) => setQty(e.target.value)} />
-                </div>
+            <div className="space-y-5">
+              {dailySections.map((section) => (
+                <section key={section.category} aria-labelledby={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}>
+                  <h3
+                    id={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}
+                    className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500"
+                  >
+                    {section.category}
+                  </h3>
+                  <div className="divide-y rounded-xl border border-neutral-200 bg-white">
+                    {section.items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+                        <span className="min-w-0 truncate text-sm font-medium text-neutral-800">{item.name}</span>
+                        <Input
+                          aria-label={`${item.name} quantity`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={dailyQuantities[item.id] ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value === "" || /^\d*(\.\d*)?$/.test(value)) {
+                              setDailyQuantities((current) => ({ ...current, [item.id]: value }));
+                            }
+                          }}
+                          className="h-9 w-24 bg-neutral-50 text-right sm:w-28"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+
+          {activeMenuItems.length > 0 && !dailyLoading && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+              <p className="text-xs text-neutral-500">Blank or 0 means this item did not sell.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => saveDailyLog("no_sales")} disabled={dailySaving}>
+                  No sales
+                </Button>
+                <Button variant="outline" onClick={() => saveDailyLog("draft")} disabled={dailySaving}>
+                  {dailySaving ? "Saving…" : "Save draft"}
+                </Button>
+                <Button onClick={() => saveDailyLog("complete")} disabled={dailySaving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+                  {dailySaving ? "Saving…" : "Complete day"}
+                </Button>
               </div>
-              <Button onClick={logSale} className="bg-[#1f3a2f] hover:bg-[#16291f]">
-                Log sale
-              </Button>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
