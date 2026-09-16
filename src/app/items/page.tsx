@@ -475,9 +475,27 @@ function TicketScanDialog({
     }
     setSaving(true);
     try {
-      // Re-scanning the same ticket (or the same date) must overwrite that date's
-      // per-item quantity, not add another row on top of it — otherwise every
-      // rescan double-counts. Look up what's already logged for this date first.
+      const quantities: Record<string, number> = {};
+      for (const row of rowsWithQty) {
+        const item = menuItems.find((m) => m.id === row.menuItemId);
+        if (item) quantities[item.id] = (quantities[item.id] ?? 0) + parseFloat(row.qty);
+      }
+
+      // The daily log is the canonical scanner output. Saving by date makes a
+      // rescan idempotent and replaces the complete quantity map for that sheet.
+      const existingDailyLog = await getDailyItemLog(scanDate);
+      await upsertDailyItemLog({
+        id: existingDailyLog?.id,
+        date: scanDate,
+        quantities,
+        totalQty: Object.values(quantities).reduce((total, value) => total + value, 0),
+        status: "complete",
+        source: "scan",
+        createdAt: existingDailyLog?.createdAt,
+      });
+
+      // Keep the legacy collection mirrored for the existing Performance and
+      // History views until those views are migrated to dailyItemLogs.
       const existingForDate = await listItemSalesByDate(scanDate);
       const existingByItemId = new Map(existingForDate.map((s) => [s.itemId, s]));
       for (const row of rowsWithQty) {
@@ -492,7 +510,7 @@ function TicketScanDialog({
           qty: parseFloat(row.qty),
         });
       }
-      toast.success("Item sales saved — now review the revenue split");
+      toast.success("Daily quantities saved — now review the revenue split");
       setItemsSaved(true);
       onDone();
       // scanDate may have been edited since the initial OCR-date lookup — refresh
@@ -659,8 +677,8 @@ function TicketScanDialog({
             ) : (
               <div className="space-y-2">
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                  Item sales for {scanDate} saved. Now review the payment-method split before it&apos;s logged to
-                  Sales recap.
+                  Daily quantities for {scanDate} saved. Now review the payment-method split before it&apos;s logged
+                  to Sales recap.
                 </div>
                 <Label>Revenue (this sheet)</Label>
                 <div className="grid grid-cols-3 gap-3">
