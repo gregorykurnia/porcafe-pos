@@ -69,6 +69,7 @@ import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, T
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
+type ItemsView = "daily" | "performance" | "catalog" | "history";
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
 
@@ -702,6 +703,7 @@ export default function ItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [sales, setSales] = useState<ItemSale[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeView, setActiveView] = useState<ItemsView>("daily");
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
   const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
@@ -971,10 +973,24 @@ export default function ItemsPage() {
         </div>
       </div>
 
-      {/* Quantity entry */}
+      <Tabs
+        value={activeView}
+        onValueChange={(value) => setActiveView(value as ItemsView)}
+        className="w-full"
+      >
+        <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-neutral-100/80 p-1 sm:w-fit sm:min-w-[32rem]">
+          <TabsTrigger value="daily" className="rounded-lg px-3">Today</TabsTrigger>
+          <TabsTrigger value="performance" className="rounded-lg px-3">Performance</TabsTrigger>
+          <TabsTrigger value="catalog" className="rounded-lg px-3">Catalog</TabsTrigger>
+          <TabsTrigger value="history" className="rounded-lg px-3">History</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeView === "daily" && (
+      /* Quantity entry */
       <Card>
         <CardHeader>
-          <CardTitle>Log quantity sold</CardTitle>
+          <CardTitle>Log today&apos;s quantities</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {menuItems.length === 0 ? (
@@ -1013,7 +1029,10 @@ export default function ItemsPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
+      {activeView === "performance" && (
+      <>
       {/* Main portions navigator + Top sellers */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -1155,8 +1174,11 @@ export default function ItemsPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
-      {/* Menu items management */}
+      {activeView === "catalog" && (
+      /* Menu items management */
       <Card>
         <CardHeader>
           <CardTitle>Menu items</CardTitle>
@@ -1188,8 +1210,10 @@ export default function ItemsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* Recent item sales */}
+      {activeView === "history" && (
+      /* Recent item sales */
       <Card>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <CardTitle>Recent item sales</CardTitle>
@@ -1267,6 +1291,7 @@ export default function ItemsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
