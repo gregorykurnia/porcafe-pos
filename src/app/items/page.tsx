@@ -354,7 +354,12 @@ function EditableItemSaleRow({
         />
       </TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(sale.id)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => onDelete(sale.id)}
+          aria-label={`Delete ${sale.itemName} sale`}
+        >
           <Trash2 className="size-4 text-neutral-400" />
         </Button>
       </TableCell>
@@ -605,8 +610,9 @@ function TicketScanDialog({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={previewUrl} alt="Ticket preview" className="h-24 w-24 rounded-md object-cover border" />
               <div className="flex-1 space-y-1.5">
-                <Label>Date</Label>
+                <Label htmlFor="scan-date">Date</Label>
                 <Input
+                  id="scan-date"
                   type="date"
                   value={scanDate}
                   disabled={itemsSaved}
@@ -670,7 +676,12 @@ function TicketScanDialog({
                             />
                           </TableCell>
                           <TableCell className="p-1">
-                            <Button variant="ghost" size="icon" onClick={() => removeDraft(idx)}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeDraft(idx)}
+                              aria-label={`Remove ${row.rawName} from scan`}
+                            >
                               <X className="size-4 text-neutral-400" />
                             </Button>
                           </TableCell>
@@ -692,16 +703,16 @@ function TicketScanDialog({
                 <Label>Revenue (this sheet)</Label>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-neutral-500">Cash</Label>
-                    <Input type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
+                    <Label htmlFor="scan-cash" className="text-xs text-neutral-500">Cash</Label>
+                    <Input id="scan-cash" type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-neutral-500">BCA</Label>
-                    <Input type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
+                    <Label htmlFor="scan-bca" className="text-xs text-neutral-500">BCA</Label>
+                    <Input id="scan-bca" type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
-                    <Input type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
+                    <Label htmlFor="scan-nobu" className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
+                    <Input id="scan-nobu" type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
                   </div>
                 </div>
                 <p className="text-xs text-neutral-500">
@@ -805,13 +816,25 @@ export default function ItemsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getDailyItemLog(date)
-      .then((log) => {
+    const timeoutMarker = "daily-log-timeout" as const;
+    const timeout = new Promise<typeof timeoutMarker>((resolve) => {
+      setTimeout(() => resolve(timeoutMarker), 10000);
+    });
+
+    Promise.race([getDailyItemLog(date), timeout])
+      .then((result) => {
         if (cancelled) return;
-        setDailyLog(log);
+        if (result === timeoutMarker) {
+          setDailyLog(null);
+          setDailyQuantities({});
+          setDailyLoadedDate(date);
+          toast.error("Loading this day timed out");
+          return;
+        }
+        setDailyLog(result);
         setDailyQuantities(
           Object.fromEntries(
-            Object.entries(log?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
+            Object.entries(result?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
           )
         );
         setDailyLoadedDate(date);
@@ -1207,13 +1230,13 @@ export default function ItemsPage() {
             </DialogHeader>
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <Label>Name</Label>
-                <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Iced Latte" />
+                <Label htmlFor="new-item-name">Name</Label>
+                <Input id="new-item-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Iced Latte" />
               </div>
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label htmlFor="new-item-category">Category</Label>
                 <Select value={newCategory} onValueChange={setNewCategory}>
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="new-item-category" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1226,8 +1249,8 @@ export default function ItemsPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Price (optional)</Label>
-                <Input type="number" inputMode="decimal" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0" />
+                <Label htmlFor="new-item-price">Price (optional)</Label>
+                <Input id="new-item-price" type="number" inputMode="decimal" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0" />
               </div>
             </div>
             <DialogFooter>
@@ -1427,7 +1450,7 @@ export default function ItemsPage() {
           </CardHeader>
           <CardContent className="flex flex-1 flex-col justify-center">
             <div className="flex items-center justify-between gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)}>
+              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)} aria-label="Previous main portions period">
                 <ChevronLeft className="size-4" />
               </Button>
               <div className="text-center">
@@ -1437,7 +1460,7 @@ export default function ItemsPage() {
                   <span className="text-base font-normal text-neutral-500">portions</span>
                 </p>
               </div>
-              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)}>
+              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)} aria-label="Next main portions period">
                 <ChevronRight className="size-4" />
               </Button>
             </div>
@@ -1642,7 +1665,7 @@ export default function ItemsPage() {
         <CardContent className="space-y-4">
           {recentFilter !== "all" && (
             <div className="mb-3 flex items-center justify-between gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigateRecent(-1)}>
+              <Button variant="outline" size="icon" onClick={() => navigateRecent(-1)} aria-label="Previous history period">
                 <ChevronLeft className="size-4" />
               </Button>
               <div className="flex items-center gap-2">
@@ -1653,7 +1676,7 @@ export default function ItemsPage() {
                   </Button>
                 )}
               </div>
-              <Button variant="outline" size="icon" onClick={() => navigateRecent(1)}>
+              <Button variant="outline" size="icon" onClick={() => navigateRecent(1)} aria-label="Next history period">
                 <ChevronRight className="size-4" />
               </Button>
             </div>

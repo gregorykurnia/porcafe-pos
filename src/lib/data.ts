@@ -43,7 +43,8 @@ export async function upsertSalesEntry(
     await setDoc(doc(db, "salesEntries", id), omitUndefined({ ...rest, total }), { merge: true });
     return id;
   }
-  const { id: _id, ...rest } = entry;
+  const rest = { ...entry };
+  delete rest.id;
   const ref = await addDoc(salesCol, omitUndefined({ ...rest, total, createdAt: Date.now() }));
   return ref.id;
 }
@@ -122,7 +123,8 @@ export async function upsertMenuItem(
     await setDoc(doc(db, "menuItems", id), omitUndefined(rest), { merge: true });
     return id;
   }
-  const { id: _id, ...rest } = item;
+  const rest = { ...item };
+  delete rest.id;
   const ref = await addDoc(itemsCol, omitUndefined({ ...rest, createdAt: Date.now() }));
   return ref.id;
 }
@@ -201,11 +203,75 @@ export async function upsertItemSale(
     await setDoc(doc(db, "itemSales", id), omitUndefined(rest), { merge: true });
     return id;
   }
-  const { id: _id, ...rest } = sale;
+  const rest = { ...sale };
+  delete rest.id;
   const ref = await addDoc(itemSalesCol, omitUndefined({ ...rest, createdAt: Date.now() }));
   return ref.id;
 }
 
 export async function deleteItemSale(id: string) {
   await deleteDoc(doc(db, "itemSales", id));
+}
+
+export type LegacyItemSalesMigrationResult = {
+  datesFound: number;
+  datesMigrated: number;
+  datesSkipped: number;
+  rowsMigrated: number;
+  dryRun: boolean;
+};
+
+// Non-destructive migration helper for the eventual one-time data cleanup.
+// Existing daily logs win, duplicate legacy rows are summed by date/item, and
+// the legacy itemSales documents are never deleted.
+export async function migrateLegacyItemSalesToDailyLogs(options?: {
+  dryRun?: boolean;
+}): Promise<LegacyItemSalesMigrationResult> {
+  const dryRun = options?.dryRun ?? true;
+  const [legacySales, existingLogs] = await Promise.all([
+    listItemSales(),
+    listDailyItemLogs(),
+  ]);
+  const existingDates = new Set(existingLogs.map((log) => log.date));
+  const grouped = new Map<string, { quantities: Record<string, number>; createdAt: number }>();
+
+  for (const sale of legacySales) {
+    const day = grouped.get(sale.date) ?? { quantities: {}, createdAt: sale.createdAt ?? Date.now() };
+    day.quantities[sale.itemId] = (day.quantities[sale.itemId] ?? 0) + sale.qty;
+    day.createdAt = Math.min(day.createdAt, sale.createdAt ?? day.createdAt);
+    grouped.set(sale.date, day);
+  }
+
+  let datesMigrated = 0;
+  let datesSkipped = 0;
+  let rowsMigrated = 0;
+  for (const [date, group] of grouped) {
+    if (existingDates.has(date)) {
+      datesSkipped += 1;
+      continue;
+    }
+
+    const rows = Object.entries(group.quantities).filter(([, qty]) => Number.isFinite(qty) && qty > 0);
+    rowsMigrated += rows.length;
+    if (dryRun) continue;
+
+    await upsertDailyItemLog({
+      id: date,
+      date,
+      quantities: Object.fromEntries(rows),
+      totalQty: rows.reduce((total, [, qty]) => total + qty, 0),
+      status: "complete",
+      source: "manual",
+      createdAt: group.createdAt,
+    });
+    datesMigrated += 1;
+  }
+
+  return {
+    datesFound: grouped.size,
+    datesMigrated,
+    datesSkipped,
+    rowsMigrated,
+    dryRun,
+  };
 }
