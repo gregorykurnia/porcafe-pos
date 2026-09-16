@@ -4,6 +4,7 @@ import {
   addDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
   getDoc,
   getDocs,
   query,
@@ -29,24 +30,72 @@ function omitUndefined<T extends object>(obj: T): T {
 
 const salesCol = collection(db, "salesEntries");
 
+export type DuplicateSalesDate = {
+  date: string;
+  entries: SalesEntry[];
+};
+
+// Read-only audit helper. Existing duplicates are deliberately returned intact
+// so an operator can review them before any future merge or cleanup action.
+export function findDuplicateSalesDates(entries: SalesEntry[]): DuplicateSalesDate[] {
+  const byDate = new Map<string, SalesEntry[]>();
+  for (const entry of entries) {
+    const dateEntries = byDate.get(entry.date) ?? [];
+    dateEntries.push(entry);
+    byDate.set(entry.date, dateEntries);
+  }
+
+  return [...byDate.entries()]
+    .filter(([, dateEntries]) => dateEntries.length > 1)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, dateEntries]) => ({ date, entries: dateEntries }));
+}
+
+export async function resolveDuplicateSalesDate(date: string, keepId: string) {
+  const entries = await listSalesEntriesByDate(date);
+  const keepEntry = entries.find((entry) => entry.id === keepId);
+  if (!keepEntry) throw new Error("The selected sales entry no longer exists.");
+  const deleteIds = entries.filter((entry) => entry.id !== keepId).map((entry) => entry.id);
+  if (deleteIds.length === 0) return { keptId: keepId, deletedIds: [] };
+
+  const batch = writeBatch(db);
+  for (const id of deleteIds) batch.delete(doc(db, "salesEntries", id));
+  await batch.commit();
+  return { keptId: keepId, deletedIds: deleteIds };
+}
+
 export async function listSalesEntries(): Promise<SalesEntry[]> {
   const snap = await getDocs(query(salesCol, orderBy("date", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<SalesEntry, "id">) }));
 }
 
-export async function upsertSalesEntry(
-  entry: Omit<SalesEntry, "id" | "total" | "createdAt"> & { id?: string }
-) {
+type SalesEntryInput = Omit<SalesEntry, "id" | "total" | "createdAt"> & { id?: string };
+
+async function writeSalesEntry(entry: SalesEntryInput, id: string, isNew: boolean) {
+  const { id: _inputId, ...rest } = entry;
   const total = entry.bca + entry.cash + entry.soundbox + entry.other;
+  await setDoc(
+    doc(db, "salesEntries", id),
+    omitUndefined({ ...rest, total, ...(isNew ? { createdAt: Date.now() } : {}) }),
+    { merge: true }
+  );
+  return id;
+}
+
+export async function upsertSalesEntry(
+  entry: SalesEntryInput
+) {
   if (entry.id) {
-    const { id, ...rest } = entry;
-    await setDoc(doc(db, "salesEntries", id), omitUndefined({ ...rest, total }), { merge: true });
-    return id;
+    const sameDateEntries = await listSalesEntriesByDate(entry.date);
+    const conflictingEntry = sameDateEntries.find((candidate) => candidate.id !== entry.id);
+    if (conflictingEntry) {
+      throw new Error(`A sales entry already exists for ${entry.date}. Edit that entry instead.`);
+    }
+    return writeSalesEntry(entry, entry.id, false);
   }
-  const rest = { ...entry };
-  delete rest.id;
-  const ref = await addDoc(salesCol, omitUndefined({ ...rest, total, createdAt: Date.now() }));
-  return ref.id;
+
+  const existing = await listSalesEntriesByDate(entry.date);
+  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`, existing.length === 0);
 }
 
 export async function deleteSalesEntry(id: string) {
@@ -66,25 +115,13 @@ export async function listSalesEntriesByDate(date: string): Promise<SalesEntry[]
 }
 
 // Scanner revenue is submitted as one complete record for a calendar date.
-// Existing records are updated; new scanner records use a deterministic id so
-// repeated submissions cannot create a second Sales document for that date.
+// It follows the same canonical date identity as manual saves. Existing
+// records are updated; new records use a deterministic id.
 export async function upsertSalesEntryByDate(
-  entry: Omit<SalesEntry, "id" | "total" | "createdAt"> & { id?: string }
+  entry: SalesEntryInput
 ) {
   const existing = await listSalesEntriesByDate(entry.date);
-  const existingId = existing[0]?.id;
-  if (existingId) {
-    return upsertSalesEntry({ ...entry, id: existingId });
-  }
-
-  const total = entry.bca + entry.cash + entry.soundbox + entry.other;
-  const id = `scanner-${entry.date}`;
-  await setDoc(
-    doc(db, "salesEntries", id),
-    omitUndefined({ ...entry, total, createdAt: Date.now() }),
-    { merge: true }
-  );
-  return id;
+  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`, existing.length === 0);
 }
 
 // ---------- Monthly Adjustments (bank reconciliation "selisih") ----------

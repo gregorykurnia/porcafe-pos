@@ -3,28 +3,41 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard, Wallet, UtensilsCrossed } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/sales", label: "Sales", icon: Wallet },
-  { href: "/items", label: "Menu Items", icon: UtensilsCrossed },
+  { href: "/items", label: "Daily close", icon: UtensilsCrossed },
 ];
 
 export function Nav() {
   const pathname = usePathname();
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const updateConnection = () => setIsOffline(!navigator.onLine);
+    updateConnection();
+    window.addEventListener("online", updateConnection);
+    window.addEventListener("offline", updateConnection);
+    return () => {
+      window.removeEventListener("online", updateConnection);
+      window.removeEventListener("offline", updateConnection);
+    };
+  }, []);
 
   return (
     <>
       {/* Top bar (desktop + mobile) */}
-      <header className="sticky top-0 z-40 border-b border-[#1f3a2f]/8 bg-[#f7f2e9]/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4">
-          <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight text-[#1f3a2f]">
+      <header className="sticky top-0 z-40 border-b border-primary/10 bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight text-primary">
             <Image src="/logo-mark.png" alt="Charred by Porcafe" width={30} height={30} className="shrink-0 rounded-md" priority />
             <span>Charred by Porcafe</span>
           </Link>
-          <nav className="hidden gap-1 rounded-full bg-[#1f3a2f]/5 p-1 sm:flex">
+          <nav aria-label="Primary navigation" className="hidden gap-1 rounded-xl bg-primary/5 p-1 sm:flex">
             {links.map((l) => {
               const active = pathname === l.href;
               return (
@@ -32,10 +45,10 @@ export function Nav() {
                   key={l.href}
                   href={l.href}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                    "flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
                     active
-                      ? "bg-[#1f3a2f] text-[#f7f2e9] shadow-sm shadow-[#1f3a2f]/20"
-                      : "text-[#1f3a2f]/60 hover:bg-[#1f3a2f]/10 hover:text-[#1f3a2f]"
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                      : "text-primary/65 hover:bg-primary/10 hover:text-primary"
                   )}
                 >
                   <l.icon className="size-4" />
@@ -47,26 +60,32 @@ export function Nav() {
         </div>
       </header>
 
+      {isOffline && (
+        <div role="status" aria-live="polite" className="border-b border-warning/25 bg-warning/10 px-4 py-2 text-sm text-warning sm:px-6">
+          <div className="mx-auto max-w-6xl">Offline — changes require a connection and are not queued for later.</div>
+        </div>
+      )}
+
       {/* Bottom nav (mobile) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#1f3a2f]/8 bg-[#f7f2e9]/95 backdrop-blur-md sm:hidden">
-        <div className="mx-auto flex max-w-5xl px-2 py-1.5">
+      <nav aria-label="Mobile navigation" className="safe-area-bottom fixed inset-x-0 bottom-0 z-40 border-t border-primary/10 bg-background/95 backdrop-blur-md sm:hidden">
+        <div className="mx-auto flex max-w-6xl px-2 py-1.5">
           {links.map((l) => {
             const active = pathname === l.href;
             return (
               <Link
                 key={l.href}
                 href={l.href}
-                className="flex flex-1 flex-col items-center gap-1 py-1.5"
+                className="flex min-h-11 flex-1 flex-col items-center gap-1 py-1.5"
               >
                 <span
                   className={cn(
-                    "flex items-center justify-center rounded-full px-3.5 py-1 transition-colors",
-                    active ? "bg-[#1f3a2f]/10" : ""
+                    "flex items-center justify-center rounded-lg px-3.5 py-1 transition-colors",
+                    active ? "bg-primary/10" : ""
                   )}
                 >
-                  <l.icon className={cn("size-5", active ? "text-[#1f3a2f]" : "text-[#1f3a2f]/45")} />
+                  <l.icon className={cn("size-5", active ? "text-primary" : "text-primary/45")} />
                 </span>
-                <span className={cn("text-[11px] font-medium", active ? "text-[#1f3a2f]" : "text-[#1f3a2f]/45")}>
+                <span className={cn("text-xs font-medium", active ? "text-primary" : "text-primary/45")}>
                   {l.label}
                 </span>
               </Link>

@@ -6,7 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SwRegister } from "@/components/sw-register";
 
 const inter = Inter({
-  variable: "--font-geist-sans",
+  variable: "--font-app-sans",
   subsets: ["latin"],
 });
 
@@ -35,13 +35,13 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="id"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-[#f7f2e9]">
+      <body className="min-h-full flex flex-col bg-background text-foreground">
         <SwRegister />
         <Nav />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-24 pt-6 sm:pb-10">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-8">
           {children}
         </main>
         <Toaster />

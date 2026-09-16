@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { listSalesEntries, listItemSales, listMonthlyAdjustments } from "@/lib/data";
-import type { SalesEntry, ItemSale, MonthlyAdjustment } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs } from "@/lib/data";
+import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog } from "@/lib/types";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import {
   format,
@@ -13,6 +14,7 @@ import {
   subWeeks,
   subMonths,
   addDays,
+  getDaysInMonth,
 } from "date-fns";
 import {
   ResponsiveContainer,
@@ -51,24 +53,40 @@ export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
   const [items, setItems] = useState<ItemSale[]>([]);
   const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [reportMonth, setReportMonth] = useState(monthKey(todayISO()));
 
   useEffect(() => {
-    Promise.all([listSalesEntries(), listItemSales(), listMonthlyAdjustments()])
-      .then(([s, i, a]) => {
+    let cancelled = false;
+    Promise.all([listSalesEntries(), listItemSales(), listMonthlyAdjustments(), listDailyItemLogs()])
+      .then(([s, i, a, logs]) => {
+        if (cancelled) return;
         setSales(s);
         setItems(i);
         setAdjustments(a);
+        setDailyLogs(logs);
+        setLoadError(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Failed to load dashboard:", err);
+        setLoadError(true);
       })
       .finally(() => setLoading(false));
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [retryKey]);
 
   const today = todayISO();
   const yesterday = format(subDays(parseISO(today), 1), "yyyy-MM-dd");
   const thisWeek = weekKey(today);
   const lastWeek = weekKey(format(subWeeks(parseISO(today), 1), "yyyy-MM-dd"));
-  const thisMonth = monthKey(today);
-  const lastMonth = monthKey(format(subMonths(parseISO(today), 1), "yyyy-MM-dd"));
+  const thisMonth = reportMonth;
+  const lastMonth = monthKey(format(subMonths(parseISO(`${thisMonth}-01`), 1), "yyyy-MM-dd"));
 
   const todayTotal = sales.find((s) => s.date === today)?.total ?? 0;
   const yesterdayTotal = sales.find((s) => s.date === yesterday)?.total ?? 0;
@@ -165,32 +183,110 @@ export default function Dashboard() {
     return monthSales.reduce((best, s) => (s.total > best.total ? s : best), monthSales[0]);
   }, [sales, thisMonth]);
 
-  const daysElapsed = Number(today.slice(-2));
+  const daysElapsed = thisMonth === monthKey(today) ? Number(today.slice(-2)) : getDaysInMonth(parseISO(`${thisMonth}-01`));
   const avgOrderValue = monthQty > 0 ? monthTotal / monthQty : 0;
+
+  const reportMonths = [...new Set([
+    monthKey(today),
+    ...sales.map((sale) => monthKey(sale.date)),
+    ...adjustments.map((adjustment) => adjustment.month),
+  ])].sort().reverse();
+
+  const dailyLogsByDate = new Map(dailyLogs.map((log) => [log.date, log]));
+  const todayLog = dailyLogsByDate.get(today);
+  const draftDays = dailyLogs.filter((log) => monthKey(log.date) === thisMonth && log.status === "draft").length;
+  const revenueDates = new Set(sales.filter((sale) => monthKey(sale.date) === thisMonth).map((sale) => sale.date));
+  const itemCloseDates = new Set(dailyLogs.filter((log) => monthKey(log.date) === thisMonth).map((log) => log.date));
+  const revenueWithoutItemClose = [...revenueDates].filter((date) => !itemCloseDates.has(date)).length;
+  const todayNeedsAttention = !todayLog || todayLog.status === "draft";
+  const todayDraftCount = todayLog?.status === "draft" && monthKey(today) === thisMonth ? 1 : 0;
+  const attentionCount = (todayNeedsAttention ? 1 : 0) + Math.max(0, draftDays - todayDraftCount) + revenueWithoutItemClose;
+  const todayCloseLabel = todayLog?.status === "complete"
+    ? "Complete"
+    : todayLog?.status === "no_sales"
+      ? "No sales"
+      : todayLog
+        ? "Draft"
+        : "Not started";
+  const trendTakeaway = trend.length < 2
+    ? "Add another day to see a trend comparison."
+    : trend[trend.length - 1].total >= trend[trend.length - 2].total
+      ? "The latest recorded day is at or above the previous entry."
+      : "The latest recorded day is below the previous entry.";
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">Dashboard</h1>
-        <p className="text-sm text-neutral-500">Overview of Charred by Porcafe</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">What needs closing today, and what has been recorded.</p>
       </div>
 
-      <Card className="border-[#1f3a2f]/15 bg-[#f6f4ec]">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-[#1f3a2f]">
+      {loadError && (
+        <Card className="border-danger/20 bg-danger/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div>
+              <p className="font-medium text-foreground">Dashboard data could not be loaded</p>
+              <p className="mt-1 text-sm text-muted-foreground">Your existing view is preserved. Try again when the connection is available.</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setLoadError(false);
+                setLoading(true);
+                setRetryKey((key) => key + 1);
+              }}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="border-warning/20 bg-warning/5">
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-lg">Needs attention <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">{attentionCount}</span></CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">A quick close-status check before reviewing performance.</p>
+          </div>
+          <Button asChild variant="outline" className="border-warning/20 bg-surface text-foreground hover:bg-surface-elevated">
+            <Link href="/items">Open Daily close <ArrowRight className="size-4" /></Link>
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <AttentionItem label="Today" value={todayCloseLabel} detail={todayTotal > 0 ? `${idr(todayTotal)} revenue logged` : "No revenue logged yet"} />
+          <AttentionItem label={`${formatMonthLabel(thisMonth)} drafts`} value={String(draftDays)} detail={draftDays === 1 ? "Day needs completion" : "Days need completion"} />
+          <AttentionItem label="Revenue without item close" value={String(Math.max(0, revenueWithoutItemClose))} detail="Recorded days without a daily log" />
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/15 bg-warm-accent/35">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-primary">
             <Trophy className="size-4" />
             {formatMonthLabel(thisMonth)} at a glance
           </CardTitle>
+          <label className="flex items-center gap-2 text-sm font-medium text-primary">
+            <span className="sr-only">Reporting month</span>
+            <select
+              aria-label="Reporting month"
+              value={thisMonth}
+              onChange={(event) => setReportMonth(event.target.value)}
+              className="h-10 rounded-lg border border-primary/15 bg-surface px-3 text-sm font-medium text-primary outline-none focus-visible:ring-3 focus-visible:ring-primary/30"
+            >
+              {reportMonths.map((month) => <option key={month} value={month}>{formatMonthLabel(month)}</option>)}
+            </select>
+          </label>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="flex h-16 items-center justify-center text-sm text-neutral-400">
+              <div className="flex h-16 items-center justify-center text-sm text-muted-foreground">
               Loading…
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
-              <RecapStat label="All-time revenue" value={idr(allTimeTotalWithAdjustment)} />
-              <RecapStat label="Month revenue" value={idr(monthTotalWithAdjustment)} />
+              <RecapStat label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
+              <RecapStat label="Reported month total" value={idr(monthTotalWithAdjustment)} sub="Recorded sales + selisih" />
               <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
               <RecapStat label="Avg per portion" value={idr(avgOrderValue)} />
               <RecapStat
@@ -209,12 +305,24 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
+      <Card className="border-primary/10 bg-surface">
+        <CardHeader>
+          <CardTitle className="text-lg">Revenue composition · {formatMonthLabel(thisMonth)}</CardTitle>
+          <p className="text-sm text-muted-foreground">Reported total is recorded sales plus the monthly reconciliation adjustment.</p>
+        </CardHeader>
+        <CardContent className="grid gap-2 sm:grid-cols-3">
+          <RevenueBreakdownStat label="Recorded sales" value={idr(monthTotal)} />
+          <RevenueBreakdownStat label="Reconciliation adjustment" value={idr(monthAdjustment)} detail="Selisih" />
+          <RevenueBreakdownStat label="Reported total" value={idr(monthTotalWithAdjustment)} emphasized />
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
           icon={<Wallet className="size-4" />}
           label="Today"
           value={idr(todayTotal)}
-          color="bg-[#1f3a2f]"
+          color="bg-primary"
           delta={pctDelta(todayTotal, yesterdayTotal)}
           deltaLabel="vs yesterday"
         />
@@ -223,29 +331,30 @@ export default function Dashboard() {
           label="This week"
           range={weekRangeLabel}
           value={idr(weekTotal)}
-          color="bg-[#4a6b52]"
+          color="bg-primary-hover"
           delta={pctDelta(weekTotal, lastWeekTotal)}
           deltaLabel="vs last week"
         />
         <StatCard
           icon={<TrendingUp className="size-4" />}
-          label="This month"
+          label="Reported month total"
+          range={formatMonthLabel(thisMonth)}
           value={idr(monthTotalWithAdjustment)}
-          color="bg-[#8a7a4f]"
+          color="bg-warning"
           delta={pctDelta(monthTotal, lastMonthTotal)}
           deltaLabel="vs last month"
         />
         <StatCard
           icon={<CalendarDays className="size-4" />}
-          label="Avg / day this month"
+          label="Avg / day selected month"
           value={idr(avgPerDay)}
-          color="bg-[#5a6b8a]"
+          color="bg-info"
         />
         <StatCard
           icon={<Package className="size-4" />}
-          label="Portions this month"
+          label="Portions selected month"
           value={monthQty.toLocaleString("id-ID")}
-          color="bg-[#1f3a2f]"
+          color="bg-primary"
         />
       </div>
 
@@ -255,14 +364,14 @@ export default function Dashboard() {
             <CardTitle>Sales trend (last 30 entries)</CardTitle>
             <Link
               href="/sales"
-              className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
+              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
             >
               View recap <ArrowRight className="size-3.5" />
             </Link>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex h-56 items-center justify-center text-sm text-neutral-400">
+              <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
                 Loading…
               </div>
             ) : trend.length === 0 ? (
@@ -305,6 +414,7 @@ export default function Dashboard() {
                 </AreaChart>
               </ResponsiveContainer>
             )}
+            {!loading && <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {trendTakeaway}</p>}
           </CardContent>
         </Card>
 
@@ -317,7 +427,7 @@ export default function Dashboard() {
               <EmptyChart label="No sales logged yet" />
             ) : (
               <div className="space-y-4">
-                <div className="flex h-3 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
                   {paymentMix.map((d) => (
                     <div
                       key={d.label}
@@ -337,11 +447,11 @@ export default function Dashboard() {
                           className="size-2.5 shrink-0 rounded-full"
                           style={{ backgroundColor: PAYMENT_COLORS[d.label] }}
                         />
-                        <span className="text-neutral-700">{d.label}</span>
+                        <span className="text-foreground">{d.label}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-neutral-500">
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <span>{idr(d.value)}</span>
-                        <span className="w-10 text-right text-xs text-neutral-400">
+                        <span className="w-10 text-right text-xs text-muted-foreground">
                           {Math.round(d.pct * 100)}%
                         </span>
                       </div>
@@ -358,12 +468,12 @@ export default function Dashboard() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <UtensilsCrossed className="size-4 text-[#1f3a2f]" />
+              <UtensilsCrossed className="size-4 text-primary" />
               Top items this month ({monthQty} sold)
             </CardTitle>
             <Link
               href="/items"
-              className="flex items-center gap-1 text-sm font-medium text-[#1f3a2f] hover:underline"
+              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
             >
               View recap <ArrowRight className="size-3.5" />
             </Link>
@@ -375,19 +485,19 @@ export default function Dashboard() {
               <ul className="space-y-3">
                 {topItems.map((item, idx) => (
                   <li key={item.name} className="flex items-center gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#e9e2d0] text-xs font-semibold text-[#1f3a2f]">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-warm-accent text-xs font-semibold text-primary">
                       {idx + 1}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-neutral-800">
+                        <span className="truncate text-sm font-medium text-foreground">
                           {item.name}
                         </span>
-                        <span className="shrink-0 text-sm text-neutral-500">{item.qty} sold</span>
+                        <span className="shrink-0 text-sm text-muted-foreground">{item.qty} sold</span>
                       </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div
-                          className="h-full rounded-full bg-[#1f3a2f]"
+                          className="h-full rounded-full bg-primary"
                           style={{ width: `${Math.max(item.pct * 100, 4)}%` }}
                         />
                       </div>
@@ -408,7 +518,7 @@ export default function Dashboard() {
               <EmptyChart label="No item sales logged yet" />
             ) : (
               <div className="space-y-4">
-                <div className="flex h-3 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
                   {categoryBreakdown.map((d) => (
                     <div
                       key={d.label}
@@ -425,11 +535,11 @@ export default function Dashboard() {
                           className="size-2.5 shrink-0 rounded-full"
                           style={{ backgroundColor: d.color }}
                         />
-                        <span className="text-neutral-700">{d.label}</span>
+                        <span className="text-foreground">{d.label}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-neutral-500">
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <span>{d.qty} sold</span>
-                        <span className="w-10 text-right text-xs text-neutral-400">
+                        <span className="w-10 text-right text-xs text-muted-foreground">
                           {Math.round(d.pct * 100)}%
                         </span>
                       </div>
@@ -449,6 +559,36 @@ function formatMonthLabel(monthISO: string): string {
   return format(parseISO(`${monthISO}-01`), "MMMM yyyy");
 }
 
+function AttentionItem({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-warning/15 bg-surface/70 px-3 py-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-base font-semibold text-foreground">{value}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function RevenueBreakdownStat({
+  label,
+  value,
+  detail,
+  emphasized = false,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  emphasized?: boolean;
+}) {
+  return (
+    <div className={emphasized ? "rounded-lg bg-accent px-3 py-3" : "rounded-lg border border-border px-3 py-3"}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg tabular-nums ${emphasized ? "font-bold text-primary" : "font-semibold text-foreground"}`}>{value}</p>
+      {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+    </div>
+  );
+}
+
 function formatDayLabel(dateISO: string): string {
   return format(parseISO(dateISO), "d MMM");
 }
@@ -456,9 +596,9 @@ function formatDayLabel(dateISO: string): string {
 function RecapStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <p className="text-xs text-[#1f3a2f]/60">{label}</p>
-      <p className="truncate text-base font-semibold text-[#1f3a2f]">{value}</p>
-      {sub && <p className="text-xs text-[#1f3a2f]/50">{sub}</p>}
+      <p className="text-xs text-primary/60">{label}</p>
+      <p className="truncate text-base font-semibold text-primary">{value}</p>
+      {sub && <p className="text-xs text-primary/50">{sub}</p>}
     </div>
   );
 }
@@ -491,20 +631,20 @@ function StatCard({
         <div className={`mb-2 flex size-7 items-center justify-center rounded-full ${color} text-white`}>
           {icon}
         </div>
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-muted-foreground">
           {label}
-          {range && <span className="text-neutral-400"> · {range}</span>}
+          {range && <span className="text-muted-foreground"> · {range}</span>}
         </p>
-        <p className="text-lg font-semibold text-neutral-900 sm:text-xl">{value}</p>
+        <p className="text-lg font-semibold text-foreground sm:text-xl">{value}</p>
         {delta !== undefined && delta !== null && (
           <div
             className={`mt-1 flex items-center gap-0.5 text-xs font-medium ${
-              delta >= 0 ? "text-[#006300]" : "text-[#d03b3b]"
+              delta >= 0 ? "text-success" : "text-danger"
             }`}
           >
             {delta >= 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
             <span>{Math.abs(Math.round(delta * 100))}%</span>
-            {deltaLabel && <span className="font-normal text-neutral-400">{deltaLabel}</span>}
+            {deltaLabel && <span className="font-normal text-muted-foreground">{deltaLabel}</span>}
           </div>
         )}
       </CardContent>
@@ -514,7 +654,7 @@ function StatCard({
 
 function EmptyChart({ label }: { label: string }) {
   return (
-    <div className="flex h-40 items-center justify-center text-sm text-neutral-400">
+    <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
       {label}
     </div>
   );

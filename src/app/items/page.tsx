@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -33,12 +34,14 @@ import {
   listItemSalesByDate,
   upsertItemSale,
   deleteItemSale,
+  migrateLegacyItemSalesToDailyLogs,
   getSalesEntryByDate,
   upsertSalesEntryByDate,
 } from "@/lib/data";
-import type { DailyItemLog, MenuItem, ItemSale } from "@/lib/types";
+import type { DailyItemLog, MenuItem, ItemSale, SalesEntry } from "@/lib/types";
 import {
   todayISO,
+  idr,
   toISODate,
   weekKey,
   monthKey,
@@ -67,15 +70,30 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO, format } from "date-fns";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
 type CatalogStatus = "active" | "archived" | "all";
 
+type MigrationPreview = {
+  datesFound: number;
+  datesMigrated: number;
+  datesSkipped: number;
+  rowsMigrated: number;
+  dryRun: boolean;
+};
+
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
+
+const DAILY_PAYMENT_METHODS = [
+  { key: "cash", label: "Cash", icon: Banknote },
+  { key: "bca", label: "BCA", icon: CreditCard },
+  { key: "soundbox", label: "Soundbox", icon: QrCode },
+  { key: "other", label: "Other", icon: Banknote },
+] as const;
 
 type SortDir = "asc" | "desc";
 type Sort<K extends string> = { key: K; dir: SortDir } | null;
@@ -96,18 +114,31 @@ function SortableHead<K extends string>({
   const active = sort?.key === sortKey;
   const Icon = active ? (sort!.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <TableHead className={className}>
+    <TableHead
+      className={className}
+      aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
+    >
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 hover:text-neutral-900 ${
+        aria-label={`${label}, ${active ? (sort!.dir === "asc" ? "ascending" : "descending") : "not sorted"}`}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${
           className?.includes("text-right") ? "flex-row-reverse" : ""
-        } ${active ? "text-neutral-900" : ""}`}
+        } ${active ? "text-foreground" : ""}`}
       >
         {label}
-        <Icon className={`size-3 ${active ? "" : "text-neutral-300"}`} />
+        <Icon className={`size-3 ${active ? "" : "text-muted-foreground"}`} />
       </button>
     </TableHead>
+  );
+}
+
+function SourceAuditStat({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
+  return (
+    <div className={`rounded-lg border px-3 py-3 ${warning ? "border-warning/20 bg-warning/10" : "border-border bg-surface/70"}`}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-lg font-semibold tabular-nums ${warning ? "text-warning" : "text-foreground"}`}>{value}</p>
+    </div>
   );
 }
 
@@ -186,6 +217,7 @@ function EditableMenuItemRow({
       <Input
         type={type}
         inputMode={type === "number" ? "decimal" : undefined}
+        aria-label={`${field === "name" ? "Menu item name" : field === "category" ? "Category" : "Price"} for ${item.name}`}
         value={fieldValue(field)}
         disabled={saving}
         onChange={(e) => setField(field, e.target.value)}
@@ -193,7 +225,7 @@ function EditableMenuItemRow({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300 ${
+        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring ${
           type === "number" ? "text-right" : ""
         }`}
       />
@@ -201,7 +233,7 @@ function EditableMenuItemRow({
   }
 
   return (
-    <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-neutral-50/70"}`}>
+    <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-surface-elevated"}`}>
       <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
       <TableCell className="p-1">
         <Select
@@ -212,7 +244,11 @@ function EditableMenuItemRow({
             commit({ category: v });
           }}
         >
-          <SelectTrigger size="sm" className="h-8 w-full border-transparent bg-transparent hover:border-neutral-200">
+          <SelectTrigger
+            size="sm"
+          className="h-8 w-full border-transparent bg-transparent hover:border-border"
+            aria-label={`Category for ${item.name}`}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -224,7 +260,10 @@ function EditableMenuItemRow({
           </SelectContent>
         </Select>
       </TableCell>
-      <TableCell className="p-1 text-right">{cellInput("price", "number")}</TableCell>
+      <TableCell className="p-1 text-right">
+        {cellInput("price", "number")}
+        {item.price === null && <p className="px-1.5 text-left text-xs font-medium text-warning">Missing price</p>}
+      </TableCell>
       <TableCell>
         <Badge variant={item.active ? "default" : "outline"}>{item.active ? "Active" : "Archived"}</Badge>
       </TableCell>
@@ -252,15 +291,18 @@ function EditableItemSaleRow({
   menuItems,
   onSaved,
   onDelete,
+  readOnly = false,
 }: {
   sale: ItemSale;
   category: string;
   menuItems: MenuItem[];
   onSaved: () => void;
   onDelete: (id: string) => void;
+  readOnly?: boolean;
 }) {
   const [draft, setDraft] = useState<SaleDraft>({});
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
 
   function fieldValue(field: EditableSaleField): string {
     if (field in draft) return draft[field] ?? "";
@@ -271,6 +313,19 @@ function EditableItemSaleRow({
 
   function setField(field: EditableSaleField, value: string) {
     setDraft((d) => ({ ...d, [field]: value }));
+    setSaveStatus("idle");
+  }
+
+  if (readOnly) {
+    return (
+      <TableRow>
+        <TableCell className="font-medium">{sale.date}</TableCell>
+        <TableCell>{sale.itemName}</TableCell>
+        <TableCell className="text-muted-foreground">{category}</TableCell>
+        <TableCell className="text-right font-medium tabular-nums">{sale.qty}</TableCell>
+        <TableCell className="text-right"><Badge variant="secondary">Daily close</Badge></TableCell>
+      </TableRow>
+    );
   }
 
   async function commit(overrides?: SaleDraft) {
@@ -294,6 +349,7 @@ function EditableItemSaleRow({
         qty: merged.qty !== undefined ? parseFloat(merged.qty) || 0 : sale.qty,
       });
       setDraft({});
+      setSaveStatus("saved");
       onSaved();
     } catch (err) {
       console.error("Failed to save sale:", err);
@@ -314,7 +370,7 @@ function EditableItemSaleRow({
             setField("date", e.target.value);
             commit({ date: e.target.value });
           }}
-          className="h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300"
+          className="h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring"
         />
       </TableCell>
       <TableCell className="p-1">
@@ -326,7 +382,7 @@ function EditableItemSaleRow({
             commit({ itemId: v });
           }}
         >
-          <SelectTrigger size="sm" className="h-8 w-full border-transparent bg-transparent hover:border-neutral-200">
+          <SelectTrigger size="sm" className="h-8 w-full border-transparent bg-transparent hover:border-border">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -338,7 +394,7 @@ function EditableItemSaleRow({
           </SelectContent>
         </Select>
       </TableCell>
-      <TableCell className="p-1 text-neutral-500">{category}</TableCell>
+      <TableCell className="p-1 text-muted-foreground">{category}</TableCell>
       <TableCell className="p-1 text-right">
         <Input
           type="number"
@@ -350,18 +406,21 @@ function EditableItemSaleRow({
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="h-8 border-transparent bg-transparent px-1.5 text-right hover:border-neutral-200 focus:border-neutral-300"
+          className="h-8 border-transparent bg-transparent px-1.5 text-right hover:border-border focus:border-ring"
         />
       </TableCell>
       <TableCell>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => onDelete(sale.id)}
-          aria-label={`Delete ${sale.itemName} sale`}
-        >
-          <Trash2 className="size-4 text-neutral-400" />
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          <span aria-live="polite" className="text-xs text-success">{saving ? "Saving…" : saveStatus === "saved" ? "Saved" : ""}</span>
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            onClick={() => onDelete(sale.id)}
+            aria-label={`Delete ${sale.itemName} sale`}
+          >
+            <Trash2 className="size-4 text-muted-foreground" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -404,6 +463,7 @@ function TicketScanDialog({
   const [nobu, setNobu] = useState("");
   const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
   const [existingOther, setExistingOther] = useState(0);
+  const [existingItemSaleCount, setExistingItemSaleCount] = useState(0);
   const [step, setStep] = useState<"items" | "revenue">("items");
   const [itemsSaved, setItemsSaved] = useState(false);
 
@@ -418,6 +478,7 @@ function TicketScanDialog({
     setNobu("");
     setExistingEntryId(null);
     setExistingOther(0);
+    setExistingItemSaleCount(0);
     setStep("items");
     setItemsSaved(false);
   }
@@ -456,6 +517,8 @@ function TicketScanDialog({
         setExistingEntryId(existing.id);
         setExistingOther(existing.other);
       }
+      const existingItemSales = await listItemSalesByDate(normDate);
+      setExistingItemSaleCount(existingItemSales.length);
       toast.success("Ticket scanned — review before saving");
     } catch (err) {
       console.error("Scan failed:", err);
@@ -496,6 +559,20 @@ function TicketScanDialog({
         if (item) quantities[item.id] = (quantities[item.id] ?? 0) + parseFloat(row.qty);
       }
 
+      const existingForDate = await listItemSalesByDate(scanDate);
+      const existingByItemId = new Map<string, ItemSale>();
+      const staleLegacyRows = existingForDate.filter((sale) => {
+        if (!quantities[sale.itemId] || existingByItemId.has(sale.itemId)) return true;
+        existingByItemId.set(sale.itemId, sale);
+        return false;
+      });
+
+      if (staleLegacyRows.length > 0 && !window.confirm(
+        `This rescan will replace ${staleLegacyRows.length} legacy item row${staleLegacyRows.length === 1 ? "" : "s"} that no longer matches the reviewed sheet. Continue?`
+      )) {
+        return;
+      }
+
       // The daily log is the canonical scanner output. Saving by date makes a
       // rescan idempotent and replaces the complete quantity map for that sheet.
       const existingDailyLog = await getDailyItemLog(scanDate);
@@ -509,23 +586,27 @@ function TicketScanDialog({
         createdAt: existingDailyLog?.createdAt,
       });
 
-      // Keep the legacy collection mirrored for the existing Performance and
-      // History views until those views are migrated to dailyItemLogs.
-      const existingForDate = await listItemSalesByDate(scanDate);
-      const existingByItemId = new Map(existingForDate.map((s) => [s.itemId, s]));
-      for (const row of rowsWithQty) {
-        const item = menuItems.find((m) => m.id === row.menuItemId);
-        if (!item) continue;
-        await upsertItemSale({
+      // Keep the legacy collection mirrored for older consumers. A confirmed
+      // rescan is replacement semantics: stale rows and duplicate item rows
+      // are removed, while reviewed quantities are written once per item.
+      await Promise.all(staleLegacyRows.map((sale) => deleteItemSale(sale.id)));
+      await Promise.all(Object.entries(quantities).map(([itemId, qty]) => {
+        const item = menuItems.find((m) => m.id === itemId);
+        if (!item) return Promise.resolve();
+        return upsertItemSale({
           id: existingByItemId.get(item.id)?.id,
           date: scanDate,
           itemId: item.id,
           itemName: item.name,
           category: item.category,
-          qty: parseFloat(row.qty),
+          qty,
         });
-      }
-      toast.success("Daily quantities saved — now review the revenue split");
+      }));
+      toast.success(
+        staleLegacyRows.length > 0
+          ? `Daily quantities saved — removed ${staleLegacyRows.length} stale row${staleLegacyRows.length === 1 ? "" : "s"}`
+          : "Daily quantities saved — now review the revenue split"
+      );
       setItemsSaved(true);
       onDone();
       // scanDate may have been edited since the initial OCR-date lookup — refresh
@@ -574,7 +655,7 @@ function TicketScanDialog({
     >
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          <ScanLine className="size-4" /> Scan ticket
+          <ScanLine className="size-4" /> Scan sheet
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -590,7 +671,7 @@ function TicketScanDialog({
 
         {!previewUrl ? (
           <div className="space-y-3">
-            <p className="text-sm text-neutral-500">
+            <p className="text-sm text-muted-foreground">
               Upload or photograph the handwritten ticker sheet. Claude will read the item quantities and
               Cash/BCA/Nobu totals for you to review before saving.
             </p>
@@ -619,7 +700,7 @@ function TicketScanDialog({
                   onChange={(e) => setScanDate(e.target.value)}
                 />
                 {existingEntryId && (
-                  <p className="text-xs text-amber-600">
+                  <p className="text-xs text-warning">
                     A Sales entry already exists for this date — saving will update it.
                   </p>
                 )}
@@ -627,16 +708,21 @@ function TicketScanDialog({
             </div>
 
             {scanning ? (
-              <p className="py-6 text-center text-sm text-neutral-400">
+              <p className="py-6 text-center text-sm text-muted-foreground">
                 Reading ticket… this can take 30-60s while it carefully counts tally marks.
               </p>
             ) : step === "items" ? (
               <div className="space-y-2">
                 <Label>Items sold</Label>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-muted-foreground">
                   Confirm each row matches the correct menu item, then save. You&apos;ll review the Cash/BCA/Nobu
                   revenue split next.
                 </p>
+                {existingItemSaleCount > 0 && (
+                  <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
+                    Existing item rows for this date were found. Confirming this scan uses replacement semantics and may remove rows no longer present.
+                  </div>
+                )}
                 <div className="overflow-x-auto rounded-md border">
                   <Table>
                     <TableHeader>
@@ -682,7 +768,7 @@ function TicketScanDialog({
                               onClick={() => removeDraft(idx)}
                               aria-label={`Remove ${row.rawName} from scan`}
                             >
-                              <X className="size-4 text-neutral-400" />
+                              <X className="size-4 text-muted-foreground" />
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -690,32 +776,32 @@ function TicketScanDialog({
                     </TableBody>
                   </Table>
                   {draftItems.length === 0 && (
-                    <p className="py-4 text-center text-sm text-neutral-400">No items detected</p>
+                    <p className="py-4 text-center text-sm text-muted-foreground">No items detected</p>
                   )}
                 </div>
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                <div className="rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">
                   Daily quantities for {scanDate} saved. Now review the payment-method split before it&apos;s logged
                   to Sales recap.
                 </div>
                 <Label>Revenue (this sheet)</Label>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="scan-cash" className="text-xs text-neutral-500">Cash</Label>
+                    <Label htmlFor="scan-cash" className="text-xs text-muted-foreground">Cash</Label>
                     <Input id="scan-cash" type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="scan-bca" className="text-xs text-neutral-500">BCA</Label>
+                    <Label htmlFor="scan-bca" className="text-xs text-muted-foreground">BCA</Label>
                     <Input id="scan-bca" type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="scan-nobu" className="text-xs text-neutral-500">Nobu (→ Soundbox)</Label>
+                    <Label htmlFor="scan-nobu" className="text-xs text-muted-foreground">Nobu (→ Soundbox)</Label>
                     <Input id="scan-nobu" type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
                   </div>
                 </div>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-muted-foreground">
                   Total: {(parseFloat(cash) || 0) + (parseFloat(bca) || 0) + (parseFloat(nobu) || 0)}
                 </p>
               </div>
@@ -725,12 +811,12 @@ function TicketScanDialog({
 
         <DialogFooter>
           {previewUrl && !scanning && step === "items" && (
-            <Button onClick={confirmItems} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+            <Button onClick={confirmItems} disabled={saving} className="bg-primary hover:bg-primary-hover">
               {saving ? "Saving…" : "Save item sales & continue"}
             </Button>
           )}
           {previewUrl && !scanning && step === "revenue" && (
-            <Button onClick={confirmRevenue} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+            <Button onClick={confirmRevenue} disabled={saving} className="bg-primary hover:bg-primary-hover">
               {saving ? "Saving…" : "Confirm & log to Sales recap"}
             </Button>
           )}
@@ -745,10 +831,14 @@ export default function ItemsPage() {
   const [sales, setSales] = useState<ItemSale[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [activeView, setActiveView] = useState<ItemsView>("daily");
   const [dailyLog, setDailyLog] = useState<DailyItemLog | null>(null);
+  const [dailySalesEntry, setDailySalesEntry] = useState<SalesEntry | null>(null);
   const [dailyQuantities, setDailyQuantities] = useState<Record<string, string>>({});
   const [dailyLoadedDate, setDailyLoadedDate] = useState("");
+  const [dailyLoadError, setDailyLoadError] = useState(false);
+  const [dailyRetryKey, setDailyRetryKey] = useState(0);
   const [dailySaving, setDailySaving] = useState(false);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
@@ -781,14 +871,23 @@ export default function ItemsPage() {
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState<string>(ITEM_CATEGORIES[0]);
   const [newPrice, setNewPrice] = useState("");
+  const [migrationPreview, setMigrationPreview] = useState<MigrationPreview | null>(null);
+  const [migrationPreviewLoading, setMigrationPreviewLoading] = useState(false);
+  const [migrationApplying, setMigrationApplying] = useState(false);
 
   function refresh() {
     setLoading(true);
+    setLoadError(false);
     Promise.all([listMenuItems(), listItemSales(), listDailyItemLogs()])
       .then(([m, s, logs]) => {
         setMenuItems(m);
         setSales(s);
         setDailyLogs(logs);
+      })
+      .catch((err) => {
+        console.error("Failed to refresh item data:", err);
+        setLoadError(true);
+        toast.error("Could not refresh item data");
       })
       .finally(() => setLoading(false));
   }
@@ -801,10 +900,12 @@ export default function ItemsPage() {
         setMenuItems(m);
         setSales(s);
         setDailyLogs(logs);
+        setLoadError(false);
       })
       .catch((err) => {
         if (!cancelled) {
           console.error("Failed to load menu items:", err);
+          setLoadError(true);
           toast.error("Could not load menu items");
         }
       })
@@ -824,20 +925,25 @@ export default function ItemsPage() {
       setTimeout(() => resolve(timeoutMarker), 10000);
     });
 
-    Promise.race([getDailyItemLog(date), timeout])
+    Promise.race([Promise.all([getDailyItemLog(date), getSalesEntryByDate(date)]), timeout])
       .then((result) => {
         if (cancelled) return;
         if (result === timeoutMarker) {
           setDailyLog(null);
+          setDailySalesEntry(null);
           setDailyQuantities({});
           setDailyLoadedDate(date);
+          setDailyLoadError(true);
           toast.error("Loading this day timed out");
           return;
         }
-        setDailyLog(result);
+        const [log, salesEntry] = result;
+        setDailyLog(log);
+        setDailySalesEntry(salesEntry);
+        setDailyLoadError(false);
         setDailyQuantities(
           Object.fromEntries(
-            Object.entries(result?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
+            Object.entries(log?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
           )
         );
         setDailyLoadedDate(date);
@@ -845,15 +951,19 @@ export default function ItemsPage() {
       .catch((err) => {
         if (!cancelled) {
           console.error("Failed to load daily item log:", err);
+          setDailyLog(null);
+          setDailySalesEntry(null);
+          setDailyQuantities({});
           toast.error("Could not load this day");
           setDailyLoadedDate(date);
+          setDailyLoadError(true);
         }
       })
 
     return () => {
       cancelled = true;
     };
-  }, [date]);
+  }, [date, dailyRetryKey]);
 
   async function addMenuItem() {
     if (!newName.trim()) {
@@ -917,11 +1027,35 @@ export default function ItemsPage() {
   const dailyLoading = dailyLoadedDate !== date;
 
   const dailyHasChanges = useMemo(() => {
-    if (!dailyLog) return false;
     return activeMenuItems.some(
-      (item) => (parseFloat(dailyQuantities[item.id] ?? "") || 0) !== (dailyLog.quantities[item.id] ?? 0)
+      (item) => (parseFloat(dailyQuantities[item.id] ?? "") || 0) !== (dailyLog?.quantities[item.id] ?? 0)
     );
   }, [activeMenuItems, dailyLog, dailyQuantities]);
+
+  const dailyStatus = dailyHasChanges
+    ? "Unsaved changes"
+    : dailyLog?.status === "no_sales"
+      ? "No sales"
+      : dailyLog?.status === "complete"
+        ? "Complete"
+        : dailyLog
+          ? "Draft"
+          : "Not started";
+
+  const dailyStatusClass = dailyHasChanges
+    ? "border-warning/25 bg-warning/10 text-warning"
+    : dailyLog?.status === "complete"
+      ? "border-success/25 bg-success/10 text-success"
+      : dailyLog?.status === "no_sales"
+        ? "border-border bg-muted text-muted-foreground"
+        : "border-border bg-surface text-muted-foreground";
+
+  function shiftDailyDate(amount: number) {
+    setDate((current) => {
+      const next = amount > 0 ? addDays(parseISO(current), amount) : subDays(parseISO(current), Math.abs(amount));
+      return toISODate(next);
+    });
+  }
 
   async function saveDailyLog(
     status: "draft" | "complete" | "no_sales",
@@ -929,6 +1063,10 @@ export default function ItemsPage() {
   ) {
     if (activeMenuItems.length === 0) {
       toast.error("Add a menu item first");
+      return;
+    }
+
+    if (status === "no_sales" && dailyTotal > 0 && !window.confirm("Mark this day as no sales? Entered quantities will be cleared.")) {
       return;
     }
 
@@ -1004,6 +1142,51 @@ export default function ItemsPage() {
     );
   }, [dailyLogs, menuItems, sales]);
 
+  const dailyLogDates = new Set(dailyLogs.map((log) => log.date));
+  const legacyItemSaleDates = new Set(sales.map((sale) => sale.date));
+  const legacyOnlyDates = [...legacyItemSaleDates].filter((date) => !dailyLogDates.has(date));
+  const dailyOnlyDates = [...dailyLogDates].filter((date) => !legacyItemSaleDates.has(date));
+  const sourceMismatch = legacyOnlyDates.length > 0;
+
+  async function previewLegacyMigration() {
+    setMigrationPreviewLoading(true);
+    try {
+      const preview = await migrateLegacyItemSalesToDailyLogs({ dryRun: true });
+      setMigrationPreview(preview);
+      toast.success("Migration preview ready — no records changed");
+    } catch (err) {
+      console.error("Failed to preview item migration:", err);
+      toast.error(err instanceof Error ? err.message : "Could not preview item migration");
+    } finally {
+      setMigrationPreviewLoading(false);
+    }
+  }
+
+  async function applyLegacyMigration() {
+    if (!migrationPreview) return;
+    const datesToMigrate = migrationPreview.datesFound - migrationPreview.datesSkipped;
+    if (datesToMigrate <= 0) {
+      toast.success("Nothing to migrate — all legacy dates already have daily logs");
+      return;
+    }
+    if (!window.confirm(`Copy ${datesToMigrate} legacy date${datesToMigrate === 1 ? "" : "s"} into Daily close? Existing legacy rows will be kept.`)) {
+      return;
+    }
+
+    setMigrationApplying(true);
+    try {
+      const result = await migrateLegacyItemSalesToDailyLogs({ dryRun: false });
+      toast.success(`Migrated ${result.datesMigrated} date${result.datesMigrated === 1 ? "" : "s"} into Daily close`);
+      setMigrationPreview(null);
+      refresh();
+    } catch (err) {
+      console.error("Failed to migrate legacy item sales:", err);
+      toast.error(err instanceof Error ? err.message : "Could not migrate legacy item sales");
+    } finally {
+      setMigrationApplying(false);
+    }
+  }
+
   const performanceSummary = useMemo(() => {
     const itemTotals = new Map<string, { name: string; qty: number }>();
     const dayTotals = new Map<string, number>();
@@ -1059,6 +1242,7 @@ export default function ItemsPage() {
     const loggedDays = itemDetailRows.filter((row) => row.status !== "Not logged").length;
     return {
       totalQty,
+      loggedDays,
       averageQty: loggedDays ? totalQty / loggedDays : 0,
       salesDays: itemDetailRows.filter((row) => row.qty > 0).length,
       noSalesDays: itemDetailRows.filter((row) => row.status === "No sales").length,
@@ -1067,9 +1251,16 @@ export default function ItemsPage() {
   }, [itemDetailRows]);
 
   async function removeSale(id: string) {
-    await deleteItemSale(id);
-    toast.success("Deleted");
-    refresh();
+    const sale = sales.find((candidate) => candidate.id === id);
+    if (!sale || !window.confirm(`Delete ${sale.itemName} (${sale.qty}) from ${formatDisplay(sale.date)}? This cannot be undone.`)) return;
+    try {
+      await deleteItemSale(id);
+      toast.success("Item sale deleted");
+      refresh();
+    } catch (err) {
+      console.error("Failed to delete item sale:", err);
+      toast.error(err instanceof Error ? err.message : "Could not delete item sale");
+    }
   }
 
   // ---- Recap ----
@@ -1096,11 +1287,23 @@ export default function ItemsPage() {
     qty: g.qty,
   }));
 
+  const performanceTakeaway = chartData.length < 2
+    ? chartData.length === 1
+      ? `One period is available at ${chartData[0].qty.toLocaleString()} portions.`
+      : "No item sales are available for this view."
+    : chartData[chartData.length - 1].qty >= chartData[chartData.length - 2].qty
+      ? `The latest period is at or above the previous period at ${chartData[chartData.length - 1].qty.toLocaleString()} portions.`
+      : `The latest period is below the previous period at ${chartData[chartData.length - 1].qty.toLocaleString()} portions.`;
+
   const topSellers = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of performanceSales) map.set(s.itemName, (map.get(s.itemName) ?? 0) + s.qty);
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [performanceSales]);
+
+  const topSellersTakeaway = topSellers.length > 0
+    ? `${topSellers[0][0]} leads with ${topSellers[0][1].toLocaleString()} portions.`
+    : "No item sales are available yet.";
 
   const mainSales = useMemo(
     () => performanceSales.filter((s) => (categoryByItemId.get(s.itemId) ?? s.category) === "Main"),
@@ -1145,7 +1348,7 @@ export default function ItemsPage() {
 
   const recentFilteredSales = useMemo(() => {
     const normalizedQuery = historyQuery.trim().toLocaleLowerCase();
-    const filtered = sales.filter((sale) => {
+    const filtered = performanceSales.filter((sale) => {
       const category = categoryByItemId.get(sale.itemId) ?? sale.category;
       const matchesQuery =
         !normalizedQuery ||
@@ -1163,13 +1366,13 @@ export default function ItemsPage() {
     return filtered.filter(
       (s) => (recentFilter === "day" ? s.date : recentFilter === "week" ? weekKey(s.date) : monthKey(s.date)) === key
     );
-  }, [categoryByItemId, historyCategory, historyFrom, historyQuery, historyTo, recentCursor, recentFilter, sales]);
+  }, [categoryByItemId, historyCategory, historyFrom, historyQuery, historyTo, performanceSales, recentCursor, recentFilter]);
 
   const historyCategories = useMemo(() => {
     const categories = new Set<string>();
-    for (const sale of sales) categories.add(categoryByItemId.get(sale.itemId) ?? sale.category);
+    for (const sale of performanceSales) categories.add(categoryByItemId.get(sale.itemId) ?? sale.category);
     return [...categories].sort();
-  }, [categoryByItemId, sales]);
+  }, [categoryByItemId, performanceSales]);
 
   const historyHasFilters = Boolean(historyQuery || historyCategory !== "all" || historyFrom || historyTo);
 
@@ -1190,6 +1393,11 @@ export default function ItemsPage() {
     const other = [...categories].filter((category) => !ITEM_CATEGORIES.includes(category as (typeof ITEM_CATEGORIES)[number])).sort();
     return [...standard, ...other];
   }, [menuItems]);
+
+  const catalogMissingPriceCount = useMemo(
+    () => menuItems.filter((item) => item.active !== false && item.price === null).length,
+    [menuItems]
+  );
 
   const sortedMenuItems = useMemo(() => {
     const normalizedQuery = catalogQuery.trim().toLocaleLowerCase();
@@ -1261,14 +1469,27 @@ export default function ItemsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-neutral-900">Menu Items</h1>
-          <p className="mt-0.5 text-sm text-neutral-500">Track quantity sold per item</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
+            {activeView === "daily" ? "Daily close" : "Menu items"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+          {activeView === "daily"
+              ? "Record portions and confirm revenue for one operating day."
+              : "Manage the menu and review item performance."}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
         <TicketScanDialog menuItems={menuItems} onDone={refresh} />
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {activeView === "daily" && (
+          <Button asChild className="flex-1 bg-primary hover:bg-primary-hover sm:flex-none">
+            <Link href="/sales">
+              <ExternalLink className="size-4" /> Open revenue
+            </Link>
+          </Button>
+        )}
+        {activeView !== "daily" && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" className="bg-[#1f3a2f] shadow-sm shadow-[#1f3a2f]/20 hover:bg-[#16291f]">
+            <Button size="sm" className="bg-primary shadow-sm shadow-primary/20 hover:bg-primary-hover">
               <Plus className="size-4" /> New item
             </Button>
           </DialogTrigger>
@@ -1302,148 +1523,332 @@ export default function ItemsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={addMenuItem} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+              <Button onClick={addMenuItem} className="bg-primary hover:bg-primary-hover">
                 Add item
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        }
         </div>
       </div>
+
+      {loadError && (
+        <Card className="border-danger/20 bg-danger/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div>
+              <p className="font-medium text-foreground">Item data could not be loaded</p>
+              <p className="mt-1 text-sm text-muted-foreground">Your current view and filters are preserved. Try again when the connection is available.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => refresh()}>Retry</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs
         value={activeView}
         onValueChange={(value) => setActiveView(value as ItemsView)}
         className="w-full"
       >
-        <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-neutral-100/80 p-1 sm:w-fit sm:min-w-[32rem]">
-          <TabsTrigger value="daily" className="rounded-lg px-3">Today</TabsTrigger>
-          <TabsTrigger value="performance" className="rounded-lg px-3">Performance</TabsTrigger>
-          <TabsTrigger value="catalog" className="rounded-lg px-3">Catalog</TabsTrigger>
-          <TabsTrigger value="history" className="rounded-lg px-3">History</TabsTrigger>
+        <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[32rem]">
+          <TabsTrigger id="items-tab-daily" aria-controls="items-panel-daily" value="daily" className="rounded-lg px-3">Daily close</TabsTrigger>
+          <TabsTrigger id="items-tab-performance" aria-controls="items-panel-performance" value="performance" className="rounded-lg px-3">Performance</TabsTrigger>
+          <TabsTrigger id="items-tab-catalog" aria-controls="items-panel-catalog" value="catalog" className="rounded-lg px-3">Catalog</TabsTrigger>
+          <TabsTrigger id="items-tab-history" aria-controls="items-panel-history" value="history" className="rounded-lg px-3">History</TabsTrigger>
         </TabsList>
       </Tabs>
 
+      {activeView === "history" && sourceMismatch && (
+        <Card className="border-warning/25 bg-warning/5">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground">Item history source check</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Daily close and History now use the canonical daily log when one exists. These legacy-only dates still need the migration preview below.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <SourceAuditStat label="Daily-log dates" value={String(dailyLogDates.size)} />
+              <SourceAuditStat label="Legacy-only dates" value={String(legacyOnlyDates.length)} warning={legacyOnlyDates.length > 0} />
+              <SourceAuditStat label="Daily-only dates" value={String(dailyOnlyDates.length)} />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" onClick={previewLegacyMigration} disabled={migrationPreviewLoading}>
+                {migrationPreviewLoading ? "Preparing preview…" : "Preview migration"}
+              </Button>
+              <p className="text-xs text-muted-foreground">Preview only — it will not write or delete data.</p>
+            </div>
+            {migrationPreview && (
+              <div className="rounded-xl border border-info/20 bg-info/5 p-4 text-sm text-foreground">
+                <p className="font-medium">Migration preview</p>
+                <p className="mt-1 text-muted-foreground">
+                  Would copy {migrationPreview.datesFound - migrationPreview.datesSkipped} date{migrationPreview.datesFound - migrationPreview.datesSkipped === 1 ? "" : "s"} from {migrationPreview.rowsMigrated} legacy item row{migrationPreview.rowsMigrated === 1 ? "" : "s"}. Existing daily logs would be skipped and legacy rows would remain untouched.
+                </p>
+                {migrationPreview.datesFound - migrationPreview.datesSkipped > 0 && (
+                  <Button type="button" className="mt-3 bg-primary hover:bg-primary-hover" onClick={applyLegacyMigration} disabled={migrationApplying}>
+                    {migrationApplying ? "Applying migration…" : "Apply non-destructive migration"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {activeView === "daily" && (
-      /* Quantity entry */
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle>Daily quantities</CardTitle>
-            <p className="mt-1 text-sm text-neutral-500">Enter every item sold for the selected date.</p>
-          </div>
-          <Badge variant={!dailyHasChanges && dailyLog?.status === "complete" ? "default" : "outline"}>
-            {dailyHasChanges ? "Unsaved changes" : dailyLog?.status === "no_sales" ? "No sales" : dailyLog?.status === "complete" ? "Complete" : dailyLog ? "Draft" : "Not saved"}
-          </Badge>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl bg-neutral-50 p-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="daily-log-date">Date</Label>
-              <Input
-                id="daily-log-date"
-                type="date"
-                value={date}
-                onChange={(event) => setDate(event.target.value)}
-                className="w-[10.5rem] bg-white"
-              />
+      <div id="items-panel-daily" role="tabpanel" aria-labelledby="items-tab-daily" tabIndex={0} className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-surface px-1 py-1 shadow-sm">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              onClick={() => shiftDailyDate(-1)}
+              aria-label="Previous day"
+            >
+              <ChevronLeft />
+            </Button>
+            <div className="min-w-36 px-2 text-center">
+              <p className="text-sm font-semibold text-foreground">{format(parseISO(date), "EEE, d MMM yyyy")}</p>
+              {date === todayISO() && <p className="text-xs text-muted-foreground">Today</p>}
             </div>
-            <div className="text-right">
-              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Total portions</p>
-              <p className="text-2xl font-semibold tracking-tight text-neutral-900">{dailyTotal}</p>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              onClick={() => shiftDailyDate(1)}
+              aria-label="Next day"
+            >
+              <ChevronRight />
+            </Button>
           </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" onClick={() => setDate(todayISO())} disabled={date === todayISO()}>
+              Today
+            </Button>
+            <Input
+              id="daily-log-date"
+              aria-label="Choose close date"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value || todayISO())}
+              className="h-10 w-[9.5rem] bg-surface"
+            />
+          </div>
+        </div>
 
-          {dailyLoading ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-neutral-500">Loading this day…</div>
-          ) : activeMenuItems.length === 0 ? (
-            <p className="text-sm text-neutral-400">Add an active menu item in Catalog to start logging sales.</p>
-          ) : (
-            <div className="space-y-5">
-              {dailySections.map((section) => (
-                <section key={section.category} aria-labelledby={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}>
-                  <h3
-                    id={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}
-                    className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500"
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/70">
+              <div>
+                <CardTitle className="text-lg">Items sold</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Enter every item sold for this operating day.</p>
+              </div>
+              <Badge className={dailyStatusClass}>{dailyStatus}</Badge>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-5">
+              {dailyLoading ? (
+                <div className="space-y-4" aria-label="Loading daily close">
+                  {[1, 2, 3, 4, 5].map((row) => (
+                    <div key={row} className="flex animate-pulse items-center justify-between gap-4 border-b border-border/60 pb-4">
+                      <div className="h-4 w-2/5 rounded bg-muted" />
+                      <div className="h-11 w-28 rounded-lg bg-muted" />
+                    </div>
+                  ))}
+                </div>
+              ) : dailyLoadError ? (
+                <div className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center">
+                  <p className="font-medium text-foreground">Couldn&apos;t load this day</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Your date is still selected. Try loading it again.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => {
+                      setDailyLoadError(false);
+                      setDailyLoadedDate("");
+                      setDailyRetryKey((key) => key + 1);
+                    }}
                   >
-                    {section.category}
-                  </h3>
-                  <div className="divide-y rounded-xl border border-neutral-200 bg-white">
-                    {section.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
-                        <span className="min-w-0 truncate text-sm font-medium text-neutral-800">{item.name}</span>
-                        <Input
-                          aria-label={`${item.name} quantity`}
-                          type="number"
-                          min="0"
-                          step="1"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={dailyQuantities[item.id] ?? ""}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            if (value === "" || /^\d*(\.\d*)?$/.test(value)) {
-                              setDailyQuantities((current) => ({ ...current, [item.id]: value }));
-                            }
-                          }}
-                          className="h-9 w-24 bg-neutral-50 text-right sm:w-28"
-                        />
+                    <RotateCcw className="size-4" /> Retry
+                  </Button>
+                </div>
+              ) : activeMenuItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border p-6 text-center">
+                  <p className="font-medium text-foreground">No active menu items</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Add an active menu item in Catalog to start logging sales.</p>
+                  <Button type="button" variant="outline" className="mt-4" onClick={() => setActiveView("catalog")}>
+                    Open Catalog
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {dailySections.map((section) => (
+                    <section key={section.category} aria-labelledby={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}>
+                      <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
+                        <h3
+                          id={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}
+                          className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground"
+                        >
+                          {section.category}
+                        </h3>
+                        <span className="text-xs font-medium text-muted-foreground">Qty</span>
                       </div>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
+                      <div className="divide-y divide-border/70">
+                        {section.items.map((item) => {
+                          const quantity = dailyQuantities[item.id] ?? "";
+                          const numericQuantity = parseFloat(quantity) || 0;
+                          return (
+                            <div key={item.id} className="flex min-h-14 items-center justify-between gap-4 py-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-foreground sm:text-base">{item.name}</p>
+                                {item.price === null && <p className="text-xs font-medium text-warning">Missing price reference</p>}
+                                {item.price !== null && <p className="text-xs text-muted-foreground">Ref. {idr(item.price)}</p>}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <button
+                                  type="button"
+                                  className="flex size-11 items-center justify-center rounded-lg border border-border bg-surface text-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:opacity-50 sm:size-10"
+                                  onClick={() => setDailyQuantities((current) => ({ ...current, [item.id]: String(Math.max(0, numericQuantity - 1)) }))}
+                                  aria-label={`Decrease ${item.name} quantity`}
+                                  disabled={numericQuantity === 0}
+                                >
+                                  −
+                                </button>
+                                <Input
+                                  aria-label={`${item.name} quantity`}
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  inputMode="numeric"
+                                  placeholder="0"
+                                  value={quantity}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    if (value === "" || /^\d*(\.\d*)?$/.test(value)) {
+                                      setDailyQuantities((current) => ({ ...current, [item.id]: value }));
+                                    }
+                                  }}
+                                  className="h-11 w-16 bg-surface text-right tabular-nums sm:w-20"
+                                />
+                                <button
+                                  type="button"
+                                  className="flex size-11 items-center justify-center rounded-lg border border-border bg-surface text-lg text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 sm:size-10"
+                                  onClick={() => setDailyQuantities((current) => ({ ...current, [item.id]: String(numericQuantity + 1) }))}
+                                  aria-label={`Increase ${item.name} quantity`}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          {activeMenuItems.length > 0 && !dailyLoading && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
-              <p className="text-xs text-neutral-500">Blank or 0 means this item did not sell.</p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => saveDailyLog("no_sales")} disabled={dailySaving}>
+          <Card className="border-primary/10 bg-accent lg:sticky lg:top-24">
+            <CardHeader>
+              <CardTitle className="text-lg">Day summary</CardTitle>
+              <p className="text-sm text-muted-foreground">{formatDisplay(date)}</p>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div>
+                <p className="text-sm text-muted-foreground">Total portions</p>
+                <p className="mt-1 text-4xl font-bold tracking-tight text-foreground tabular-nums">{dailyTotal}</p>
+              </div>
+              <div className="border-t border-primary/10 pt-4">
+                <p className="text-sm text-muted-foreground">Close status</p>
+                <Badge className={`mt-2 ${dailyStatusClass}`}>{dailyStatus}</Badge>
+              </div>
+              <div className="border-t border-primary/10 pt-4">
+                <p className="text-sm text-muted-foreground">Revenue logged</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">{idr(dailySalesEntry?.total ?? 0)}</p>
+              </div>
+              <div className="space-y-3 border-t border-primary/10 pt-4">
+                <p className="text-sm font-medium text-foreground">Payment split</p>
+                {DAILY_PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
+                  <div key={key} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex items-center gap-2 text-muted-foreground"><Icon className="size-4" /> {label}</span>
+                    <span className="font-medium text-foreground tabular-nums">{idr(dailySalesEntry?.[key] ?? 0)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-primary/10 pt-4 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Source</span>
+                  <span className="font-medium text-foreground">{dailyLog?.source === "scan" ? "Scanned" : "Manual"}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Last saved</span>
+                  <span className="font-medium text-foreground">{dailyLog ? format(new Date(dailyLog.updatedAt), "d MMM, HH:mm") : "Not saved yet"}</span>
+                </div>
+              </div>
+              <Button asChild variant="outline" className="w-full border-primary/20 bg-surface text-primary hover:bg-surface-elevated">
+                <Link href="/sales">
+                  Open revenue <ExternalLink className="size-4" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {activeMenuItems.length > 0 && !dailyLoading && !dailyLoadError && (
+          <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 -mx-4 border-y border-border bg-surface/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgb(31_58_47_/_50%)] backdrop-blur sm:bottom-0 sm:mx-0 sm:rounded-xl sm:border">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">{dailySaving ? "Saving changes…" : dailyHasChanges ? "Unsaved changes" : dailyLog ? "Saved for this day" : "Ready to close"}</p>
+                <p className="text-xs text-muted-foreground">Blank or 0 means this item did not sell.</p>
+              </div>
+              <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
+                <Button variant="outline" onClick={() => saveDailyLog("no_sales")} disabled={dailySaving} className="min-h-11">
                   No sales
                 </Button>
-                <Button variant="outline" onClick={() => saveDailyLog("draft")} disabled={dailySaving}>
+                <Button variant="secondary" onClick={() => saveDailyLog("draft")} disabled={dailySaving} className="min-h-11">
                   {dailySaving ? "Saving…" : "Save draft"}
                 </Button>
-                <Button onClick={() => saveDailyLog("complete")} disabled={dailySaving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+                <Button onClick={() => saveDailyLog("complete")} disabled={dailySaving} className="min-h-11 bg-primary hover:bg-primary-hover">
                   {dailySaving ? "Saving…" : "Complete day"}
                 </Button>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
       )}
 
       {activeView === "performance" && (
-      <>
+      <div id="items-panel-performance" role="tabpanel" aria-labelledby="items-tab-performance" tabIndex={0} className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card size="sm">
           <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Total portions</p>
-            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total portions</p>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
               {loading ? "…" : performanceSummary.totalQty.toLocaleString()}
             </p>
-            <p className="text-xs text-neutral-500">Across tracked item history</p>
+            <p className="text-xs text-muted-foreground">Across tracked item history</p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Logged days</p>
-            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Logged days</p>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
               {loading ? "…" : performanceSummary.loggedDays.toLocaleString()}
             </p>
-            <p className="text-xs text-neutral-500">Includes explicit no-sales days</p>
+            <p className="text-xs text-muted-foreground">Includes explicit no-sales days</p>
           </CardContent>
         </Card>
         <Card size="sm">
           <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Average per day</p>
-            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Average per day</p>
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
               {loading ? "…" : performanceSummary.averageQty.toFixed(1)}
             </p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted-foreground">
               {loading
                 ? "Loading…"
                 : performanceSummary.bestDay
@@ -1454,11 +1859,11 @@ export default function ItemsPage() {
         </Card>
         <Card size="sm">
           <CardContent className="min-w-0 space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Top item</p>
-            <p className="truncate text-lg font-semibold tracking-tight text-neutral-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Top item</p>
+            <p className="truncate text-lg font-semibold tracking-tight text-foreground">
               {loading ? "…" : performanceSummary.topItem?.name ?? "No data yet"}
             </p>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-muted-foreground">
               {loading ? "Loading…" : performanceSummary.topItem ? `${performanceSummary.topItem.qty.toLocaleString()} portions` : "Start logging to see rankings"}
             </p>
           </CardContent>
@@ -1469,7 +1874,7 @@ export default function ItemsPage() {
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle>Item detail</CardTitle>
-            <p className="mt-1 text-sm text-neutral-500">See one item&apos;s quantity across a date or date range.</p>
+            <p className="mt-1 text-sm text-muted-foreground">See one item&apos;s quantity across a date or date range.</p>
           </div>
           <Button
             variant="outline"
@@ -1510,41 +1915,45 @@ export default function ItemsPage() {
           </div>
 
           {itemDetailItemId === "all" ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-neutral-500">
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
               Select an item to see its quantity breakdown.
             </div>
           ) : itemDetailFrom > itemDetailTo ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger">
               The start date must be on or before the end date.
+            </div>
+          ) : loading ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground" aria-live="polite">
+              Loading item detail…
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <div className="rounded-xl bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">Total sold</p>
-                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.totalQty.toLocaleString()}</p>
+                <div className="rounded-xl bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Total sold</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.totalQty.toLocaleString()}</p>
                 </div>
-                <div className="rounded-xl bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">Average / logged day</p>
-                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.averageQty.toFixed(1)}</p>
+                <div className="rounded-xl bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Average / logged day</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.averageQty.toFixed(1)}</p>
                 </div>
-                <div className="rounded-xl bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">Sales days</p>
-                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.salesDays}</p>
+                <div className="rounded-xl bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Sales days</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.salesDays}</p>
                 </div>
-                <div className="rounded-xl bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">No-sales days</p>
-                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.noSalesDays}</p>
+                <div className="rounded-xl bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">No-sales days</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.noSalesDays}</p>
                 </div>
-                <div className="rounded-xl bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">Unlogged days</p>
-                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.unloggedDays}</p>
+                <div className="rounded-xl bg-muted p-3">
+                  <p className="text-xs text-muted-foreground">Unlogged days</p>
+                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.unloggedDays}</p>
                 </div>
               </div>
 
               <ResponsiveContainer width="100%" height={190}>
                 <BarChart data={itemDetailRows.map((row) => ({ label: row.label.slice(0, 6), qty: row.qty }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
                   <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
                   <Tooltip
@@ -1556,12 +1965,17 @@ export default function ItemsPage() {
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }}
                   />
-                  <Bar dataKey="qty" fill="#1f3a2f" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="qty" fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={32} />
                 </BarChart>
               </ResponsiveContainer>
 
-              <div className="max-h-72 overflow-y-auto rounded-xl border">
-                <Table>
+              <div
+                className="max-h-72 overflow-y-auto rounded-xl border"
+                role="region"
+                tabIndex={0}
+                aria-label="Item detail table"
+              >
+                <Table className="min-w-[28rem]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
@@ -1584,6 +1998,9 @@ export default function ItemsPage() {
                   </TableBody>
                 </Table>
               </div>
+              <p className="border-t border-border pt-3 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">Takeaway:</span> {itemDetailSummary.totalQty.toLocaleString()} portions across {itemDetailSummary.loggedDays} logged days, including {itemDetailSummary.noSalesDays} no-sales days.
+              </p>
             </>
           )}
         </CardContent>
@@ -1594,7 +2011,7 @@ export default function ItemsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#1f3a2f]/10 text-[#1f3a2f]">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Soup className="size-4" />
               </span>
               <CardTitle>Portions sold (Main)</CardTitle>
@@ -1622,22 +2039,22 @@ export default function ItemsPage() {
           </CardHeader>
           <CardContent className="flex flex-1 flex-col justify-center">
             <div className="flex items-center justify-between gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(-1)} aria-label="Previous main portions period">
+              <Button variant="outline" size="icon-lg" onClick={() => navigateMainPeriod(-1)} aria-label="Previous main portions period">
                 <ChevronLeft className="size-4" />
               </Button>
               <div className="text-center">
-                <p className="text-sm text-neutral-500">{mainPeriodSummary.label}</p>
-                <p className="text-5xl font-semibold tracking-tight text-neutral-900">
-                  {mainPeriodSummary.total}{" "}
-                  <span className="text-base font-normal text-neutral-500">portions</span>
+                <p className="text-sm text-muted-foreground">{mainPeriodSummary.label}</p>
+                <p className="text-5xl font-semibold tracking-tight text-foreground">
+                  {loading ? "…" : mainPeriodSummary.total}{" "}
+                  <span className="text-base font-normal text-muted-foreground">portions</span>
                 </p>
               </div>
-              <Button variant="outline" size="icon" onClick={() => navigateMainPeriod(1)} aria-label="Next main portions period">
+              <Button variant="outline" size="icon-lg" onClick={() => navigateMainPeriod(1)} aria-label="Next main portions period">
                 <ChevronRight className="size-4" />
               </Button>
             </div>
             {mainSales.length === 0 && !loading && (
-              <p className="mt-4 text-center text-sm text-neutral-400">No Main-category sales logged yet</p>
+              <p className="mt-4 text-center text-sm text-muted-foreground">No Main-category sales logged yet</p>
             )}
           </CardContent>
         </Card>
@@ -1645,19 +2062,21 @@ export default function ItemsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#3d6b53]/15 text-[#3d6b53]">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
                 <Trophy className="size-4" />
               </span>
               <CardTitle>Top sellers (all time)</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            {topSellers.length === 0 ? (
-              <p className="py-4 text-center text-sm text-neutral-400">No data yet</p>
+            {loading ? (
+              <p className="py-4 text-center text-sm text-muted-foreground" aria-live="polite">Loading top sellers…</p>
+            ) : topSellers.length === 0 ? (
+              <p className="py-4 text-center text-sm text-muted-foreground">No data yet</p>
             ) : (
               <ResponsiveContainer width="100%" height={Math.max(160, topSellers.length * 32)}>
                 <BarChart data={topSellers.map(([name, qty]) => ({ name, qty }))} layout="vertical" margin={{ left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" horizontal={false} />
                   <XAxis type="number" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis dataKey="name" type="category" fontSize={12} tickLine={false} axisLine={false} width={110} />
                   <Tooltip contentStyle={{
@@ -1667,10 +2086,11 @@ export default function ItemsPage() {
                       fontSize: 12,
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                  <Bar dataKey="qty" fill="#3d6b53" radius={[0, 6, 6, 0]} maxBarSize={22} />
+                  <Bar dataKey="qty" fill="var(--primary-hover)" radius={[0, 6, 6, 0]} maxBarSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             )}
+            {!loading && <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {topSellersTakeaway}</p>}
           </CardContent>
         </Card>
       </div>
@@ -1708,13 +2128,13 @@ export default function ItemsPage() {
           </Tabs>
 
           {chartData.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-neutral-400">
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
               {loading ? "Loading…" : "No item sales logged yet"}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
                 <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
                 <Tooltip contentStyle={{
@@ -1724,24 +2144,32 @@ export default function ItemsPage() {
                       fontSize: 12,
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                <Bar dataKey="qty" fill="#1f3a2f" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="qty" fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           )}
+          {!loading && <p className="border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {performanceTakeaway}</p>}
         </CardContent>
       </Card>
-      </>
+      </div>
       )}
 
       {activeView === "catalog" && (
       /* Menu items management */
-      <Card>
+      <Card id="items-panel-catalog" role="tabpanel" aria-labelledby="items-tab-catalog" tabIndex={0}>
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
             <CardTitle>Catalog</CardTitle>
-            <p className="mt-1 text-sm text-neutral-500">Manage the items available in daily entry and scanning.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Manage the items available in daily entry and scanning.</p>
           </div>
-          <Badge variant="outline">{menuItems.filter((item) => item.active !== false).length} active</Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge variant="outline">{menuItems.filter((item) => item.active !== false).length} active</Badge>
+            {catalogMissingPriceCount > 0 && (
+              <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
+                {catalogMissingPriceCount} missing price{catalogMissingPriceCount === 1 ? "" : "s"}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
@@ -1776,8 +2204,13 @@ export default function ItemsPage() {
             </Select>
           </div>
 
-          <div className="overflow-x-auto">
-            <Table>
+          {loading ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground" aria-live="polite">
+              Loading menu catalog…
+            </div>
+          ) : (
+          <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Menu catalog">
+            <Table className="min-w-[42rem]">
               <TableHeader>
                 <TableRow>
                   <SortableHead label="Name" sortKey="name" sort={menuSort} onSort={(k) => toggleSort(menuSort, k, setMenuSort)} />
@@ -1800,22 +2233,23 @@ export default function ItemsPage() {
               </TableBody>
             </Table>
             {sortedMenuItems.length === 0 && (
-              <p className="py-8 text-center text-sm text-neutral-400">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 {menuItems.length === 0 ? "No menu items yet — use New item to create your catalog." : "No items match these filters."}
               </p>
             )}
           </div>
+          )}
         </CardContent>
       </Card>
       )}
 
       {activeView === "history" && (
       /* Recent item sales */
-      <Card>
+      <Card id="items-panel-history" role="tabpanel" aria-labelledby="items-tab-history" tabIndex={0}>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <div>
             <CardTitle>History</CardTitle>
-            <p className="mt-1 text-sm text-neutral-500">Review and correct recorded item quantities.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Review quantities. Daily close records are read-only here; legacy rows remain editable.</p>
           </div>
           <div className="flex items-center gap-2">
             <Tabs
@@ -1837,18 +2271,18 @@ export default function ItemsPage() {
         <CardContent className="space-y-4">
           {recentFilter !== "all" && (
             <div className="mb-3 flex items-center justify-between gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigateRecent(-1)} aria-label="Previous history period">
+              <Button variant="outline" size="icon-lg" onClick={() => navigateRecent(-1)} aria-label="Previous history period">
                 <ChevronLeft className="size-4" />
               </Button>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-neutral-700">{recentFilterLabel}</p>
+                <p className="text-sm font-medium text-foreground">{recentFilterLabel}</p>
                 {recentCursor !== todayISO() && (
                   <Button variant="ghost" size="sm" onClick={() => setRecentCursor(todayISO())}>
                     Today
                   </Button>
                 )}
               </div>
-              <Button variant="outline" size="icon" onClick={() => navigateRecent(1)} aria-label="Next history period">
+              <Button variant="outline" size="icon-lg" onClick={() => navigateRecent(1)} aria-label="Next history period">
                 <ChevronRight className="size-4" />
               </Button>
             </div>
@@ -1889,7 +2323,7 @@ export default function ItemsPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <p className="text-neutral-500">
+            <p className="text-muted-foreground">
               {sortedRecentSales.length} {sortedRecentSales.length === 1 ? "entry" : "entries"}
               {historyHasFilters ? " match the current filters" : " shown"}
             </p>
@@ -1914,8 +2348,13 @@ export default function ItemsPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <Table>
+          {loading ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground" aria-live="polite">
+              Loading item history…
+            </div>
+          ) : (
+          <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Item sales history">
+            <Table className="min-w-[44rem]">
               <TableHeader>
                 <TableRow>
                   <SortableHead label="Date" sortKey="date" sort={saleSort} onSort={(k) => toggleSort(saleSort, k, setSaleSort)} />
@@ -1928,7 +2367,7 @@ export default function ItemsPage() {
                     onSort={(k) => toggleSort(saleSort, k, setSaleSort)}
                     className="text-right"
                   />
-                  <TableHead></TableHead>
+                  <TableHead>Source / action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1940,16 +2379,18 @@ export default function ItemsPage() {
                     menuItems={menuItems}
                     onSaved={refresh}
                     onDelete={removeSale}
+                    readOnly={s.id.startsWith("daily-")}
                   />
                 ))}
               </TableBody>
             </Table>
             {recentFilteredSales.length === 0 && !loading && (
-              <p className="py-6 text-center text-sm text-neutral-400">
+              <p className="py-6 text-center text-sm text-muted-foreground">
                 {recentFilter === "all" ? "No item sales yet" : "No item sales in this period"}
               </p>
             )}
           </div>
+          )}
         </CardContent>
       </Card>
       )}

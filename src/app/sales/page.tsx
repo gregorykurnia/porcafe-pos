@@ -20,6 +20,9 @@ import {
   deleteSalesEntry,
   listMonthlyAdjustments,
   upsertMonthlyAdjustment,
+  findDuplicateSalesDates,
+  resolveDuplicateSalesDate,
+  type DuplicateSalesDate,
 } from "@/lib/data";
 import type { SalesEntry, MonthlyAdjustment } from "@/lib/types";
 import { idr, todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
@@ -35,6 +38,15 @@ import {
 } from "recharts";
 import { Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 type Period = "day" | "week" | "month";
 
@@ -55,6 +67,7 @@ function EditableRow({
 }) {
   const [draft, setDraft] = useState<Draft>({});
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
 
   function fieldValue(field: EditableField): string {
     if (field in draft) return draft[field] ?? "";
@@ -64,6 +77,7 @@ function EditableRow({
 
   function setField(field: EditableField, value: string) {
     setDraft((d) => ({ ...d, [field]: value }));
+    setSaveStatus("idle");
   }
 
   async function commit() {
@@ -80,6 +94,7 @@ function EditableRow({
         note: (draft.note !== undefined ? draft.note : entry.note) || undefined,
       });
       setDraft({});
+      setSaveStatus("saved");
       onSaved();
     } catch (err) {
       console.error("Failed to save entry:", err);
@@ -109,7 +124,7 @@ function EditableRow({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-neutral-200 focus:border-neutral-300 ${
+        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring ${
           type === "number" ? "text-right" : ""
         }`}
       />
@@ -123,11 +138,21 @@ function EditableRow({
       <TableCell className="p-1 text-right">{cellInput("cash", "number")}</TableCell>
       <TableCell className="p-1 text-right">{cellInput("soundbox", "number")}</TableCell>
       <TableCell className="p-1 text-right">{cellInput("other", "number")}</TableCell>
-      <TableCell className="text-right font-semibold">{idr(displayTotal)}</TableCell>
+      <TableCell className="text-right font-semibold">
+        <div className="flex flex-col items-end gap-0.5">
+          <span>{idr(displayTotal)}</span>
+          <span aria-live="polite" className="text-xs font-normal text-success">{saving ? "Saving…" : saveStatus === "saved" ? "Saved" : ""}</span>
+        </div>
+      </TableCell>
       <TableCell className="p-1">{cellInput("note", "text")}</TableCell>
       <TableCell>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(entry.id)}>
-          <Trash2 className="size-4 text-neutral-400" />
+        <Button
+          variant="ghost"
+          size="icon-lg"
+          onClick={() => onDelete(entry.id)}
+          aria-label={`Delete revenue entry for ${entry.date}`}
+        >
+          <Trash2 className="size-4 text-muted-foreground" />
         </Button>
       </TableCell>
     </TableRow>
@@ -162,7 +187,7 @@ function SelisihEditor({
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 rounded-lg bg-neutral-50 p-3">
+    <div className="flex flex-wrap items-end gap-3 rounded-lg bg-muted p-3">
       <div className="space-y-1.5">
         <Label htmlFor="selisih">Selisih ({formatMonthDisplay(month)})</Label>
         <Input
@@ -186,10 +211,10 @@ function SelisihEditor({
           onChange={(e) => setNote(e.target.value)}
         />
       </div>
-      <Button size="sm" onClick={save} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+      <Button size="sm" onClick={save} disabled={saving} className="bg-primary hover:bg-primary-hover">
         {saving ? "Saving…" : "Save selisih"}
       </Button>
-      <p className="w-full text-xs text-neutral-400">
+      <p className="w-full text-xs text-muted-foreground">
         Added only to this month&apos;s and the grand total below — never to daily entries, so it won&apos;t appear
         in the recap chart or affect per-day stats.
       </p>
@@ -197,10 +222,149 @@ function SelisihEditor({
   );
 }
 
+function MoneyInput({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-muted-foreground">Rp</span>
+        <Input
+          id={id}
+          type="number"
+          inputMode="decimal"
+          min="0"
+          placeholder="0"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-11 pl-10 text-right tabular-nums sm:h-10"
+        />
+      </div>
+    </div>
+  );
+}
+
+function RevenueSummary({
+  label,
+  value,
+  detail,
+  emphasized = false,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  emphasized?: boolean;
+}) {
+  return (
+    <div className={emphasized ? "rounded-lg bg-accent px-3 py-2" : "px-3 py-2"}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={`mt-1 tabular-nums ${emphasized ? "text-lg font-bold text-primary" : "text-base font-semibold text-foreground"}`}>
+        {value}
+      </p>
+      {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+    </div>
+  );
+}
+
+function DuplicateDateReviewDialog({
+  group,
+  onResolved,
+}: {
+  group: DuplicateSalesDate;
+  onResolved: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [keepId, setKeepId] = useState(group.entries[0]?.id ?? "");
+  const [resolving, setResolving] = useState(false);
+
+  async function resolve() {
+    if (!keepId) return;
+    setResolving(true);
+    try {
+      const result = await resolveDuplicateSalesDate(group.date, keepId);
+      toast.success(`Kept one record and removed ${result.deletedIds.length} duplicate${result.deletedIds.length === 1 ? "" : "s"}`);
+      setOpen(false);
+      onResolved();
+    } catch (err) {
+      console.error("Failed to resolve duplicate sales date:", err);
+      toast.error(err instanceof Error ? err.message : "Could not resolve duplicate date");
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="border-warning/20 bg-surface hover:bg-surface-elevated">
+          Review records
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Review {formatDisplay(group.date)}</DialogTitle>
+          <DialogDescription>
+            Choose the one record that represents this operating day. The other {group.entries.length - 1} record{group.entries.length - 1 === 1 ? "" : "s"} will be permanently removed.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {group.entries.map((entry) => (
+            <label
+              key={entry.id}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${keepId === entry.id ? "border-primary bg-accent" : "border-border bg-surface hover:bg-muted"}`}
+            >
+              <input
+                type="radio"
+                name={`duplicate-${group.date}`}
+                value={entry.id}
+                checked={keepId === entry.id}
+                onChange={() => setKeepId(entry.id)}
+                className="mt-1 size-4 accent-primary"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-foreground">{idr(entry.total)}</span>
+                  <span className="text-xs text-muted-foreground">{entry.id.startsWith("sales-") ? "Canonical ID" : "Existing ID"}</span>
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  BCA {idr(entry.bca)} · Cash {idr(entry.cash)} · Soundbox {idr(entry.soundbox)} · Other {idr(entry.other)}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Created {new Date(entry.createdAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="rounded-lg border border-danger/20 bg-danger/5 p-3 text-sm text-muted-foreground">
+          This action only keeps the selected record and removes the others. It does not combine payment amounts.
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={resolving}>Cancel</Button>
+          <Button type="button" variant="destructive" onClick={resolve} disabled={resolving || !keepId}>
+            {resolving ? "Resolving…" : "Keep selected record"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function SalesPage() {
   const [entries, setEntries] = useState<SalesEntry[]>([]);
   const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("");
   const [period, setPeriod] = useState<Period>("day");
 
   const [date, setDate] = useState(todayISO());
@@ -223,17 +387,26 @@ export default function SalesPage() {
     }
   }
 
-  function refresh() {
-    setLoading(true);
+  function refresh(showLoading = true) {
+    if (showLoading) setLoading(true);
+    setLoadError(false);
     Promise.all([listSalesEntries(), listMonthlyAdjustments()])
       .then(([e, a]) => {
         setEntries(e);
         setAdjustments(a);
       })
+      .catch((err) => {
+        console.error("Failed to load revenue data:", err);
+        setLoadError(true);
+      })
       .finally(() => setLoading(false));
   }
 
-  useEffect(refresh, []);
+  useEffect(() => {
+    void Promise.resolve().then(() => refresh(false));
+    // refresh is intentionally called once on mount; later refreshes are event-driven.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const total =
     (parseFloat(bca) || 0) + (parseFloat(cash) || 0) + (parseFloat(soundbox) || 0) + (parseFloat(other) || 0);
@@ -254,6 +427,7 @@ export default function SalesPage() {
         note: note || undefined,
       });
       toast.success("Entry saved");
+      setSavedMessage("Saved just now");
       resetForm();
       refresh();
     } catch (err) {
@@ -274,9 +448,16 @@ export default function SalesPage() {
   }
 
   async function removeEntry(id: string) {
-    await deleteSalesEntry(id);
-    toast.success("Entry deleted");
-    refresh();
+    const entry = entries.find((candidate) => candidate.id === id);
+    if (!entry || !window.confirm(`Delete the revenue entry for ${formatDisplay(entry.date)}? This cannot be undone.`)) return;
+    try {
+      await deleteSalesEntry(id);
+      toast.success("Entry deleted");
+      refresh();
+    } catch (err) {
+      console.error("Failed to delete revenue entry:", err);
+      toast.error(err instanceof Error ? err.message : "Could not delete entry");
+    }
   }
 
   // ---- Recap aggregation ----
@@ -322,6 +503,14 @@ export default function SalesPage() {
     total: g.total,
   }));
 
+  const chartTakeaway = chartData.length < 2
+    ? chartData.length === 1
+      ? `One period is available at ${idr(chartData[0].total)}.`
+      : "No recorded revenue is available for this view."
+    : chartData[chartData.length - 1].total >= chartData[chartData.length - 2].total
+      ? `The latest period is at or above the previous period at ${idr(chartData[chartData.length - 1].total)}.`
+      : `The latest period is below the previous period at ${idr(chartData[chartData.length - 1].total)}.`;
+
   const monthOptions = useMemo(() => {
     const keys = new Set(entries.map((e) => monthKey(e.date)));
     return [...keys].sort().reverse();
@@ -351,6 +540,13 @@ export default function SalesPage() {
     [sortedEntries, currentAdjustment]
   );
 
+  const recordedTotal = useMemo(
+    () => sortedEntries.reduce((sum, e) => sum + e.total, 0),
+    [sortedEntries]
+  );
+
+  const duplicateSalesDates = useMemo(() => findDuplicateSalesDates(entries), [entries]);
+
   function exportCSV() {
     downloadCSV(
       `porcafe-sales-${period}-${todayISO()}.csv`,
@@ -361,63 +557,105 @@ export default function SalesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-900">Sales</h1>
-        <p className="text-sm text-neutral-500">Log daily sales and view recap</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Revenue workspace</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Log payment totals for one operating day and review the recap.</p>
       </div>
 
       {/* Entry form */}
       <Card>
-        <CardHeader>
-          <CardTitle>New daily entry</CardTitle>
+        <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg">Revenue for one day</CardTitle>
+            <p className="text-sm text-muted-foreground">Blank payment fields are treated as zero.</p>
+          </div>
+      {savedMessage && <p className="text-sm font-medium text-success">{savedMessage}</p>}
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="space-y-1.5 col-span-2 sm:col-span-1">
+        <CardContent className="space-y-5">
+          <div className="space-y-3">
+            <div className="space-y-1.5 sm:max-w-xs">
               <Label htmlFor="date">Date</Label>
-              <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value || todayISO())} className="h-11 bg-surface sm:h-10" />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="bca">BCA</Label>
-              <Input id="bca" type="number" inputMode="decimal" placeholder="0" value={bca} onChange={(e) => setBca(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Payment methods</p>
+              <p className="text-xs text-muted-foreground">Enter the amount recorded for each method.</p>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cash">Cash</Label>
-              <Input id="cash" type="number" inputMode="decimal" placeholder="0" value={cash} onChange={(e) => setCash(e.target.value)} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MoneyInput id="bca" label="BCA" value={bca} onChange={setBca} />
+              <MoneyInput id="cash" label="Cash" value={cash} onChange={setCash} />
+              <MoneyInput id="soundbox" label="Soundbox" value={soundbox} onChange={setSoundbox} />
+              <MoneyInput id="other" label="Other" value={other} onChange={setOther} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="soundbox">Soundbox</Label>
-              <Input id="soundbox" type="number" inputMode="decimal" placeholder="0" value={soundbox} onChange={(e) => setSoundbox(e.target.value)} />
-            </div>
-            <div className="space-y-1.5 col-span-2 sm:col-span-1">
-              <Label htmlFor="other">Other</Label>
-              <Input id="other" type="number" inputMode="decimal" placeholder="0" value={other} onChange={(e) => setOther(e.target.value)} />
-            </div>
-            <div className="space-y-1.5 col-span-2 sm:col-span-3">
+          </div>
+          <div className="space-y-1.5 sm:max-w-xl">
               <Label htmlFor="note">Note (optional)</Label>
-              <Input id="note" placeholder="e.g. rain, event day" value={note} onChange={(e) => setNote(e.target.value)} />
+              <Input id="note" className="h-11 sm:h-10" placeholder="e.g. rain, event day" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-warm-accent bg-warm-accent/60 px-4 py-4">
+            <div>
+              <p className="text-sm font-semibold text-primary">Recorded sales total</p>
+              <p className="mt-0.5 text-xs text-primary/65">Before any monthly reconciliation adjustment</p>
             </div>
+            <span className="text-xl font-bold text-primary tabular-nums">{idr(total)}</span>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-[#e9e2d0] px-4 py-3">
-            <span className="text-sm font-medium text-[#1f3a2f]">Total for this entry</span>
-            <span className="text-lg font-semibold text-[#1f3a2f]">{idr(total)}</span>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSave} disabled={saving} className="bg-[#1f3a2f] hover:bg-[#16291f]">
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={saving} className="min-h-11 bg-primary px-5 hover:bg-primary-hover sm:min-h-10">
               {saving ? "Saving…" : "Save entry"}
             </Button>
           </div>
         </CardContent>
       </Card>
 
+      {duplicateSalesDates.length > 0 && (
+        <Card className="border-warning/25 bg-warning/5">
+          <CardHeader>
+            <CardTitle className="text-lg text-foreground">Duplicate dates need review</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              These records are preserved as-is. Review them in the history below before deciding whether any cleanup is needed.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="divide-y divide-warning/15 rounded-xl border border-warning/15 bg-surface/70">
+              {duplicateSalesDates.map((group) => (
+                <div key={group.date} className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 text-sm">
+                  <div>
+                    <p className="font-medium text-foreground">{formatDisplay(group.date)}</p>
+                    <p className="text-xs text-muted-foreground">{group.entries.length} records for this operating date</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-foreground tabular-nums">{idr(group.entries.reduce((sum, entry) => sum + entry.total, 0))}</p>
+                    <p className="text-xs text-muted-foreground">Combined view only</p>
+                  </div>
+                  <DuplicateDateReviewDialog group={group} onResolved={refresh} />
+                </div>
+              ))}
+            </div>
+            <Button asChild variant="outline" className="border-warning/20 bg-surface hover:bg-surface-elevated">
+              <a href="#sales-history">Review history</a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recap */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle>Recap</CardTitle>
+          <div>
+            <CardTitle className="text-lg">Revenue recap</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Recorded sales stay separate from monthly reconciliation.</p>
+          </div>
           <Button variant="outline" size="sm" onClick={exportCSV}>
             <Download className="size-3.5" /> Export CSV
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid gap-2 border-b border-border pb-4 sm:grid-cols-3">
+            <RevenueSummary label="Recorded sales" value={idr(recordedTotal)} />
+            <RevenueSummary label="Reconciliation adjustment" value={idr(currentAdjustment)} detail="Selisih" />
+            <RevenueSummary label="Reported total" value={idr(grandTotal)} emphasized />
+          </div>
           <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
             <TabsList>
               <TabsTrigger value="day">By day</TabsTrigger>
@@ -434,22 +672,22 @@ export default function SalesPage() {
                 ["Min", stats.min],
                 ["Max", stats.max],
               ].map(([label, value]) => (
-                <div key={label as string} className="rounded-lg bg-neutral-50 px-3 py-2">
-                  <p className="text-xs text-neutral-500">{label}</p>
-                  <p className="text-sm font-semibold text-neutral-900">{idr(value as number)}</p>
+                <div key={label as string} className="rounded-lg bg-muted px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-sm font-semibold text-foreground">{idr(value as number)}</p>
                 </div>
               ))}
             </div>
           )}
 
           {chartData.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-neutral-400">
-              {loading ? "Loading…" : "No entries yet"}
+            <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+              {loading ? "Loading recap…" : loadError ? "Recap unavailable" : "No entries yet"}
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" />
                 <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis
                   fontSize={12}
@@ -459,40 +697,58 @@ export default function SalesPage() {
                   width={40}
                 />
                 <Tooltip formatter={(v) => idr(Number(v))} />
-                <Line type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2.5} dot={{ r: 3, fill: "#f97316" }} />
+                <Line type="monotone" dataKey="total" stroke="var(--warm-accent)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--warm-accent)" }} />
               </LineChart>
             </ResponsiveContainer>
           )}
 
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Period</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Entries</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...grouped].reverse().map((g) => (
-                  <TableRow key={g.key}>
-                    <TableCell className="font-medium">{g.label}</TableCell>
-                    <TableCell className="text-right">{idr(g.total)}</TableCell>
-                    <TableCell className="text-right text-neutral-500">{g.count}</TableCell>
+          {!loading && !loadError && (
+            <p className="border-t border-border pt-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Takeaway:</span> {chartTakeaway}
+            </p>
+          )}
+
+          {loadError ? (
+            <div className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center">
+              <p className="font-medium text-foreground">Couldn&apos;t load revenue recap</p>
+              <p className="mt-1 text-sm text-muted-foreground">Check the connection and try again.</p>
+              <Button type="button" variant="outline" className="mt-4" onClick={() => refresh()}>Retry</Button>
+            </div>
+          ) : loading ? (
+            <div className="space-y-3 rounded-xl border border-border p-4" aria-label="Loading revenue recap">
+              {[1, 2, 3].map((row) => <div key={row} className="h-8 animate-pulse rounded bg-muted" />)}
+            </div>
+          ) : (
+            <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Revenue recap table">
+              <Table className="min-w-[32rem]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Period</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Entries</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {[...grouped].reverse().map((g) => (
+                    <TableRow key={g.key}>
+                      <TableCell className="font-medium">{g.label}</TableCell>
+                      <TableCell className="text-right tabular-nums">{idr(g.total)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground tabular-nums">{g.count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* History */}
-      <Card>
+      <Card id="sales-history">
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <div>
             <CardTitle>All entries</CardTitle>
-            <p className="text-xs text-neutral-400">Click a cell to edit it. Click a column header to sort.</p>
+            <p className="text-xs text-muted-foreground">Click a cell to edit it. Click a column header to sort.</p>
           </div>
           <Select value={monthFilter} onValueChange={setMonthFilter}>
             <SelectTrigger size="sm" className="w-[160px]">
@@ -519,8 +775,18 @@ export default function SalesPage() {
           </CardContent>
         )}
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table className="table-fixed">
+          {loading ? (
+            <div className="space-y-3 rounded-xl border border-border p-4" aria-label="Loading sales entries">
+              {[1, 2, 3].map((row) => <div key={row} className="h-10 animate-pulse rounded bg-muted" />)}
+            </div>
+          ) : loadError ? (
+            <div className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center">
+              <p className="font-medium text-foreground">Couldn&apos;t load sales entries</p>
+              <p className="mt-1 text-sm text-muted-foreground">Your filters are preserved. Try again when the connection is available.</p>
+              <Button type="button" variant="outline" className="mt-4" onClick={() => refresh()}>Retry</Button>
+            </div>
+          ) : <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Revenue history">
+            <Table className="min-w-[58rem] table-fixed">
               <TableHeader>
                 <TableRow>
                   {(
@@ -533,12 +799,17 @@ export default function SalesPage() {
                       ["total", "Total", "w-32"],
                     ] as [SortKey, string, string][]
                   ).map(([key, label, width]) => (
-                    <TableHead key={key} className={`text-center ${width}`}>
+                    <TableHead
+                      key={key}
+                      className={`text-center ${width}`}
+                      aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    >
                       <button
                         type="button"
                         onClick={() => toggleSort(key)}
-                        className={`w-full text-center hover:text-neutral-900 ${
-                          sortKey === key ? "font-semibold text-neutral-900" : ""
+                        aria-label={`${label}, ${sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : "not sorted"}`}
+                        className={`w-full text-center hover:text-foreground ${
+                          sortKey === key ? "font-semibold text-foreground" : ""
                         }`}
                       >
                         {label}
@@ -558,7 +829,7 @@ export default function SalesPage() {
                 <TableFooter>
                   <TableRow>
                     <TableCell colSpan={5} className="font-medium">
-                      Grand total{monthFilter !== "all" ? ` (${formatMonthDisplay(monthFilter)})` : ""}
+                      Reported total{monthFilter !== "all" ? ` (${formatMonthDisplay(monthFilter)})` : ""}
                     </TableCell>
                     <TableCell className="text-right font-semibold">{idr(grandTotal)}</TableCell>
                     <TableCell colSpan={2}></TableCell>
@@ -567,11 +838,11 @@ export default function SalesPage() {
               )}
             </Table>
             {sortedEntries.length === 0 && !loading && (
-              <p className="py-6 text-center text-sm text-neutral-400">
+              <p className="py-6 text-center text-sm text-muted-foreground">
                 {entries.length === 0 ? "No entries yet" : "No entries in this month"}
               </p>
             )}
-          </div>
+          </div>}
         </CardContent>
       </Card>
     </div>
