@@ -27,6 +27,7 @@ import {
   listMenuItems,
   upsertMenuItem,
   getDailyItemLog,
+  listDailyItemLogs,
   upsertDailyItemLog,
   listItemSales,
   listItemSalesByDate,
@@ -731,6 +732,7 @@ function TicketScanDialog({
 export default function ItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [sales, setSales] = useState<ItemSale[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<ItemsView>("daily");
   const [dailyLog, setDailyLog] = useState<DailyItemLog | null>(null);
@@ -768,21 +770,23 @@ export default function ItemsPage() {
 
   function refresh() {
     setLoading(true);
-    Promise.all([listMenuItems(), listItemSales()])
-      .then(([m, s]) => {
+    Promise.all([listMenuItems(), listItemSales(), listDailyItemLogs()])
+      .then(([m, s, logs]) => {
         setMenuItems(m);
         setSales(s);
+        setDailyLogs(logs);
       })
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listMenuItems(), listItemSales()])
-      .then(([m, s]) => {
+    Promise.all([listMenuItems(), listItemSales(), listDailyItemLogs()])
+      .then(([m, s, logs]) => {
         if (cancelled) return;
         setMenuItems(m);
         setSales(s);
+        setDailyLogs(logs);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -930,6 +934,7 @@ export default function ItemsPage() {
     try {
       await upsertDailyItemLog(savedLog);
       setDailyLog(savedLog);
+      setDailyLogs((current) => [savedLog, ...current.filter((log) => log.date !== date)].sort((a, b) => b.date.localeCompare(a.date)));
       setDailyQuantities(
         Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
       );
@@ -942,6 +947,64 @@ export default function ItemsPage() {
     }
   }
 
+  const categoryByItemId = useMemo(
+    () => new Map(menuItems.map((item) => [item.id, item.category])),
+    [menuItems]
+  );
+
+  const performanceSales = useMemo(() => {
+    const dailyDates = new Set(dailyLogs.map((log) => log.date));
+    const dailyRows: ItemSale[] = [];
+
+    for (const log of dailyLogs) {
+      for (const [itemId, qty] of Object.entries(log.quantities)) {
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        const item = menuItems.find((menuItem) => menuItem.id === itemId);
+        if (!item) continue;
+        dailyRows.push({
+          id: `daily-${log.date}-${itemId}`,
+          date: log.date,
+          itemId,
+          itemName: item.name,
+          category: item.category,
+          qty,
+          createdAt: log.updatedAt,
+        });
+      }
+    }
+
+    return [...dailyRows, ...sales.filter((sale) => !dailyDates.has(sale.date))].sort(
+      (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt
+    );
+  }, [dailyLogs, menuItems, sales]);
+
+  const performanceSummary = useMemo(() => {
+    const itemTotals = new Map<string, { name: string; qty: number }>();
+    const dayTotals = new Map<string, number>();
+    for (const sale of performanceSales) {
+      const item = itemTotals.get(sale.itemId) ?? { name: sale.itemName, qty: 0 };
+      item.qty += sale.qty;
+      itemTotals.set(sale.itemId, item);
+      dayTotals.set(sale.date, (dayTotals.get(sale.date) ?? 0) + sale.qty);
+    }
+
+    const totalQty = performanceSales.reduce((total, sale) => total + sale.qty, 0);
+    const loggedDays = new Set([
+      ...dailyLogs.map((log) => log.date),
+      ...sales.map((sale) => sale.date),
+    ]).size;
+    const topItem = [...itemTotals.values()].sort((a, b) => b.qty - a.qty)[0] ?? null;
+    const bestDay = [...dayTotals.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+
+    return {
+      totalQty,
+      loggedDays,
+      averageQty: loggedDays ? totalQty / loggedDays : 0,
+      topItem,
+      bestDay,
+    };
+  }, [dailyLogs, performanceSales, sales]);
+
   async function removeSale(id: string) {
     await deleteItemSale(id);
     toast.success("Deleted");
@@ -950,8 +1013,8 @@ export default function ItemsPage() {
 
   // ---- Recap ----
   const filteredSales = useMemo(
-    () => (itemFilter === "all" ? sales : sales.filter((s) => s.itemId === itemFilter)),
-    [sales, itemFilter]
+    () => (itemFilter === "all" ? performanceSales : performanceSales.filter((s) => s.itemId === itemFilter)),
+    [itemFilter, performanceSales]
   );
 
   const grouped = useMemo(() => {
@@ -974,20 +1037,13 @@ export default function ItemsPage() {
 
   const topSellers = useMemo(() => {
     const map = new Map<string, number>();
-    for (const s of sales) map.set(s.itemName, (map.get(s.itemName) ?? 0) + s.qty);
+    for (const s of performanceSales) map.set(s.itemName, (map.get(s.itemName) ?? 0) + s.qty);
     return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-  }, [sales]);
+  }, [performanceSales]);
 
-  // Live item -> category lookup, so recaps stay correct even if a sale was
-  // logged before its item's category was set/changed (the sale record keeps
-  // whatever category it was logged with, but this map reflects the current one).
-  const categoryByItemId = useMemo(
-    () => new Map(menuItems.map((m) => [m.id, m.category])),
-    [menuItems]
-  );
   const mainSales = useMemo(
-    () => sales.filter((s) => (categoryByItemId.get(s.itemId) ?? s.category) === "Main"),
-    [sales, categoryByItemId]
+    () => performanceSales.filter((s) => (categoryByItemId.get(s.itemId) ?? s.category) === "Main"),
+    [categoryByItemId, performanceSales]
   );
 
   const mainPeriodSummary = useMemo(() => {
@@ -1291,6 +1347,53 @@ export default function ItemsPage() {
 
       {activeView === "performance" && (
       <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card size="sm">
+          <CardContent className="space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Total portions</p>
+            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+              {loading ? "…" : performanceSummary.totalQty.toLocaleString()}
+            </p>
+            <p className="text-xs text-neutral-500">Across tracked item history</p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent className="space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Logged days</p>
+            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+              {loading ? "…" : performanceSummary.loggedDays.toLocaleString()}
+            </p>
+            <p className="text-xs text-neutral-500">Includes explicit no-sales days</p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent className="space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Average per day</p>
+            <p className="text-2xl font-semibold tracking-tight text-neutral-900">
+              {loading ? "…" : performanceSummary.averageQty.toFixed(1)}
+            </p>
+            <p className="text-xs text-neutral-500">
+              {loading
+                ? "Loading…"
+                : performanceSummary.bestDay
+                  ? `Best: ${formatDisplay(performanceSummary.bestDay[0])} · ${performanceSummary.bestDay[1].toLocaleString()}`
+                  : "Portions per logged day"}
+            </p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent className="min-w-0 space-y-1">
+            <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Top item</p>
+            <p className="truncate text-lg font-semibold tracking-tight text-neutral-900">
+              {loading ? "…" : performanceSummary.topItem?.name ?? "No data yet"}
+            </p>
+            <p className="text-xs text-neutral-500">
+              {loading ? "Loading…" : performanceSummary.topItem ? `${performanceSummary.topItem.qty.toLocaleString()} portions` : "Start logging to see rankings"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Main portions navigator + Top sellers */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
