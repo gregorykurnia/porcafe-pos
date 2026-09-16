@@ -4,13 +4,21 @@ import {
   addDoc,
   setDoc,
   deleteDoc,
+  getDoc,
   getDocs,
   query,
   orderBy,
   where,
+  type QueryConstraint,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { SalesEntry, MenuItem, ItemSale, MonthlyAdjustment } from "./types";
+import type {
+  SalesEntry,
+  MenuItem,
+  ItemSale,
+  MonthlyAdjustment,
+  DailyItemLog,
+} from "./types";
 
 // Firestore rejects `undefined` field values (e.g. an omitted optional field).
 function omitUndefined<T extends object>(obj: T): T {
@@ -98,6 +106,54 @@ export async function deleteMenuItem(id: string) {
 // ---------- Item Sales ----------
 
 const itemSalesCol = collection(db, "itemSales");
+
+// ---------- Daily Item Logs ----------
+// The document id is the canonical date, so saving a day is idempotent and
+// cannot create a second daily log for the same date.
+
+const dailyItemLogsCol = collection(db, "dailyItemLogs");
+
+function mapDailyItemLog(id: string, data: Record<string, unknown>): DailyItemLog {
+  return { id, ...(data as Omit<DailyItemLog, "id">) };
+}
+
+export async function getDailyItemLog(date: string): Promise<DailyItemLog | null> {
+  const snap = await getDoc(doc(db, "dailyItemLogs", date));
+  return snap.exists() ? mapDailyItemLog(snap.id, snap.data()) : null;
+}
+
+export async function listDailyItemLogs(
+  startDate?: string,
+  endDate?: string
+): Promise<DailyItemLog[]> {
+  const constraints: QueryConstraint[] = [];
+  if (startDate) constraints.push(where("date", ">=", startDate));
+  if (endDate) constraints.push(where("date", "<=", endDate));
+  constraints.push(orderBy("date", "desc"));
+
+  const snap = await getDocs(query(dailyItemLogsCol, ...constraints));
+  return snap.docs.map((d) => mapDailyItemLog(d.id, d.data()));
+}
+
+export async function upsertDailyItemLog(
+  log: Omit<DailyItemLog, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const id = log.date;
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = log;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+
+  // Preserve createdAt on updates through merge. New logs receive it without
+  // requiring an extra read.
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+  else if (!inputId) payload.createdAt = now;
+
+  await setDoc(doc(db, "dailyItemLogs", id), omitUndefined(payload), { merge: true });
+  return id;
+}
 
 export async function listItemSales(): Promise<ItemSale[]> {
   const snap = await getDocs(query(itemSalesCol, orderBy("date", "desc")));

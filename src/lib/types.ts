@@ -39,3 +39,20 @@ export type ItemSale = {
   qty: number;
   createdAt: number;
 };
+
+export type DailyItemLogStatus = "draft" | "complete" | "no_sales";
+
+export type DailyItemLogSource = "manual" | "scan";
+
+// One document per calendar day. Quantities are keyed by stable menu item id;
+// zero-quantity items do not need their own stored row.
+export type DailyItemLog = {
+  id: string; // = date, "YYYY-MM-DD"
+  date: string; // YYYY-MM-DD
+  quantities: Record<string, number>;
+  totalQty: number;
+  status: DailyItemLogStatus;
+  source: DailyItemLogSource;
+  createdAt: number;
+  updatedAt: number;
+};
