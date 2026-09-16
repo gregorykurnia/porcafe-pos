@@ -67,7 +67,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
+import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -761,6 +761,9 @@ export default function ItemsPage() {
   // Main-portions navigator
   const [mainPeriod, setMainPeriod] = useState<Period>("day");
   const [mainCursor, setMainCursor] = useState(todayISO());
+  const [itemDetailItemId, setItemDetailItemId] = useState("all");
+  const [itemDetailFrom, setItemDetailFrom] = useState(`${monthKey(todayISO())}-01`);
+  const [itemDetailTo, setItemDetailTo] = useState(todayISO());
 
   // Recent item sales filter
   const [recentFilter, setRecentFilter] = useState<"all" | Period>("all");
@@ -1028,6 +1031,41 @@ export default function ItemsPage() {
     };
   }, [dailyLogs, performanceSales, sales]);
 
+  const itemDetailRows = useMemo(() => {
+    if (itemDetailItemId === "all" || !itemDetailFrom || !itemDetailTo || itemDetailFrom > itemDetailTo) return [];
+
+    const start = parseISO(itemDetailFrom);
+    const end = parseISO(itemDetailTo);
+    if (!isValidDate(start) || !isValidDate(end)) return [];
+
+    const salesByDate = new Map<string, number>();
+    for (const sale of performanceSales) {
+      if (sale.itemId !== itemDetailItemId) continue;
+      salesByDate.set(sale.date, (salesByDate.get(sale.date) ?? 0) + sale.qty);
+    }
+    const logsByDate = new Map(dailyLogs.map((log) => [log.date, log]));
+
+    return eachDayOfInterval({ start, end }).map((day) => {
+      const date = toISODate(day);
+      const log = logsByDate.get(date);
+      const qty = salesByDate.get(date) ?? 0;
+      const status = !log ? (qty > 0 ? "Sold" : "Not logged") : log.status === "no_sales" ? "No sales" : qty > 0 ? "Sold" : "0 sold";
+      return { date, label: formatDisplay(date), qty, status };
+    });
+  }, [dailyLogs, itemDetailFrom, itemDetailItemId, itemDetailTo, performanceSales]);
+
+  const itemDetailSummary = useMemo(() => {
+    const totalQty = itemDetailRows.reduce((total, row) => total + row.qty, 0);
+    const loggedDays = itemDetailRows.filter((row) => row.status !== "Not logged").length;
+    return {
+      totalQty,
+      averageQty: loggedDays ? totalQty / loggedDays : 0,
+      salesDays: itemDetailRows.filter((row) => row.qty > 0).length,
+      noSalesDays: itemDetailRows.filter((row) => row.status === "No sales").length,
+      unloggedDays: itemDetailRows.filter((row) => row.status === "Not logged").length,
+    };
+  }, [itemDetailRows]);
+
   async function removeSale(id: string) {
     await deleteItemSale(id);
     toast.success("Deleted");
@@ -1206,6 +1244,16 @@ export default function ItemsPage() {
         category: categoryByItemId.get(sale.itemId) ?? sale.category,
         qty: sale.qty,
       }))
+    );
+  }
+
+  function exportItemDetailCSV() {
+    const item = menuItems.find((menuItem) => menuItem.id === itemDetailItemId);
+    if (!item || itemDetailRows.length === 0) return;
+    const filename = item.name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    downloadCSV(
+      `porcafe-${filename || "item"}-${itemDetailFrom}-to-${itemDetailTo}.csv`,
+      itemDetailRows.map((row) => ({ date: row.date, item: item.name, qty: row.qty, status: row.status }))
     );
   }
 
@@ -1416,6 +1464,130 @@ export default function ItemsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle>Item detail</CardTitle>
+            <p className="mt-1 text-sm text-neutral-500">See one item&apos;s quantity across a date or date range.</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportItemDetailCSV}
+            disabled={itemDetailItemId === "all" || itemDetailRows.length === 0}
+          >
+            <Download className="size-3.5" /> CSV
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+            <Select value={itemDetailItemId} onValueChange={setItemDetailItemId}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select an item" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Select an item</SelectItem>
+                {menuItems.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}{item.active === false ? " (Archived)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="Item detail start date"
+              type="date"
+              value={itemDetailFrom}
+              onChange={(event) => setItemDetailFrom(event.target.value)}
+            />
+            <Input
+              aria-label="Item detail end date"
+              type="date"
+              value={itemDetailTo}
+              onChange={(event) => setItemDetailTo(event.target.value)}
+            />
+          </div>
+
+          {itemDetailItemId === "all" ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-neutral-500">
+              Select an item to see its quantity breakdown.
+            </div>
+          ) : itemDetailFrom > itemDetailTo ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              The start date must be on or before the end date.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <div className="rounded-xl bg-neutral-50 p-3">
+                  <p className="text-xs text-neutral-500">Total sold</p>
+                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.totalQty.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl bg-neutral-50 p-3">
+                  <p className="text-xs text-neutral-500">Average / logged day</p>
+                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.averageQty.toFixed(1)}</p>
+                </div>
+                <div className="rounded-xl bg-neutral-50 p-3">
+                  <p className="text-xs text-neutral-500">Sales days</p>
+                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.salesDays}</p>
+                </div>
+                <div className="rounded-xl bg-neutral-50 p-3">
+                  <p className="text-xs text-neutral-500">No-sales days</p>
+                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.noSalesDays}</p>
+                </div>
+                <div className="rounded-xl bg-neutral-50 p-3">
+                  <p className="text-xs text-neutral-500">Unlogged days</p>
+                  <p className="mt-1 text-xl font-semibold text-neutral-900">{itemDetailSummary.unloggedDays}</p>
+                </div>
+              </div>
+
+              <ResponsiveContainer width="100%" height={190}>
+                <BarChart data={itemDetailRows.map((row) => ({ label: row.label.slice(0, 6), qty: row.qty }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f1f1" vertical={false} />
+                  <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: 12,
+                      border: "1px solid var(--border)",
+                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
+                      fontSize: 12,
+                    }}
+                    cursor={{ fill: "rgba(0,0,0,0.03)" }}
+                  />
+                  <Bar dataKey="qty" fill="#1f3a2f" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+
+              <div className="max-h-72 overflow-y-auto rounded-xl border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {itemDetailRows.map((row) => (
+                      <TableRow key={row.date}>
+                        <TableCell>{row.label}</TableCell>
+                        <TableCell className="text-right font-medium">{row.qty.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant={row.status === "Sold" ? "default" : row.status === "Not logged" ? "outline" : "secondary"}>
+                            {row.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Main portions navigator + Top sellers */}
       <div className="grid gap-6 lg:grid-cols-2">
