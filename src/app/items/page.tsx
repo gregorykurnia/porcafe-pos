@@ -1013,6 +1013,20 @@ export default function ItemsPage() {
     [dailyQuantities]
   );
 
+  const dailyCategoryTotals = useMemo(() => {
+    const totals = { main: 0, addOn: 0, other: 0 };
+    for (const [itemId, value] of Object.entries(dailyQuantities)) {
+      const quantity = parseFloat(value) || 0;
+      if (quantity <= 0) continue;
+
+      const category = menuItems.find((item) => item.id === itemId)?.category;
+      if (category === "Main") totals.main += quantity;
+      else if (category === "Add On") totals.addOn += quantity;
+      else totals.other += quantity;
+    }
+    return totals;
+  }, [dailyQuantities, menuItems]);
+
   const dailySections = useMemo(() => {
     const knownCategories = new Set<string>(ITEM_CATEGORIES);
     const sections: { category: string; items: MenuItem[] }[] = ITEM_CATEGORIES.map((category) => ({
@@ -1758,8 +1772,24 @@ export default function ItemsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
-                <p className="text-sm text-muted-foreground">Total portions</p>
-                <p className="mt-1 text-4xl font-bold tracking-tight text-foreground tabular-nums">{dailyTotal}</p>
+                <p className="text-sm text-muted-foreground">Main portions</p>
+                <p className="mt-1 text-4xl font-bold tracking-tight text-foreground tabular-nums">{dailyCategoryTotals.main}</p>
+              </div>
+              <div className="border-t border-primary/10 pt-4">
+                <p className="text-sm font-medium text-foreground">Portion split</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-primary/10 bg-surface/70 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Main</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{dailyCategoryTotals.main}</p>
+                  </div>
+                  <div className="rounded-lg border border-primary/10 bg-surface/70 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Add On</p>
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">{dailyCategoryTotals.addOn}</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  All items: {dailyTotal}{dailyCategoryTotals.other > 0 ? ` · Other: ${dailyCategoryTotals.other}` : ""} portions
+                </p>
               </div>
               <div className="border-t border-primary/10 pt-4">
                 <p className="text-sm text-muted-foreground">Close status</p>
