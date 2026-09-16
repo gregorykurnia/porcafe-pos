@@ -53,9 +53,37 @@ export async function deleteSalesEntry(id: string) {
 }
 
 export async function getSalesEntryByDate(date: string): Promise<SalesEntry | null> {
+  const entries = await listSalesEntriesByDate(date);
+  return entries[0] ?? null;
+}
+
+export async function listSalesEntriesByDate(date: string): Promise<SalesEntry[]> {
   const snap = await getDocs(query(salesCol, where("date", "==", date)));
-  const d = snap.docs[0];
-  return d ? { id: d.id, ...(d.data() as Omit<SalesEntry, "id">) } : null;
+  return snap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<SalesEntry, "id">) }))
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// Scanner revenue is submitted as one complete record for a calendar date.
+// Existing records are updated; new scanner records use a deterministic id so
+// repeated submissions cannot create a second Sales document for that date.
+export async function upsertSalesEntryByDate(
+  entry: Omit<SalesEntry, "id" | "total" | "createdAt"> & { id?: string }
+) {
+  const existing = await listSalesEntriesByDate(entry.date);
+  const existingId = existing[0]?.id;
+  if (existingId) {
+    return upsertSalesEntry({ ...entry, id: existingId });
+  }
+
+  const total = entry.bca + entry.cash + entry.soundbox + entry.other;
+  const id = `scanner-${entry.date}`;
+  await setDoc(
+    doc(db, "salesEntries", id),
+    omitUndefined({ ...entry, total, createdAt: Date.now() }),
+    { merge: true }
+  );
+  return id;
 }
 
 // ---------- Monthly Adjustments (bank reconciliation "selisih") ----------

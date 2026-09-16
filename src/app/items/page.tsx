@@ -34,7 +34,7 @@ import {
   upsertItemSale,
   deleteItemSale,
   getSalesEntryByDate,
-  upsertSalesEntry,
+  upsertSalesEntryByDate,
 } from "@/lib/data";
 import type { DailyItemLog, MenuItem, ItemSale } from "@/lib/types";
 import {
@@ -530,8 +530,7 @@ function TicketScanDialog({
   async function confirmRevenue() {
     setSaving(true);
     try {
-      await upsertSalesEntry({
-        id: existingEntryId ?? undefined,
+      await upsertSalesEntryByDate({
         date: scanDate,
         cash: parseFloat(cash) || 0,
         bca: parseFloat(bca) || 0,
