@@ -13,6 +13,7 @@ import {
   type QueryConstraint,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { formatDisplay } from "./dates";
 import type {
   SalesEntry,
   MenuItem,
@@ -89,7 +90,7 @@ export async function upsertSalesEntry(
     const sameDateEntries = await listSalesEntriesByDate(entry.date);
     const conflictingEntry = sameDateEntries.find((candidate) => candidate.id !== entry.id);
     if (conflictingEntry) {
-      throw new Error(`A sales entry already exists for ${entry.date}. Edit that entry instead.`);
+      throw new Error(`A sales entry already exists for ${formatDisplay(entry.date)}. Edit that entry instead.`);
     }
     return writeSalesEntry(entry, entry.id, false);
   }

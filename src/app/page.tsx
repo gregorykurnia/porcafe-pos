@@ -116,14 +116,11 @@ export default function Dashboard() {
   const allAdjustments = adjustments.reduce((a, x) => a + x.amount, 0);
   const monthTotalWithAdjustment = monthTotal + monthAdjustment;
   const allTimeTotalWithAdjustment = allTimeTotal + allAdjustments;
-  const weekRangeLabel = `${format(parseISO(thisWeek), "d MMM")} – ${format(
-    addDays(parseISO(thisWeek), 6),
-    "d MMM"
-  )}`;
+  const weekRangeLabel = formatWeekLabel(thisWeek);
 
   const trend = useMemo(() => {
     const sorted = [...sales].sort((a, b) => a.date.localeCompare(b.date));
-    return sorted.slice(-30).map((s) => ({ date: s.date.slice(5), total: s.total }));
+    return sorted.slice(-30).map((s) => ({ date: formatDayLabel(s.date), total: s.total }));
   }, [sales]);
 
   const paymentMix = useMemo(() => {
@@ -590,7 +587,11 @@ function RevenueBreakdownStat({
 }
 
 function formatDayLabel(dateISO: string): string {
-  return format(parseISO(dateISO), "d MMM");
+  return format(parseISO(dateISO), "EEEE, d MMM");
+}
+
+function formatWeekLabel(dateISO: string): string {
+  return `${formatDayLabel(dateISO)} – ${format(addDays(parseISO(dateISO), 6), "EEEE, d MMM")}`;
 }
 
 function RecapStat({ label, value, sub }: { label: string; value: string; sub?: string }) {

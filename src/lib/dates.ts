@@ -1,4 +1,5 @@
 import {
+  addDays,
   format,
   startOfWeek,
   startOfMonth,
@@ -22,15 +23,24 @@ export function monthKey(dateISO: string): string {
 }
 
 export function formatDisplay(dateISO: string): string {
-  return format(parseISO(dateISO), "d MMM yyyy");
+  return format(parseISO(dateISO), "EEEE, d MMM yyyy");
+}
+
+export function formatDayDisplay(dateISO: string): string {
+  return format(parseISO(dateISO), "EEEE, d MMM");
 }
 
 export function formatWeekDisplay(dateISO: string): string {
-  return `Week of ${format(parseISO(dateISO), "d MMM")}`;
+  const start = parseISO(dateISO);
+  return `Week of ${formatDayDisplay(dateISO)} – ${format(addDays(start, 6), "EEEE, d MMM")}`;
 }
 
 export function formatMonthDisplay(monthISO: string): string {
   return format(parseISO(`${monthISO}-01`), "MMMM yyyy");
+}
+
+export function formatDateTime(timestamp: number): string {
+  return format(new Date(timestamp), "EEEE, d MMM yyyy, HH:mm");
 }
 
 export function idr(n: number): string {

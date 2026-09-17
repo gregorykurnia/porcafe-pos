@@ -25,7 +25,17 @@ import {
   type DuplicateSalesDate,
 } from "@/lib/data";
 import type { SalesEntry, MonthlyAdjustment } from "@/lib/types";
-import { idr, todayISO, weekKey, monthKey, formatDisplay, formatWeekDisplay, formatMonthDisplay } from "@/lib/dates";
+import {
+  idr,
+  todayISO,
+  weekKey,
+  monthKey,
+  formatDisplay,
+  formatDayDisplay,
+  formatWeekDisplay,
+  formatMonthDisplay,
+  formatDateTime,
+} from "@/lib/dates";
 import { downloadCSV } from "@/lib/csv";
 import {
   ResponsiveContainer,
@@ -133,7 +143,12 @@ function EditableRow({
 
   return (
     <TableRow className={saving ? "opacity-50" : undefined}>
-      <TableCell className="p-1">{cellInput("date", "date")}</TableCell>
+      <TableCell className="p-1">
+        {cellInput("date", "date")}
+        <span className="block px-1.5 text-[11px] leading-4 text-muted-foreground">
+          {draft.date ? formatDisplay(draft.date) : formatDisplay(entry.date)}
+        </span>
+      </TableCell>
       <TableCell className="p-1 text-right">{cellInput("bca", "number")}</TableCell>
       <TableCell className="p-1 text-right">{cellInput("cash", "number")}</TableCell>
       <TableCell className="p-1 text-right">{cellInput("soundbox", "number")}</TableCell>
@@ -150,7 +165,7 @@ function EditableRow({
           variant="ghost"
           size="icon-lg"
           onClick={() => onDelete(entry.id)}
-          aria-label={`Delete revenue entry for ${entry.date}`}
+          aria-label={`Delete revenue entry for ${formatDisplay(entry.date)}`}
         >
           <Trash2 className="size-4 text-muted-foreground" />
         </Button>
@@ -339,7 +354,7 @@ function DuplicateDateReviewDialog({
                   BCA {idr(entry.bca)} · Cash {idr(entry.cash)} · Soundbox {idr(entry.soundbox)} · Other {idr(entry.other)}
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Created {new Date(entry.createdAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+                  Created {formatDateTime(entry.createdAt)}
                 </span>
               </span>
             </label>
@@ -499,7 +514,7 @@ export default function SalesPage() {
   }, [grouped]);
 
   const chartData = grouped.slice(-20).map((g) => ({
-    label: period === "day" ? g.label.slice(0, 6) : g.label.replace("Week of ", ""),
+    label: period === "day" ? formatDayDisplay(g.key) : period === "week" ? formatWeekDisplay(g.key).replace("Week of ", "") : g.label,
     total: g.total,
   }));
 
@@ -573,7 +588,7 @@ export default function SalesPage() {
         <CardContent className="space-y-5">
           <div className="space-y-3">
             <div className="space-y-1.5 sm:max-w-xs">
-              <Label htmlFor="date">Date</Label>
+              <Label htmlFor="date">Date <span className="font-normal text-muted-foreground">({formatDisplay(date)})</span></Label>
               <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value || todayISO())} className="h-11 bg-surface sm:h-10" />
             </div>
           </div>

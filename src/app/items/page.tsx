@@ -46,8 +46,10 @@ import {
   weekKey,
   monthKey,
   formatDisplay,
+  formatDayDisplay,
   formatWeekDisplay,
   formatMonthDisplay,
+  formatDateTime,
 } from "@/lib/dates";
 import { isValid as isValidDate } from "date-fns";
 
@@ -70,7 +72,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO, format } from "date-fns";
+import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
@@ -319,7 +321,7 @@ function EditableItemSaleRow({
   if (readOnly) {
     return (
       <TableRow>
-        <TableCell className="font-medium">{sale.date}</TableCell>
+        <TableCell className="font-medium">{formatDisplay(sale.date)}</TableCell>
         <TableCell>{sale.itemName}</TableCell>
         <TableCell className="text-muted-foreground">{category}</TableCell>
         <TableCell className="text-right font-medium tabular-nums">{sale.qty}</TableCell>
@@ -372,6 +374,9 @@ function EditableItemSaleRow({
           }}
           className="h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring"
         />
+        <span className="block px-1.5 text-[11px] leading-4 text-muted-foreground">
+          {fieldValue("date") ? formatDisplay(fieldValue("date")) : "No date selected"}
+        </span>
       </TableCell>
       <TableCell className="p-1">
         <Select
@@ -691,7 +696,7 @@ function TicketScanDialog({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={previewUrl} alt="Ticket preview" className="h-24 w-24 rounded-md object-cover border" />
               <div className="flex-1 space-y-1.5">
-                <Label htmlFor="scan-date">Date</Label>
+                <Label htmlFor="scan-date">Date <span className="font-normal text-muted-foreground">({formatDisplay(scanDate)})</span></Label>
                 <Input
                   id="scan-date"
                   type="date"
@@ -783,7 +788,7 @@ function TicketScanDialog({
             ) : (
               <div className="space-y-2">
                 <div className="rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">
-                  Daily quantities for {scanDate} saved. Now review the payment-method split before it&apos;s logged
+                  Daily quantities for {formatDisplay(scanDate)} saved. Now review the payment-method split before it&apos;s logged
                   to Sales recap.
                 </div>
                 <Label>Revenue (this sheet)</Label>
@@ -1297,7 +1302,7 @@ export default function ItemsPage() {
   }, [filteredSales, period]);
 
   const chartData = grouped.slice(-20).map((g) => ({
-    label: period === "day" ? g.label.slice(0, 6) : g.label.replace("Week of ", ""),
+    label: period === "day" ? formatDayDisplay(g.key) : period === "week" ? formatWeekDisplay(g.key).replace("Week of ", "") : g.label,
     qty: g.qty,
   }));
 
@@ -1623,7 +1628,7 @@ export default function ItemsPage() {
               <ChevronLeft />
             </Button>
             <div className="min-w-36 px-2 text-center">
-              <p className="text-sm font-semibold text-foreground">{format(parseISO(date), "EEE, d MMM yyyy")}</p>
+              <p className="text-sm font-semibold text-foreground">{formatDisplay(date)}</p>
               {date === todayISO() && <p className="text-xs text-muted-foreground">Today</p>}
             </div>
             <Button
@@ -1642,7 +1647,7 @@ export default function ItemsPage() {
             </Button>
             <Input
               id="daily-log-date"
-              aria-label="Choose close date"
+              aria-label={`Choose close date: ${formatDisplay(date)}`}
               type="date"
               value={date}
               onChange={(event) => setDate(event.target.value || todayISO())}
@@ -1815,7 +1820,7 @@ export default function ItemsPage() {
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Last saved</span>
-                  <span className="font-medium text-foreground">{dailyLog ? format(new Date(dailyLog.updatedAt), "d MMM, HH:mm") : "Not saved yet"}</span>
+                  <span className="font-medium text-foreground">{dailyLog ? formatDateTime(dailyLog.updatedAt) : "Not saved yet"}</span>
                 </div>
               </div>
               <Button asChild variant="outline" className="w-full border-primary/20 bg-surface text-primary hover:bg-surface-elevated">
@@ -1930,18 +1935,30 @@ export default function ItemsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              aria-label="Item detail start date"
-              type="date"
-              value={itemDetailFrom}
-              onChange={(event) => setItemDetailFrom(event.target.value)}
-            />
-            <Input
-              aria-label="Item detail end date"
-              type="date"
-              value={itemDetailTo}
-              onChange={(event) => setItemDetailTo(event.target.value)}
-            />
+            <div className="space-y-1">
+              <Label htmlFor="item-detail-from" className="text-xs text-muted-foreground">
+                From <span className="font-normal">({formatDisplay(itemDetailFrom)})</span>
+              </Label>
+              <Input
+                id="item-detail-from"
+                aria-label={`Item detail start date: ${formatDisplay(itemDetailFrom)}`}
+                type="date"
+                value={itemDetailFrom}
+                onChange={(event) => setItemDetailFrom(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="item-detail-to" className="text-xs text-muted-foreground">
+                To <span className="font-normal">({formatDisplay(itemDetailTo)})</span>
+              </Label>
+              <Input
+                id="item-detail-to"
+                aria-label={`Item detail end date: ${formatDisplay(itemDetailTo)}`}
+                type="date"
+                value={itemDetailTo}
+                onChange={(event) => setItemDetailTo(event.target.value)}
+              />
+            </div>
           </div>
 
           {itemDetailItemId === "all" ? (
@@ -1982,7 +1999,7 @@ export default function ItemsPage() {
               </div>
 
               <ResponsiveContainer width="100%" height={190}>
-                <BarChart data={itemDetailRows.map((row) => ({ label: row.label.slice(0, 6), qty: row.qty }))}>
+                <BarChart data={itemDetailRows.map((row) => ({ label: formatDayDisplay(row.date), qty: row.qty }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
                   <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
@@ -2338,18 +2355,30 @@ export default function ItemsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              aria-label="History start date"
-              type="date"
-              value={historyFrom}
-              onChange={(event) => setHistoryFrom(event.target.value)}
-            />
-            <Input
-              aria-label="History end date"
-              type="date"
-              value={historyTo}
-              onChange={(event) => setHistoryTo(event.target.value)}
-            />
+            <div className="space-y-1">
+              <Label htmlFor="history-from" className="text-xs text-muted-foreground">
+                From {historyFrom && <span className="font-normal">({formatDisplay(historyFrom)})</span>}
+              </Label>
+              <Input
+                id="history-from"
+                aria-label={`History start date${historyFrom ? `: ${formatDisplay(historyFrom)}` : ""}`}
+                type="date"
+                value={historyFrom}
+                onChange={(event) => setHistoryFrom(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="history-to" className="text-xs text-muted-foreground">
+                To {historyTo && <span className="font-normal">({formatDisplay(historyTo)})</span>}
+              </Label>
+              <Input
+                id="history-to"
+                aria-label={`History end date${historyTo ? `: ${formatDisplay(historyTo)}` : ""}`}
+                type="date"
+                value={historyTo}
+                onChange={(event) => setHistoryTo(event.target.value)}
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
