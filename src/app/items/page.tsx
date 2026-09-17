@@ -1937,8 +1937,9 @@ export default function ItemsPage() {
             </Select>
             <div className="space-y-1">
               <Label htmlFor="item-detail-from" className="text-xs text-muted-foreground">
-                From <span className="font-normal">({formatDisplay(itemDetailFrom)})</span>
+                From
               </Label>
+              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailFrom)}</p>
               <Input
                 id="item-detail-from"
                 aria-label={`Item detail start date: ${formatDisplay(itemDetailFrom)}`}
@@ -1949,8 +1950,9 @@ export default function ItemsPage() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="item-detail-to" className="text-xs text-muted-foreground">
-                To <span className="font-normal">({formatDisplay(itemDetailTo)})</span>
+                To
               </Label>
+              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailTo)}</p>
               <Input
                 id="item-detail-to"
                 aria-label={`Item detail end date: ${formatDisplay(itemDetailTo)}`}
@@ -2357,8 +2359,9 @@ export default function ItemsPage() {
             </Select>
             <div className="space-y-1">
               <Label htmlFor="history-from" className="text-xs text-muted-foreground">
-                From {historyFrom && <span className="font-normal">({formatDisplay(historyFrom)})</span>}
+                From
               </Label>
+              {historyFrom && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyFrom)}</p>}
               <Input
                 id="history-from"
                 aria-label={`History start date${historyFrom ? `: ${formatDisplay(historyFrom)}` : ""}`}
@@ -2369,8 +2372,9 @@ export default function ItemsPage() {
             </div>
             <div className="space-y-1">
               <Label htmlFor="history-to" className="text-xs text-muted-foreground">
-                To {historyTo && <span className="font-normal">({formatDisplay(historyTo)})</span>}
+                To
               </Label>
+              {historyTo && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyTo)}</p>}
               <Input
                 id="history-to"
                 aria-label={`History end date${historyTo ? `: ${formatDisplay(historyTo)}` : ""}`}
