@@ -1921,25 +1921,25 @@ export default function ItemsPage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem]">
-            <Select value={itemDetailItemId} onValueChange={setItemDetailItemId}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select an item" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Select an item</SelectItem>
-                {menuItems.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}{item.active === false ? " (Archived)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="space-y-1">
-              <Label htmlFor="item-detail-from" className="text-xs text-muted-foreground">
-                From
-              </Label>
-              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailFrom)}</p>
+          <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+            <div className="col-span-2 min-w-0 space-y-1 md:col-span-1">
+              <Label htmlFor="item-detail-item" className="text-xs text-muted-foreground">Item</Label>
+              <Select value={itemDetailItemId} onValueChange={setItemDetailItemId}>
+                <SelectTrigger id="item-detail-item" className="w-full">
+                  <SelectValue placeholder="Select an item" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Select an item</SelectItem>
+                  {menuItems.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}{item.active === false ? " (Archived)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="item-detail-from" className="text-xs text-muted-foreground">From</Label>
               <Input
                 id="item-detail-from"
                 aria-label={`Item detail start date: ${formatDisplay(itemDetailFrom)}`}
@@ -1947,12 +1947,10 @@ export default function ItemsPage() {
                 value={itemDetailFrom}
                 onChange={(event) => setItemDetailFrom(event.target.value)}
               />
+              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailFrom)}</p>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="item-detail-to" className="text-xs text-muted-foreground">
-                To
-              </Label>
-              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailTo)}</p>
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="item-detail-to" className="text-xs text-muted-foreground">To</Label>
               <Input
                 id="item-detail-to"
                 aria-label={`Item detail end date: ${formatDisplay(itemDetailTo)}`}
@@ -1960,6 +1958,7 @@ export default function ItemsPage() {
                 value={itemDetailTo}
                 onChange={(event) => setItemDetailTo(event.target.value)}
               />
+              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailTo)}</p>
             </div>
           </div>
 
@@ -2337,31 +2336,35 @@ export default function ItemsPage() {
             </div>
           )}
 
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem]">
-            <Input
-              aria-label="Search item history"
-              placeholder="Search item or category…"
-              value={historyQuery}
-              onChange={(event) => setHistoryQuery(event.target.value)}
-            />
-            <Select value={historyCategory} onValueChange={setHistoryCategory}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {historyCategories.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {category}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="space-y-1">
-              <Label htmlFor="history-from" className="text-xs text-muted-foreground">
-                From
-              </Label>
-              {historyFrom && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyFrom)}</p>}
+          <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-[minmax(0,1fr)_10rem_10rem_10rem]">
+            <div className="col-span-2 min-w-0 space-y-1 md:col-span-1">
+              <Label htmlFor="history-search" className="text-xs text-muted-foreground">Search</Label>
+              <Input
+                id="history-search"
+                aria-label="Search item history"
+                placeholder="Search item or category…"
+                value={historyQuery}
+                onChange={(event) => setHistoryQuery(event.target.value)}
+              />
+            </div>
+            <div className="col-span-2 min-w-0 space-y-1 md:col-span-1">
+              <Label htmlFor="history-category" className="text-xs text-muted-foreground">Category</Label>
+              <Select value={historyCategory} onValueChange={setHistoryCategory}>
+                <SelectTrigger id="history-category" className="w-full">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {historyCategories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="history-from" className="text-xs text-muted-foreground">From</Label>
               <Input
                 id="history-from"
                 aria-label={`History start date${historyFrom ? `: ${formatDisplay(historyFrom)}` : ""}`}
@@ -2369,12 +2372,10 @@ export default function ItemsPage() {
                 value={historyFrom}
                 onChange={(event) => setHistoryFrom(event.target.value)}
               />
+              {historyFrom && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyFrom)}</p>}
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="history-to" className="text-xs text-muted-foreground">
-                To
-              </Label>
-              {historyTo && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyTo)}</p>}
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor="history-to" className="text-xs text-muted-foreground">To</Label>
               <Input
                 id="history-to"
                 aria-label={`History end date${historyTo ? `: ${formatDisplay(historyTo)}` : ""}`}
@@ -2382,6 +2383,7 @@ export default function ItemsPage() {
                 value={historyTo}
                 onChange={(event) => setHistoryTo(event.target.value)}
               />
+              {historyTo && <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(historyTo)}</p>}
             </div>
           </div>
 
