@@ -75,6 +75,8 @@ import {
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
 import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
+import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
@@ -89,6 +91,34 @@ type MigrationPreview = {
 };
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
+
+function formatQuantity(value: number): string {
+  return value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
+}
+
+const ITEM_WEEKDAY_METRICS: WeekdayMetricOption[] = [
+  {
+    key: "average",
+    label: "Average items",
+    valueLabel: "Average / occurrence",
+    getValue: (row) => row.average,
+    formatValue: formatQuantity,
+  },
+  {
+    key: "total",
+    label: "Total items",
+    valueLabel: "Total recorded",
+    getValue: (row) => row.total,
+    formatValue: formatQuantity,
+  },
+  {
+    key: "records",
+    label: "Item rows",
+    valueLabel: "Rows",
+    getValue: (row) => row.recordCount,
+    formatValue: formatQuantity,
+  },
+];
 
 const DAILY_PAYMENT_METHODS = [
   { key: "cash", label: "Cash", icon: Banknote },
@@ -847,6 +877,9 @@ export default function ItemsPage() {
   const [dailySaving, setDailySaving] = useState(false);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
+  const [weekdayFrom, setWeekdayFrom] = useState("");
+  const [weekdayTo, setWeekdayTo] = useState("");
+  const [weekdayMetric, setWeekdayMetric] = useState("average");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("all");
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("active");
@@ -1287,6 +1320,42 @@ export default function ItemsPage() {
     () => (itemFilter === "all" ? performanceSales : performanceSales.filter((s) => s.itemId === itemFilter)),
     [itemFilter, performanceSales]
   );
+
+  const defaultWeekdayFrom = useMemo(() => {
+    const dates = filteredSales.map((sale) => sale.date).filter(Boolean).sort();
+    return dates[0] ?? todayISO();
+  }, [filteredSales]);
+  const selectedWeekdayFrom = weekdayFrom || defaultWeekdayFrom;
+  const selectedWeekdayTo = weekdayTo || todayISO();
+  const weekdaySummary = useMemo(
+    () => analyzeWeekdayPattern(filteredSales, {
+      from: selectedWeekdayFrom,
+      to: selectedWeekdayTo,
+      getDate: (sale) => sale.date,
+      getValue: (sale) => sale.qty,
+    }),
+    [filteredSales, selectedWeekdayFrom, selectedWeekdayTo]
+  );
+
+  const weekdayTopItems = useMemo(() => {
+    const totalsByWeekday = new Map<number, Map<string, { name: string; qty: number }>>();
+    for (const sale of filteredSales) {
+      if (sale.date < selectedWeekdayFrom || sale.date > selectedWeekdayTo) continue;
+      const index = weekdayIndex(sale.date);
+      if (index === null) continue;
+      const itemTotals = totalsByWeekday.get(index) ?? new Map<string, { name: string; qty: number }>();
+      const current = itemTotals.get(sale.itemId) ?? { name: sale.itemName, qty: 0 };
+      current.qty += sale.qty;
+      itemTotals.set(sale.itemId, current);
+      totalsByWeekday.set(index, itemTotals);
+    }
+
+    return weekdaySummary.rows.map((row) => {
+      const top = [...(totalsByWeekday.get(row.index)?.values() ?? [])]
+        .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name))[0] ?? null;
+      return { weekday: row.label, top };
+    });
+  }, [filteredSales, selectedWeekdayFrom, selectedWeekdayTo, weekdaySummary.rows]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, { key: string; label: string; qty: number }>();
@@ -2197,6 +2266,65 @@ export default function ItemsPage() {
             </ResponsiveContainer>
           )}
           {!loading && <p className="border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {performanceTakeaway}</p>}
+        </CardContent>
+      </Card>
+
+      <WeekdayPatternAnalysis
+        id="items-weekday-pattern"
+        title="Items sold pattern by weekday"
+        description="Compare recorded portions across weekdays to spot recurring patterns in the selected range."
+        rangeDescription="Uses the existing canonical item-performance stream. The data has item rows, not customer transaction IDs."
+        from={selectedWeekdayFrom}
+        to={selectedWeekdayTo}
+        onFromChange={setWeekdayFrom}
+        onToChange={setWeekdayTo}
+        summary={weekdaySummary}
+        metrics={ITEM_WEEKDAY_METRICS}
+        activeMetric={weekdayMetric}
+        onMetricChange={setWeekdayMetric}
+        loading={loading}
+        error={loadError}
+        emptyLabel="No item sales fall in this range. Try widening the dates or log a daily close."
+        totalLabel="Items sold in range"
+        formatTotal={formatQuantity}
+        formatAverage={formatQuantity}
+        recordLabel="Item rows"
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top item by weekday</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">The leading item for each weekday in the same range and item filter.</p>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="rounded-xl border border-border p-5 text-center text-sm text-muted-foreground" aria-live="polite">Loading top items…</p>
+          ) : loadError ? (
+            <p className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center text-sm text-muted-foreground">Top-item analysis is unavailable while the data connection is being restored.</p>
+          ) : weekdaySummary.recordCount === 0 ? (
+            <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No item sales are available for this range.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border" role="region" tabIndex={0} aria-label="Top item by weekday table">
+              <Table className="min-w-[28rem]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Weekday</TableHead>
+                    <TableHead>Top item</TableHead>
+                    <TableHead className="text-right">Portions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {weekdayTopItems.map(({ weekday, top }) => (
+                    <TableRow key={weekday}>
+                      <TableCell className="font-medium">{weekday}</TableCell>
+                      <TableCell>{top?.name ?? <span className="text-muted-foreground">No recorded item sales</span>}</TableCell>
+                      <TableCell className="text-right tabular-nums">{top ? formatQuantity(top.qty) : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
       </div>
