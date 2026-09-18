@@ -1241,12 +1241,16 @@ export default function ItemsPage() {
 
   const performanceSummary = useMemo(() => {
     const itemTotals = new Map<string, { name: string; qty: number }>();
-    const dayTotals = new Map<string, number>();
+    const mainDayTotals = new Map<string, number>();
+    let mainTotalQty = 0;
     for (const sale of performanceSales) {
       const item = itemTotals.get(sale.itemId) ?? { name: sale.itemName, qty: 0 };
       item.qty += sale.qty;
       itemTotals.set(sale.itemId, item);
-      dayTotals.set(sale.date, (dayTotals.get(sale.date) ?? 0) + sale.qty);
+      if ((categoryByItemId.get(sale.itemId) ?? sale.category) === "Main") {
+        mainTotalQty += sale.qty;
+        mainDayTotals.set(sale.date, (mainDayTotals.get(sale.date) ?? 0) + sale.qty);
+      }
     }
 
     const totalQty = performanceSales.reduce((total, sale) => total + sale.qty, 0);
@@ -1255,16 +1259,17 @@ export default function ItemsPage() {
       ...sales.map((sale) => sale.date),
     ]).size;
     const topItem = [...itemTotals.values()].sort((a, b) => b.qty - a.qty)[0] ?? null;
-    const bestDay = [...dayTotals.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+    const bestMainDay = [...mainDayTotals.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
 
     return {
       totalQty,
+      mainTotalQty,
       loggedDays,
-      averageQty: loggedDays ? totalQty / loggedDays : 0,
+      averageMainQty: loggedDays ? mainTotalQty / loggedDays : 0,
       topItem,
-      bestDay,
+      bestMainDay,
     };
-  }, [dailyLogs, performanceSales, sales]);
+  }, [categoryByItemId, dailyLogs, performanceSales, sales]);
 
   const itemDetailRows = useMemo(() => {
     if (itemDetailItemId === "all" || !itemDetailFrom || !itemDetailTo || itemDetailFrom > itemDetailTo) return [];
@@ -1958,16 +1963,16 @@ export default function ItemsPage() {
         </Card>
         <Card size="sm">
           <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Average per day</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Average Main portions per day</p>
             <p className="text-2xl font-semibold tracking-tight text-foreground">
-              {loading ? "…" : performanceSummary.averageQty.toFixed(1)}
+              {loading ? "…" : performanceSummary.averageMainQty.toFixed(1)}
             </p>
             <p className="text-xs text-muted-foreground">
               {loading
                 ? "Loading…"
-                : performanceSummary.bestDay
-                  ? `Best: ${formatDisplay(performanceSummary.bestDay[0])} · ${performanceSummary.bestDay[1].toLocaleString()}`
-                  : "Portions per logged day"}
+                : performanceSummary.bestMainDay
+                  ? `Best Main day: ${formatDisplay(performanceSummary.bestMainDay[0])} · ${performanceSummary.bestMainDay[1].toLocaleString()}`
+                  : "Main portions per logged day"}
             </p>
           </CardContent>
         </Card>
