@@ -5,12 +5,13 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Wallet, UtensilsCrossed } from "lucide-react";
+import { Boxes, LayoutDashboard, Wallet, UtensilsCrossed } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/sales", label: "Sales", icon: Wallet },
   { href: "/items", label: "Daily close", icon: UtensilsCrossed },
+  { href: "/inventory", label: "Inventory", icon: Boxes },
 ];
 
 export function Nav() {

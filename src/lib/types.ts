@@ -56,3 +56,88 @@ export type DailyItemLog = {
   createdAt: number;
   updatedAt: number;
 };
+
+// ---------- Inventory foundation ----------
+
+// Phase 1 deliberately keeps the unit system small and explicit. Quantities
+// are stored in one base unit per material; conversion rules can be added in a
+// later phase once they are backed by an approved business rule.
+export type InventoryUnit = "g" | "ml" | "pcs";
+export type RecipeYieldUnit = InventoryUnit | "portion";
+
+export type InventoryMaterialType =
+  | "raw_ingredient"
+  | "prepared_component"
+  | "packaging"
+  | "other_supply";
+
+export type InventoryReviewStatus = "approved" | "needs-review";
+
+export type InventoryMaterial = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  type: InventoryMaterialType;
+  baseUnit: InventoryUnit;
+  active: boolean;
+  reviewStatus: InventoryReviewStatus;
+  sourceRefs: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type InventoryAliasEntityType =
+  | "menu_item"
+  | "material"
+  | "prepared_component";
+
+export type InventoryAliasMapping = {
+  id: string;
+  sourceLabel: string;
+  normalizedSourceLabel: string;
+  entityType: InventoryAliasEntityType;
+  targetId: string | null;
+  targetName: string | null;
+  status: InventoryReviewStatus;
+  sourceRefs: string[];
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type RecipeTargetType = "menu_item" | "prepared_component";
+export type RecipeVersionStatus = "draft" | "active" | "retired" | "needs-review";
+export type RecipeBasis = "per_portion" | "batch";
+export type RecipeIngredientType = "material" | "component";
+
+export type InventoryRecipeVersion = {
+  id: string;
+  targetType: RecipeTargetType;
+  targetId: string;
+  targetName: string;
+  version: number;
+  status: RecipeVersionStatus;
+  basis: RecipeBasis;
+  effectiveFrom: string | null;
+  yieldQuantity: number | null;
+  yieldUnit: RecipeYieldUnit | null;
+  reviewStatus: InventoryReviewStatus;
+  sourceRefs: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type InventoryRecipeLine = {
+  id: string;
+  recipeId: string;
+  ingredientType: RecipeIngredientType;
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number | null;
+  unit: InventoryUnit | null;
+  sourceRef: string | null;
+  reviewStatus: InventoryReviewStatus;
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+};

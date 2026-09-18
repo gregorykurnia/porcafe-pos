@@ -20,6 +20,10 @@ import type {
   ItemSale,
   MonthlyAdjustment,
   DailyItemLog,
+  InventoryAliasMapping,
+  InventoryMaterial,
+  InventoryRecipeLine,
+  InventoryRecipeVersion,
 } from "./types";
 
 // Firestore rejects `undefined` field values (e.g. an omitted optional field).
@@ -312,4 +316,159 @@ export async function migrateLegacyItemSalesToDailyLogs(options?: {
     rowsMigrated,
     dryRun,
   };
+}
+
+// ---------- Inventory foundation ----------
+// Phase 1 stores only reviewed foundation records. Inventory movements and
+// recipe-consumption events are intentionally not part of this module yet.
+
+const inventoryMaterialsCol = collection(db, "inventoryMaterials");
+const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
+const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
+const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
+
+function mapInventoryMaterial(id: string, data: Record<string, unknown>): InventoryMaterial {
+  return { id, ...(data as Omit<InventoryMaterial, "id">) };
+}
+
+function mapInventoryAlias(id: string, data: Record<string, unknown>): InventoryAliasMapping {
+  return { id, ...(data as Omit<InventoryAliasMapping, "id">) };
+}
+
+function mapInventoryRecipe(id: string, data: Record<string, unknown>): InventoryRecipeVersion {
+  return { id, ...(data as Omit<InventoryRecipeVersion, "id">) };
+}
+
+function mapInventoryRecipeLine(id: string, data: Record<string, unknown>): InventoryRecipeLine {
+  return { id, ...(data as Omit<InventoryRecipeLine, "id">) };
+}
+
+export async function listInventoryMaterials(): Promise<InventoryMaterial[]> {
+  const snap = await getDocs(query(inventoryMaterialsCol, orderBy("name", "asc")));
+  return snap.docs.map((d) => mapInventoryMaterial(d.id, d.data()));
+}
+
+export async function upsertInventoryMaterial(
+  material: Omit<InventoryMaterial, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = material;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+
+  if (inputId) {
+    await setDoc(doc(db, "inventoryMaterials", inputId), omitUndefined(payload), { merge: true });
+    return inputId;
+  }
+
+  const ref = await addDoc(inventoryMaterialsCol, omitUndefined({ ...payload, createdAt: now }));
+  return ref.id;
+}
+
+export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {
+  const snap = await getDocs(query(inventoryAliasesCol, orderBy("sourceLabel", "asc")));
+  return snap.docs.map((d) => mapInventoryAlias(d.id, d.data()));
+}
+
+export async function upsertInventoryAliasMapping(
+  mapping: Omit<InventoryAliasMapping, "id" | "createdAt" | "updatedAt"> & {
+    id: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id, createdAt, ...rest } = mapping;
+  await setDoc(
+    doc(db, "inventoryAliasMappings", id),
+    omitUndefined({ ...rest, updatedAt: now, createdAt: createdAt ?? now }),
+    { merge: true }
+  );
+  return id;
+}
+
+export async function listInventoryRecipeVersions(): Promise<InventoryRecipeVersion[]> {
+  const snap = await getDocs(inventoryRecipesCol);
+  return snap.docs
+    .map((d) => mapInventoryRecipe(d.id, d.data()))
+    .sort((a, b) => a.targetName.localeCompare(b.targetName) || b.version - a.version);
+}
+
+export async function listInventoryRecipeLines(): Promise<InventoryRecipeLine[]> {
+  const snap = await getDocs(inventoryRecipeLinesCol);
+  return snap.docs
+    .map((d) => mapInventoryRecipeLine(d.id, d.data()))
+    .sort((a, b) => a.recipeId.localeCompare(b.recipeId) || a.ingredientName.localeCompare(b.ingredientName));
+}
+
+export async function saveInventoryRecipeVersion(
+  recipe: InventoryRecipeVersion,
+  lines: InventoryRecipeLine[],
+  options?: { deleteLineIds?: string[] }
+) {
+  const batch = writeBatch(db);
+  const now = Date.now();
+  const recipePayload = { ...recipe, updatedAt: now };
+  batch.set(doc(db, "inventoryRecipeVersions", recipe.id), omitUndefined(recipePayload), { merge: true });
+
+  for (const line of lines) {
+    batch.set(
+      doc(db, "inventoryRecipeLines", line.id),
+      omitUndefined({ ...line, recipeId: recipe.id, updatedAt: now }),
+      { merge: true }
+    );
+  }
+
+  for (const lineId of options?.deleteLineIds ?? []) {
+    batch.delete(doc(db, "inventoryRecipeLines", lineId));
+  }
+
+  await batch.commit();
+}
+
+export type InventoryFoundationCommit = {
+  materials: InventoryMaterial[];
+  aliases: InventoryAliasMapping[];
+  recipes: Array<{ recipe: InventoryRecipeVersion; lines: InventoryRecipeLine[] }>;
+};
+
+// The import preview is intentionally committed in one batch. The first
+// rollout is small enough to stay well below Firestore's batch limit and this
+// avoids charging one write round-trip per source row.
+export async function commitInventoryFoundation(input: InventoryFoundationCommit) {
+  const batch = writeBatch(db);
+  const now = Date.now();
+
+  for (const material of input.materials) {
+    batch.set(
+      doc(db, "inventoryMaterials", material.id),
+      omitUndefined({ ...material, updatedAt: now }),
+      { merge: true }
+    );
+  }
+  for (const alias of input.aliases) {
+    batch.set(
+      doc(db, "inventoryAliasMappings", alias.id),
+      omitUndefined({ ...alias, updatedAt: now }),
+      { merge: true }
+    );
+  }
+  for (const { recipe, lines } of input.recipes) {
+    batch.set(
+      doc(db, "inventoryRecipeVersions", recipe.id),
+      omitUndefined({ ...recipe, updatedAt: now }),
+      { merge: true }
+    );
+    for (const line of lines) {
+      batch.set(
+        doc(db, "inventoryRecipeLines", line.id),
+        omitUndefined({ ...line, recipeId: recipe.id, updatedAt: now }),
+        { merge: true }
+      );
+    }
+  }
+
+  await batch.commit();
 }
