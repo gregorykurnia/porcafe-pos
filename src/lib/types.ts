@@ -196,3 +196,60 @@ export type InventoryUsageEvent = {
   goLiveDate: string;
   calculatedAt: number;
 };
+
+// ---------- Inventory ledger ----------
+
+export type InventoryMovementType =
+  | "opening_balance"
+  | "receiving"
+  | "manual_adjustment"
+  | "stock_count"
+  | "waste_spoilage"
+  | "recipe_consumption"
+  | "reversal"
+  | "correction";
+
+// Every stock change is represented as a signed quantity in the material's
+// base unit. Positive values add stock; negative values consume or remove it.
+export type InventoryMovement = {
+  id: string;
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+  movementType: InventoryMovementType;
+  occurredOn: string;
+  reason: string;
+  sourceRef: string;
+  sourceRevision?: number;
+  notes?: string;
+  observedQuantity?: number;
+  balanceBefore?: number;
+  balanceAfter?: number;
+  createdAt: number;
+};
+
+export type InventoryStockSetup = {
+  id: "default";
+  initialized: boolean;
+  openingDate: string | null;
+  materialCount: number;
+  initializedAt: number | null;
+  updatedAt: number;
+};
+
+export type InventoryConsumptionEvent = {
+  id: string;
+  sourceDate: string;
+  sourceDailyLogId: string;
+  sourceRevision: number;
+  sourceStatus: DailyItemLogStatus;
+  status: InventoryUsageStatus;
+  usageFingerprint: string;
+  materialQuantities: Record<string, number>;
+  materialDetails: Record<string, { name: string; unit: InventoryUnit }>;
+  movementIds: string[];
+  replacedSourceRevision: number | null;
+  createdAt: number;
+  updatedAt: number;
+};

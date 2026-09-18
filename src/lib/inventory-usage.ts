@@ -6,6 +6,7 @@ import {
   listMenuItems,
   upsertInventoryUsageEvent,
 } from "./data";
+import { syncInventoryConsumption } from "./inventory-ledger";
 import type {
   DailyItemLog,
   InventoryMaterial,
@@ -518,6 +519,7 @@ export async function calculateAndPersistDailyInventoryUsage(
     calculatedAt: options?.calculatedAt,
   });
   await upsertInventoryUsageEvent(event);
+  await syncInventoryConsumption(event);
   return event;
 }
 

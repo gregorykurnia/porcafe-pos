@@ -10,6 +10,7 @@ import {
   query,
   orderBy,
   where,
+  runTransaction,
   type QueryConstraint,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -25,6 +26,11 @@ import type {
   InventoryRecipeLine,
   InventoryRecipeVersion,
   InventoryUsageEvent,
+  InventoryConsumptionEvent,
+  InventoryMovement,
+  InventoryMovementType,
+  InventoryStockSetup,
+  InventoryUnit,
 } from "./types";
 
 // Firestore rejects `undefined` field values (e.g. an omitted optional field).
@@ -329,6 +335,9 @@ const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
 const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
 const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
 const inventoryUsageEventsCol = collection(db, "inventoryUsageEvents");
+const inventoryMovementsCol = collection(db, "inventoryMovements");
+const inventoryConsumptionEventsCol = collection(db, "inventoryConsumptionEvents");
+const inventoryStockSetupRef = doc(db, "inventoryStockSetup", "default");
 
 function mapInventoryMaterial(id: string, data: Record<string, unknown>): InventoryMaterial {
   return { id, ...(data as Omit<InventoryMaterial, "id">) };
@@ -504,4 +513,332 @@ export async function listInventoryUsageEvents(
 export async function upsertInventoryUsageEvent(event: InventoryUsageEvent) {
   await setDoc(doc(db, "inventoryUsageEvents", event.id), omitUndefined(event));
   return event.id;
+}
+
+// ---------- Inventory ledger ----------
+
+function mapInventoryMovement(id: string, data: Record<string, unknown>): InventoryMovement {
+  return { id, ...(data as Omit<InventoryMovement, "id">) };
+}
+
+function mapInventoryStockSetup(data: Record<string, unknown>): InventoryStockSetup {
+  return { id: "default", ...(data as Omit<InventoryStockSetup, "id">) };
+}
+
+function mapInventoryConsumptionEvent(id: string, data: Record<string, unknown>): InventoryConsumptionEvent {
+  return { id, ...(data as Omit<InventoryConsumptionEvent, "id">) };
+}
+
+export async function getInventoryStockSetup(): Promise<InventoryStockSetup | null> {
+  const snap = await getDoc(inventoryStockSetupRef);
+  return snap.exists() ? mapInventoryStockSetup(snap.data()) : null;
+}
+
+export async function listInventoryMovements(options?: {
+  materialId?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<InventoryMovement[]> {
+  const snap = await getDocs(query(inventoryMovementsCol, orderBy("createdAt", "desc")));
+  return snap.docs
+    .map((d) => mapInventoryMovement(d.id, d.data()))
+    .filter((movement) => {
+      if (options?.materialId && movement.materialId !== options.materialId) return false;
+      if (options?.startDate && movement.occurredOn < options.startDate) return false;
+      if (options?.endDate && movement.occurredOn > options.endDate) return false;
+      return true;
+    });
+}
+
+export async function getInventoryConsumptionEvent(date: string): Promise<InventoryConsumptionEvent | null> {
+  const snap = await getDoc(doc(inventoryConsumptionEventsCol, `consumption-${date}`));
+  return snap.exists() ? mapInventoryConsumptionEvent(snap.id, snap.data()) : null;
+}
+
+function inventoryDocPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "material";
+}
+
+export type InventoryOpeningBalanceInput = {
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+};
+
+// Opening balances are initialized in one transaction. Deterministic movement
+// IDs make a retry safe while the setup document gates the numeric dashboard.
+export async function initializeInventoryOpeningBalances(
+  openingDate: string,
+  balances: InventoryOpeningBalanceInput[]
+): Promise<InventoryStockSetup> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(openingDate)) {
+    throw new Error("Choose a valid opening date.");
+  }
+  if (balances.length === 0) throw new Error("Add at least one material opening balance.");
+
+  const materialIds = new Set<string>();
+  for (const balance of balances) {
+    if (materialIds.has(balance.materialId)) throw new Error("A material appears more than once in opening stock.");
+    materialIds.add(balance.materialId);
+    if (!balance.materialId || !balance.materialName.trim()) throw new Error("Every opening balance needs a material.");
+    if (!Number.isFinite(balance.quantity) || balance.quantity < 0) throw new Error(`Opening stock for ${balance.materialName} must be zero or greater.`);
+  }
+
+  const now = Date.now();
+  const setup: InventoryStockSetup = {
+    id: "default",
+    initialized: true,
+    openingDate,
+    materialCount: balances.length,
+    initializedAt: now,
+    updatedAt: now,
+  };
+
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(inventoryStockSetupRef);
+    if (existing.exists() && (existing.data() as Partial<InventoryStockSetup>).initialized) {
+      throw new Error("Opening stock is already initialized. Use a correction movement instead.");
+    }
+
+    for (const balance of balances) {
+      const movementId = `opening-${inventoryDocPart(balance.materialId)}`;
+      transaction.set(
+        doc(db, "inventoryMovements", movementId),
+        omitUndefined({
+          materialId: balance.materialId,
+          materialName: balance.materialName,
+          unit: balance.unit,
+          quantity: balance.quantity,
+          movementType: "opening_balance" satisfies InventoryMovementType,
+          occurredOn: openingDate,
+          reason: "Opening stock initialization",
+          sourceRef: `opening-balance:${openingDate}:${balance.materialId}`,
+          balanceBefore: 0,
+          balanceAfter: balance.quantity,
+          createdAt: now,
+        }),
+        { merge: true }
+      );
+    }
+    transaction.set(inventoryStockSetupRef, omitUndefined(setup), { merge: true });
+  });
+
+  return setup;
+}
+
+export type InventoryMovementInput = {
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+  movementType: Exclude<InventoryMovementType, "opening_balance" | "recipe_consumption" | "reversal" | "stock_count">;
+  occurredOn: string;
+  reason: string;
+  sourceRef?: string;
+  notes?: string;
+};
+
+function sumInventoryMaterialMovements(movements: InventoryMovement[], materialId: string): number {
+  return movements
+    .filter((movement) => movement.materialId === materialId)
+    .reduce((total, movement) => total + movement.quantity, 0);
+}
+
+export async function createInventoryMovement(input: InventoryMovementInput): Promise<string> {
+  const setup = await getInventoryStockSetup();
+  if (!setup?.initialized) throw new Error("Initialize opening stock before recording manual movements.");
+  if (!input.materialId || !input.materialName.trim()) throw new Error("Choose a material.");
+  if (!Number.isFinite(input.quantity) || input.quantity === 0) throw new Error("Enter a non-zero movement quantity.");
+  if (!input.reason.trim()) throw new Error("Add a reason for this movement.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid movement date.");
+
+  const movements = await listInventoryMovements({ materialId: input.materialId });
+  const balanceBefore = sumInventoryMaterialMovements(movements, input.materialId);
+  const ref = doc(inventoryMovementsCol);
+  await setDoc(
+    ref,
+    omitUndefined({
+      materialId: input.materialId,
+      materialName: input.materialName,
+      unit: input.unit,
+      quantity: input.quantity,
+      movementType: input.movementType,
+      occurredOn: input.occurredOn,
+      reason: input.reason.trim(),
+      sourceRef: input.sourceRef ?? `manual:${ref.id}`,
+      notes: input.notes?.trim(),
+      balanceBefore,
+      balanceAfter: balanceBefore + input.quantity,
+      createdAt: Date.now(),
+    })
+  );
+  return ref.id;
+}
+
+export type InventoryStockCountInput = {
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  observedQuantity: number;
+  occurredOn: string;
+  reason: string;
+};
+
+export async function recordInventoryStockCount(input: InventoryStockCountInput): Promise<string> {
+  const setup = await getInventoryStockSetup();
+  if (!setup?.initialized) throw new Error("Initialize opening stock before recording a stock count.");
+  if (!Number.isFinite(input.observedQuantity) || input.observedQuantity < 0) throw new Error("Stock count must be zero or greater.");
+  if (!input.reason.trim()) throw new Error("Add a reason for this stock count.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid count date.");
+
+  const movements = await listInventoryMovements({ materialId: input.materialId });
+  const balanceBefore = sumInventoryMaterialMovements(movements, input.materialId);
+  const quantity = input.observedQuantity - balanceBefore;
+  const ref = doc(inventoryMovementsCol);
+  await setDoc(
+    ref,
+    omitUndefined({
+      materialId: input.materialId,
+      materialName: input.materialName,
+      unit: input.unit,
+      quantity,
+      movementType: "stock_count" satisfies InventoryMovementType,
+      occurredOn: input.occurredOn,
+      reason: input.reason.trim(),
+      sourceRef: `stock-count:${input.occurredOn}:${ref.id}`,
+      observedQuantity: input.observedQuantity,
+      balanceBefore,
+      balanceAfter: input.observedQuantity,
+      createdAt: Date.now(),
+    })
+  );
+  return ref.id;
+}
+
+export type InventoryConsumptionMaterial = {
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+};
+
+function inventoryUsageFingerprint(event: InventoryUsageEvent): string {
+  return JSON.stringify({
+    sourceRevision: event.sourceRevision,
+    status: event.status,
+    lines: event.lines.map((line) => ({
+      materialId: line.materialId,
+      quantity: line.quantity,
+      unit: line.unit,
+      rootRecipeId: line.rootRecipeId,
+      rootRecipeVersion: line.rootRecipeVersion,
+      sourceRefs: line.sourceRefs,
+    })),
+    issues: event.issues.map((issue) => ({
+      code: issue.code,
+      message: issue.message,
+      menuItemId: issue.menuItemId,
+      recipeId: issue.recipeId,
+      sourceRef: issue.sourceRef,
+    })),
+  });
+}
+
+function inventoryConsumptionApplicationId(sourceDate: string): string {
+  return `${inventoryDocPart(sourceDate)}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function applyInventoryConsumptionEvent(
+  event: InventoryUsageEvent,
+  materials: InventoryConsumptionMaterial[]
+): Promise<{ changed: boolean; movementIds: string[] }> {
+  const consumptionRef = doc(db, "inventoryConsumptionEvents", event.id);
+  const materialDetails = Object.fromEntries(materials.map((material) => [material.materialId, { name: material.materialName, unit: material.unit }]));
+  const materialQuantities = Object.fromEntries(materials.map((material) => [material.materialId, material.quantity]));
+  const fingerprint = inventoryUsageFingerprint(event);
+
+  return runTransaction(db, async (transaction) => {
+    const existingSnapshot = await transaction.get(consumptionRef);
+    const existing = existingSnapshot.exists()
+      ? mapInventoryConsumptionEvent(consumptionRef.id, existingSnapshot.data())
+      : null;
+    if (existing && existing.sourceRevision === event.sourceRevision && existing.status === event.status && existing.usageFingerprint === fingerprint) {
+      return { changed: false, movementIds: existing.movementIds };
+    }
+
+    const applicationId = inventoryConsumptionApplicationId(event.sourceDate);
+    const movementIds: string[] = [];
+    const now = Date.now();
+
+    if (existing?.status === "calculated") {
+      for (const [materialId, quantity] of Object.entries(existing.materialQuantities)) {
+        if (!Number.isFinite(quantity) || quantity <= 0) continue;
+        const detail = existing.materialDetails?.[materialId] ?? materialDetails[materialId];
+        if (!detail) continue;
+        const movementId = `reversal-${inventoryDocPart(event.sourceDate)}-${applicationId}-${inventoryDocPart(materialId)}`;
+        movementIds.push(movementId);
+        transaction.set(
+          doc(db, "inventoryMovements", movementId),
+          omitUndefined({
+            materialId,
+            materialName: detail.name,
+            unit: detail.unit,
+            quantity,
+            movementType: "reversal" satisfies InventoryMovementType,
+            occurredOn: event.sourceDate,
+            reason: `Reverse recipe consumption for ${event.sourceDate} revision ${existing.sourceRevision}`,
+            sourceRef: `consumption:${event.id}:reversal:${existing.sourceRevision}`,
+            sourceRevision: existing.sourceRevision,
+            createdAt: now,
+          }),
+          { merge: true }
+        );
+      }
+    }
+
+    if (event.status === "calculated") {
+      for (const [materialId, quantity] of Object.entries(materialQuantities)) {
+        if (!Number.isFinite(quantity) || quantity <= 0) continue;
+        const detail = materialDetails[materialId];
+        if (!detail) continue;
+        const movementId = `consumption-${inventoryDocPart(event.sourceDate)}-${applicationId}-${inventoryDocPart(materialId)}`;
+        movementIds.push(movementId);
+        transaction.set(
+          doc(db, "inventoryMovements", movementId),
+          omitUndefined({
+            materialId,
+            materialName: detail.name,
+            unit: detail.unit,
+            quantity: -quantity,
+            movementType: "recipe_consumption" satisfies InventoryMovementType,
+            occurredOn: event.sourceDate,
+            reason: `Recipe consumption from daily log ${event.sourceDate}`,
+            sourceRef: `consumption:${event.id}:revision:${event.sourceRevision}`,
+            sourceRevision: event.sourceRevision,
+            createdAt: now,
+          }),
+          { merge: true }
+        );
+      }
+    }
+
+    const nextEvent: InventoryConsumptionEvent = {
+      id: event.id,
+      sourceDate: event.sourceDate,
+      sourceDailyLogId: event.sourceDailyLogId,
+      sourceRevision: event.sourceRevision,
+      sourceStatus: event.sourceStatus,
+      status: event.status,
+      usageFingerprint: fingerprint,
+      materialQuantities: event.status === "calculated" ? materialQuantities : {},
+      materialDetails: event.status === "calculated" ? materialDetails : {},
+      movementIds,
+      replacedSourceRevision: existing?.sourceRevision ?? null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    transaction.set(consumptionRef, omitUndefined(nextEvent), { merge: true });
+    return { changed: true, movementIds };
+  });
 }

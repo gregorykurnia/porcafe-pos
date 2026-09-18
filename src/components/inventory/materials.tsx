@@ -84,8 +84,8 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
         <CardContent className="flex gap-3 p-4">
           <Check className="mt-0.5 size-5 shrink-0 text-warning" />
           <div>
-            <p className="font-medium">Foundation only</p>
-            <p className="mt-1 text-sm text-muted-foreground">Materials define names, base units, and review status. Phase 2 calculates usage only; opening stock, receipts, waste, and stock movements arrive in later phases.</p>
+            <p className="font-medium">Material foundation</p>
+            <p className="mt-1 text-sm text-muted-foreground">Materials define names, base units, and review status. Initialize opening stock in the Stock tab before recording manual movements or relying on numeric balances.</p>
           </div>
         </CardContent>
       </Card>

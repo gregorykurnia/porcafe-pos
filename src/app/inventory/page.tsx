@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Loader2 } from "lucide-react";
+import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Loader2, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +9,7 @@ import { ImportReview } from "@/components/inventory/import-review";
 import { Materials } from "@/components/inventory/materials";
 import { Recipes } from "@/components/inventory/recipes";
 import { UsageRecap } from "@/components/inventory/usage-recap";
+import { StockDashboard } from "@/components/inventory/stock-dashboard";
 import {
   listInventoryAliasMappings,
   listInventoryMaterials,
@@ -24,7 +25,7 @@ import type {
   MenuItem,
 } from "@/lib/types";
 
-type InventoryTab = "usage" | "import" | "materials" | "recipes";
+type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes";
 
 export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<InventoryTab>("usage");
@@ -70,15 +71,15 @@ export default function InventoryPage() {
         <div>
           <div className="flex items-center gap-2 text-sm text-primary/65"><Boxes className="size-4" />Inventory foundation</div>
           <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">Inventory foundation & usage</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Review the recipe foundation and monitor calculated material usage from new daily logs. Stock balances and inventory movements remain disabled until Phase 3.</p>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning.</p>
         </div>
-        <Badge variant="outline">Phase 2 · Usage only</Badge>
+        <Badge variant="outline">Phase 3 · Ledger</Badge>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><FileSpreadsheet className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Source preview</p><p className="font-semibold">Rows 1–75 only</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><BookOpen className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Recipe versions</p><p className="font-semibold tabular-nums">{recipes.length}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><AlertTriangle className="size-5 text-warning" /><div><p className="text-xs text-muted-foreground">Stock balance</p><p className="font-semibold">Uninitialized</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><AlertTriangle className="size-5 text-warning" /><div><p className="text-xs text-muted-foreground">Stock balance</p><p className="font-semibold">Opening stock gated</p></div></CardContent></Card>
       </div>
 
       {loading ? (
@@ -88,11 +89,13 @@ export default function InventoryPage() {
       ) : (
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as InventoryTab)}>
           <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="stock"><Scale className="size-4" />Stock</TabsTrigger>
             <TabsTrigger value="usage"><BookOpen className="size-4" />Usage recap</TabsTrigger>
             <TabsTrigger value="import"><FileSpreadsheet className="size-4" />Import review</TabsTrigger>
             <TabsTrigger value="materials"><Boxes className="size-4" />Materials</TabsTrigger>
             <TabsTrigger value="recipes"><BookOpen className="size-4" />Recipes</TabsTrigger>
           </TabsList>
+          <TabsContent value="stock" className="mt-5"><StockDashboard materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>
           <TabsContent value="import" className="mt-5"><ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
           <TabsContent value="materials" className="mt-5"><Materials materials={materials} onChanged={refresh} /></TabsContent>

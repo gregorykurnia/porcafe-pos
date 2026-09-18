@@ -76,9 +76,9 @@ export function UsageRecap() {
         <CardContent className="flex gap-3 p-4">
           <Calculator className="mt-0.5 size-5 shrink-0 text-info" />
           <div>
-            <p className="font-medium">Usage calculation only</p>
+            <p className="font-medium">Usage calculation and ledger source</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. This recap does not change stock balances, read legacy item sales, or backfill older dates.
+              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Approved calculations also create idempotent recipe-consumption movements; legacy item sales are never read or backfilled.
             </p>
           </div>
         </CardContent>
@@ -140,7 +140,7 @@ export function UsageRecap() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Material totals</CardTitle><CardDescription>Aggregated from calculated usage events in the selected range. No stock balance is implied.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Material totals</CardTitle><CardDescription>Aggregated from calculated usage events in the selected range. Open Stock to see the resulting ledger balance.</CardDescription></CardHeader>
         <CardContent>
           {materialSummary.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No calculated material lines yet.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Calculated usage</TableHead></TableRow></TableHeader><TableBody>{materialSummary.map((material) => <TableRow key={`${material.materialId}:${material.unit}`}><TableCell className="font-medium">{material.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(material.quantity)} {material.unit}</TableCell></TableRow>)}</TableBody></Table>}
         </CardContent>
