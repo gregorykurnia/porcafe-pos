@@ -99,14 +99,14 @@ function formatQuantity(value: number): string {
 const ITEM_WEEKDAY_METRICS: WeekdayMetricOption[] = [
   {
     key: "average",
-    label: "Average items",
+    label: "Average Main portions",
     valueLabel: "Average / occurrence",
     getValue: (row) => row.average,
     formatValue: formatQuantity,
   },
   {
     key: "total",
-    label: "Total items",
+    label: "Total Main portions",
     valueLabel: "Total recorded",
     getValue: (row) => row.total,
     formatValue: formatQuantity,
@@ -1321,29 +1321,34 @@ export default function ItemsPage() {
     [itemFilter, performanceSales]
   );
 
+  const weekdaySales = useMemo(
+    () => filteredSales.filter((sale) => (categoryByItemId.get(sale.itemId) ?? sale.category) === "Main"),
+    [categoryByItemId, filteredSales]
+  );
+
   const defaultWeekdayFrom = useMemo(() => {
-    const dates = filteredSales.map((sale) => sale.date).filter(Boolean).sort();
+    const dates = weekdaySales.map((sale) => sale.date).filter(Boolean).sort();
     return dates[0] ?? todayISO();
-  }, [filteredSales]);
+  }, [weekdaySales]);
   const defaultWeekdayTo = useMemo(() => {
-    const dates = filteredSales.map((sale) => sale.date).filter(Boolean).sort();
+    const dates = weekdaySales.map((sale) => sale.date).filter(Boolean).sort();
     return dates[dates.length - 1] ?? todayISO();
-  }, [filteredSales]);
+  }, [weekdaySales]);
   const selectedWeekdayFrom = weekdayFrom || defaultWeekdayFrom;
   const selectedWeekdayTo = weekdayTo || defaultWeekdayTo;
   const weekdaySummary = useMemo(
-    () => analyzeWeekdayPattern(filteredSales, {
+    () => analyzeWeekdayPattern(weekdaySales, {
       from: selectedWeekdayFrom,
       to: selectedWeekdayTo,
       getDate: (sale) => sale.date,
       getValue: (sale) => sale.qty,
     }),
-    [filteredSales, selectedWeekdayFrom, selectedWeekdayTo]
+    [selectedWeekdayFrom, selectedWeekdayTo, weekdaySales]
   );
 
   const weekdayTopItems = useMemo(() => {
     const totalsByWeekday = new Map<number, Map<string, { name: string; qty: number }>>();
-    for (const sale of filteredSales) {
+    for (const sale of weekdaySales) {
       if (sale.date < selectedWeekdayFrom || sale.date > selectedWeekdayTo) continue;
       const index = weekdayIndex(sale.date);
       if (index === null) continue;
@@ -1359,7 +1364,7 @@ export default function ItemsPage() {
         .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name))[0] ?? null;
       return { weekday: row.label, top };
     });
-  }, [filteredSales, selectedWeekdayFrom, selectedWeekdayTo, weekdaySummary.rows]);
+  }, [selectedWeekdayFrom, selectedWeekdayTo, weekdaySales, weekdaySummary.rows]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, { key: string; label: string; qty: number }>();
@@ -2275,9 +2280,9 @@ export default function ItemsPage() {
 
       <WeekdayPatternAnalysis
         id="items-weekday-pattern"
-        title="Items sold pattern by weekday"
-        description="Compare recorded portions across weekdays to spot recurring patterns in the selected range."
-        rangeDescription="Uses the existing canonical item-performance stream. The data has item rows, not customer transaction IDs."
+        title="Main portions sold by weekday"
+        description="Compare recorded Main portions across weekdays to spot recurring patterns in the selected range."
+        rangeDescription="Uses the existing canonical Main-item performance stream. Add Ons are excluded; the data has item rows, not customer transaction IDs."
         from={selectedWeekdayFrom}
         to={selectedWeekdayTo}
         onFromChange={setWeekdayFrom}
@@ -2288,17 +2293,17 @@ export default function ItemsPage() {
         onMetricChange={setWeekdayMetric}
         loading={loading}
         error={loadError}
-        emptyLabel="No item sales fall in this range. Try widening the dates or log a daily close."
-        totalLabel="Items sold in range"
+        emptyLabel="No Main portions fall in this range. Try widening the dates or log a daily close."
+        totalLabel="Main portions in range"
         formatTotal={formatQuantity}
         formatAverage={formatQuantity}
-        recordLabel="Item rows"
+        recordLabel="Main item rows"
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Top item by weekday</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">The leading item for each weekday in the same range and item filter.</p>
+          <CardTitle>Top Main item by weekday</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">The leading Main item for each weekday in the same range and item filter.</p>
         </CardHeader>
         <CardContent>
           {loading ? (
