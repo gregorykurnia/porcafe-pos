@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
@@ -48,6 +48,8 @@ import {
 } from "recharts";
 import { Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
+import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
+import { analyzeWeekdayPattern } from "@/lib/weekday-analysis";
 import {
   Dialog,
   DialogContent,
@@ -65,6 +67,30 @@ type SortDir = "asc" | "desc";
 
 type EditableField = "date" | "bca" | "cash" | "soundbox" | "other" | "note";
 type Draft = Partial<Record<EditableField, string>>;
+
+const SALES_WEEKDAY_METRICS: WeekdayMetricOption[] = [
+  {
+    key: "average",
+    label: "Average sales",
+    valueLabel: "Average / occurrence",
+    getValue: (row) => row.average,
+    formatValue: idr,
+  },
+  {
+    key: "total",
+    label: "Total sales",
+    valueLabel: "Total recorded",
+    getValue: (row) => row.total,
+    formatValue: idr,
+  },
+  {
+    key: "records",
+    label: "Sales entries",
+    valueLabel: "Entries",
+    getValue: (row) => row.recordCount,
+    formatValue: (value) => value.toLocaleString(),
+  },
+];
 
 function EditableRow({
   entry,
@@ -392,6 +418,9 @@ export default function SalesPage() {
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [weekdayFrom, setWeekdayFrom] = useState("");
+  const [weekdayTo, setWeekdayTo] = useState("");
+  const [weekdayMetric, setWeekdayMetric] = useState("average");
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -561,6 +590,22 @@ export default function SalesPage() {
   );
 
   const duplicateSalesDates = useMemo(() => findDuplicateSalesDates(entries), [entries]);
+
+  const defaultWeekdayFrom = useMemo(() => {
+    const dates = entries.map((entry) => entry.date).filter(Boolean).sort();
+    return dates[0] ?? todayISO();
+  }, [entries]);
+  const selectedWeekdayFrom = weekdayFrom || defaultWeekdayFrom;
+  const selectedWeekdayTo = weekdayTo || todayISO();
+  const weekdaySummary = useMemo(
+    () => analyzeWeekdayPattern(entries, {
+      from: selectedWeekdayFrom,
+      to: selectedWeekdayTo,
+      getDate: (entry) => entry.date,
+      getValue: (entry) => entry.total,
+    }),
+    [entries, selectedWeekdayFrom, selectedWeekdayTo]
+  );
 
   function exportCSV() {
     downloadCSV(
@@ -757,6 +802,28 @@ export default function SalesPage() {
           )}
         </CardContent>
       </Card>
+
+      <WeekdayPatternAnalysis
+        id="sales-weekday-pattern"
+        title="Sales pattern by weekday"
+        description="Compare recorded revenue across weekdays to spot recurring patterns in the selected range."
+        rangeDescription="Recorded sales only; monthly reconciliation adjustments are excluded."
+        from={selectedWeekdayFrom}
+        to={selectedWeekdayTo}
+        onFromChange={setWeekdayFrom}
+        onToChange={setWeekdayTo}
+        summary={weekdaySummary}
+        metrics={SALES_WEEKDAY_METRICS}
+        activeMetric={weekdayMetric}
+        onMetricChange={setWeekdayMetric}
+        loading={loading}
+        error={loadError}
+        emptyLabel="No recorded revenue entries fall in this range. Try widening the dates or add an entry."
+        totalLabel="Recorded sales in range"
+        formatTotal={idr}
+        formatAverage={idr}
+        recordLabel="Sales entries"
+      />
 
       {/* History */}
       <Card id="sales-history">
