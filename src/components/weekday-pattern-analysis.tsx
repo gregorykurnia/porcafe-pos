@@ -59,10 +59,16 @@ function patternTakeaway(
   }
 
   if (summary.best.key === summary.weakest.key) {
-    return `${summary.best.label} is the only weekday with recorded data, averaging ${formatAverage(summary.best.average)} per calendar occurrence.`;
+    return `${summary.best.label} is the only weekday with recorded data, averaging ${formatAverage(summary.best.average)} per calendar occurrence.${sampleNote(summary)}`;
   }
 
-  return `${summary.best.label} leads at ${formatAverage(summary.best.average)} per calendar occurrence. ${summary.weakest.label} is lowest among weekdays with recorded data at ${formatAverage(summary.weakest.average)}.`;
+  return `${summary.best.label} leads at ${formatAverage(summary.best.average)} per calendar occurrence. ${summary.weakest.label} is lowest among weekdays with recorded data at ${formatAverage(summary.weakest.average)}.${sampleNote(summary)}`;
+}
+
+function sampleNote(summary: WeekdayPatternSummary): string {
+  return summary.observedDays < 3
+    ? ` Early signal only: this range contains ${summary.observedDays} observed day${summary.observedDays === 1 ? "" : "s"}.`
+    : "";
 }
 
 export function WeekdayPatternAnalysis({

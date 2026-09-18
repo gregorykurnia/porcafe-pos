@@ -1325,8 +1325,12 @@ export default function ItemsPage() {
     const dates = filteredSales.map((sale) => sale.date).filter(Boolean).sort();
     return dates[0] ?? todayISO();
   }, [filteredSales]);
+  const defaultWeekdayTo = useMemo(() => {
+    const dates = filteredSales.map((sale) => sale.date).filter(Boolean).sort();
+    return dates[dates.length - 1] ?? todayISO();
+  }, [filteredSales]);
   const selectedWeekdayFrom = weekdayFrom || defaultWeekdayFrom;
-  const selectedWeekdayTo = weekdayTo || todayISO();
+  const selectedWeekdayTo = weekdayTo || defaultWeekdayTo;
   const weekdaySummary = useMemo(
     () => analyzeWeekdayPattern(filteredSales, {
       from: selectedWeekdayFrom,
