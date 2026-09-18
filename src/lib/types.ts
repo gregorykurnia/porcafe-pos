@@ -141,3 +141,58 @@ export type InventoryRecipeLine = {
   createdAt: number;
   updatedAt: number;
 };
+
+// ---------- Inventory usage calculation ----------
+
+export type InventoryUsageStatus = "calculated" | "needs-review" | "no-sales";
+
+export type InventoryUsageIssueCode =
+  | "missing-menu-item"
+  | "missing-recipe"
+  | "recipe-not-ready"
+  | "missing-mapping"
+  | "missing-component-basis"
+  | "unit-mismatch"
+  | "invalid-quantity"
+  | "recipe-cycle";
+
+export type InventoryUsageIssue = {
+  code: InventoryUsageIssueCode;
+  message: string;
+  menuItemId?: string;
+  menuItemName?: string;
+  recipeId?: string;
+  sourceRef?: string | null;
+};
+
+// A usage line is already expressed in the material's base unit. The path and
+// source refs keep the calculation auditable without creating stock movements.
+export type InventoryUsageLine = {
+  id: string;
+  menuItemId: string;
+  menuItemName: string;
+  portionQuantity: number;
+  materialId: string;
+  materialName: string;
+  quantity: number;
+  unit: InventoryUnit;
+  rootRecipeId: string;
+  rootRecipeVersion: number;
+  recipePath: string[];
+  sourceRefs: string[];
+};
+
+export type InventoryUsageEvent = {
+  id: string; // = usage-{sourceDate}
+  sourceDate: string;
+  sourceDailyLogId: string;
+  sourceRevision: number;
+  sourceStatus: DailyItemLogStatus;
+  status: InventoryUsageStatus;
+  totalPortions: number;
+  lines: InventoryUsageLine[];
+  issues: InventoryUsageIssue[];
+  recipeIds: string[];
+  goLiveDate: string;
+  calculatedAt: number;
+};

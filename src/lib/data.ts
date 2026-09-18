@@ -24,6 +24,7 @@ import type {
   InventoryMaterial,
   InventoryRecipeLine,
   InventoryRecipeVersion,
+  InventoryUsageEvent,
 } from "./types";
 
 // Firestore rejects `undefined` field values (e.g. an omitted optional field).
@@ -211,12 +212,13 @@ export async function upsertDailyItemLog(
   log: Omit<DailyItemLog, "id" | "createdAt" | "updatedAt"> & {
     id?: string;
     createdAt?: number;
+    updatedAt?: number;
   }
 ) {
   const id = log.date;
   const now = Date.now();
-  const { id: inputId, createdAt, ...rest } = log;
-  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  const { id: inputId, createdAt, updatedAt, ...rest } = log;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: updatedAt ?? now };
 
   // Preserve createdAt on updates through merge. New logs receive it without
   // requiring an extra read.
@@ -318,14 +320,15 @@ export async function migrateLegacyItemSalesToDailyLogs(options?: {
   };
 }
 
-// ---------- Inventory foundation ----------
-// Phase 1 stores only reviewed foundation records. Inventory movements and
-// recipe-consumption events are intentionally not part of this module yet.
+// ---------- Inventory foundation and usage ----------
+// Phase 1 stores reviewed foundation records. Phase 2 adds calculated usage
+// events only; these records never mutate stock balances or legacy sales data.
 
 const inventoryMaterialsCol = collection(db, "inventoryMaterials");
 const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
 const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
 const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
+const inventoryUsageEventsCol = collection(db, "inventoryUsageEvents");
 
 function mapInventoryMaterial(id: string, data: Record<string, unknown>): InventoryMaterial {
   return { id, ...(data as Omit<InventoryMaterial, "id">) };
@@ -471,4 +474,34 @@ export async function commitInventoryFoundation(input: InventoryFoundationCommit
   }
 
   await batch.commit();
+}
+
+function mapInventoryUsageEvent(id: string, data: Record<string, unknown>): InventoryUsageEvent {
+  return { id, ...(data as Omit<InventoryUsageEvent, "id">) };
+}
+
+export async function getInventoryUsageEvent(date: string): Promise<InventoryUsageEvent | null> {
+  const snap = await getDoc(doc(db, "inventoryUsageEvents", `usage-${date}`));
+  return snap.exists() ? mapInventoryUsageEvent(snap.id, snap.data()) : null;
+}
+
+export async function listInventoryUsageEvents(
+  startDate?: string,
+  endDate?: string
+): Promise<InventoryUsageEvent[]> {
+  const constraints: QueryConstraint[] = [];
+  if (startDate) constraints.push(where("sourceDate", ">=", startDate));
+  if (endDate) constraints.push(where("sourceDate", "<=", endDate));
+  constraints.push(orderBy("sourceDate", "desc"));
+
+  const snap = await getDocs(query(inventoryUsageEventsCol, ...constraints));
+  return snap.docs.map((d) => mapInventoryUsageEvent(d.id, d.data()));
+}
+
+// Replacement semantics are intentional. The date-derived document ID means
+// recalculating a saved day replaces the prior calculation instead of adding a
+// second event. This is a usage audit record, not an inventory movement.
+export async function upsertInventoryUsageEvent(event: InventoryUsageEvent) {
+  await setDoc(doc(db, "inventoryUsageEvents", event.id), omitUndefined(event));
+  return event.id;
 }

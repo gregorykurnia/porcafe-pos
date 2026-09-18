@@ -77,6 +77,7 @@ import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, T
 import { toast } from "sonner";
 import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
 import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
+import { calculateAndPersistDailyInventoryUsage } from "@/lib/inventory-usage";
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
@@ -91,6 +92,20 @@ type MigrationPreview = {
 };
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
+
+async function calculateSavedDailyUsage(log: DailyItemLog) {
+  try {
+    const event = await calculateAndPersistDailyInventoryUsage(log);
+    if (event?.status === "needs-review") {
+      toast.warning("Day saved, but inventory usage needs recipe or mapping review.");
+    }
+    return event;
+  } catch (error) {
+    console.error("Failed to calculate daily inventory usage:", error);
+    toast.warning("Day saved, but the inventory usage recap could not be refreshed.");
+    return null;
+  }
+}
 
 function formatQuantity(value: number): string {
   return value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
@@ -611,15 +626,18 @@ function TicketScanDialog({
       // The daily log is the canonical scanner output. Saving by date makes a
       // rescan idempotent and replaces the complete quantity map for that sheet.
       const existingDailyLog = await getDailyItemLog(scanDate);
-      await upsertDailyItemLog({
-        id: existingDailyLog?.id,
+      const savedDailyLog: DailyItemLog = {
+        id: scanDate,
         date: scanDate,
         quantities,
         totalQty: Object.values(quantities).reduce((total, value) => total + value, 0),
         status: "complete",
         source: "scan",
-        createdAt: existingDailyLog?.createdAt,
-      });
+        createdAt: existingDailyLog?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      };
+      await upsertDailyItemLog(savedDailyLog);
+      await calculateSavedDailyUsage(savedDailyLog);
 
       // Keep the legacy collection mirrored for older consumers. A confirmed
       // rescan is replacement semantics: stale rows and duplicate item rows
@@ -1149,6 +1167,7 @@ export default function ItemsPage() {
     setDailySaving(true);
     try {
       await upsertDailyItemLog(savedLog);
+      await calculateSavedDailyUsage(savedLog);
       setDailyLog(savedLog);
       setDailyLogs((current) => [savedLog, ...current.filter((log) => log.date !== date)].sort((a, b) => b.date.localeCompare(a.date)));
       setDailyQuantities(

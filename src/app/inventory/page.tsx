@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ImportReview } from "@/components/inventory/import-review";
 import { Materials } from "@/components/inventory/materials";
 import { Recipes } from "@/components/inventory/recipes";
+import { UsageRecap } from "@/components/inventory/usage-recap";
 import {
   listInventoryAliasMappings,
   listInventoryMaterials,
@@ -23,10 +24,10 @@ import type {
   MenuItem,
 } from "@/lib/types";
 
-type InventoryTab = "import" | "materials" | "recipes";
+type InventoryTab = "usage" | "import" | "materials" | "recipes";
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<InventoryTab>("import");
+  const [activeTab, setActiveTab] = useState<InventoryTab>("usage");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [aliases, setAliases] = useState<InventoryAliasMapping[]>([]);
@@ -68,10 +69,10 @@ export default function InventoryPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-primary/65"><Boxes className="size-4" />Inventory foundation</div>
-          <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">Recipes & materials</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Build the reviewed material and recipe foundation first. Stock balances and usage calculations stay disabled until later rollout phases.</p>
+          <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">Inventory foundation & usage</h1>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Review the recipe foundation and monitor calculated material usage from new daily logs. Stock balances and inventory movements remain disabled until Phase 3.</p>
         </div>
-        <Badge variant="outline">Phase 1 · No deductions</Badge>
+        <Badge variant="outline">Phase 2 · Usage only</Badge>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -87,10 +88,12 @@ export default function InventoryPage() {
       ) : (
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as InventoryTab)}>
           <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="usage"><BookOpen className="size-4" />Usage recap</TabsTrigger>
             <TabsTrigger value="import"><FileSpreadsheet className="size-4" />Import review</TabsTrigger>
             <TabsTrigger value="materials"><Boxes className="size-4" />Materials</TabsTrigger>
             <TabsTrigger value="recipes"><BookOpen className="size-4" />Recipes</TabsTrigger>
           </TabsList>
+          <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>
           <TabsContent value="import" className="mt-5"><ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
           <TabsContent value="materials" className="mt-5"><Materials materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="recipes" className="mt-5"><Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>

@@ -85,7 +85,7 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
           <Check className="mt-0.5 size-5 shrink-0 text-warning" />
           <div>
             <p className="font-medium">Foundation only</p>
-            <p className="mt-1 text-sm text-muted-foreground">Materials define names, base units, and review status. Opening stock, receipts, waste, and recipe consumption arrive in later phases.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Materials define names, base units, and review status. Phase 2 calculates usage only; opening stock, receipts, waste, and stock movements arrive in later phases.</p>
           </div>
         </CardContent>
       </Card>
