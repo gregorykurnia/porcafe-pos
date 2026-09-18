@@ -38,6 +38,8 @@ type WeekdayPatternAnalysisProps = {
   formatTotal: (value: number) => string;
   formatAverage: (value: number) => string;
   recordLabel: string;
+  averageBasis?: "calendar" | "observed";
+  occurrenceLabel?: string;
   children?: ReactNode;
 };
 
@@ -52,17 +54,19 @@ function rangeLabel(summary: WeekdayPatternSummary): string {
 
 function patternTakeaway(
   summary: WeekdayPatternSummary,
-  formatAverage: (value: number) => string
+  formatAverage: (value: number) => string,
+  averageBasis: "calendar" | "observed"
 ): string {
+  const unit = averageBasis === "observed" ? "observed selling day" : "calendar occurrence";
   if (summary.recordCount === 0 || !summary.best || !summary.weakest) {
     return "No recorded data is available for this range yet.";
   }
 
   if (summary.best.key === summary.weakest.key) {
-    return `${summary.best.label} is the only weekday with recorded data, averaging ${formatAverage(summary.best.average)} per calendar occurrence.${sampleNote(summary)}`;
+    return `${summary.best.label} is the only weekday with recorded data, averaging ${formatAverage(summary.best.average)} per ${unit}.${sampleNote(summary)}`;
   }
 
-  return `${summary.best.label} leads at ${formatAverage(summary.best.average)} per calendar occurrence. ${summary.weakest.label} is lowest among weekdays with recorded data at ${formatAverage(summary.weakest.average)}.${sampleNote(summary)}`;
+  return `${summary.best.label} leads at ${formatAverage(summary.best.average)} per ${unit}. ${summary.weakest.label} is lowest among weekdays with recorded data at ${formatAverage(summary.weakest.average)}.${sampleNote(summary)}`;
 }
 
 function sampleNote(summary: WeekdayPatternSummary): string {
@@ -91,6 +95,8 @@ export function WeekdayPatternAnalysis({
   formatTotal,
   formatAverage,
   recordLabel,
+  averageBasis = "calendar",
+  occurrenceLabel = "Occurrences",
   children,
 }: WeekdayPatternAnalysisProps) {
   const selectedMetric = metrics.find((metric) => metric.key === activeMetric) ?? metrics[0];
@@ -189,7 +195,7 @@ export function WeekdayPatternAnalysis({
 
             <div className="rounded-xl border border-warm-accent bg-warm-accent/45 p-3 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">Pattern read:</span>{" "}
-              {patternTakeaway(summary, formatAverage)}
+              {patternTakeaway(summary, formatAverage, averageBasis)}
             </div>
 
             <div className="h-[240px] w-full" aria-label={`${title} chart`}>
@@ -228,7 +234,7 @@ export function WeekdayPatternAnalysis({
                     <TableHead className="text-right">{selectedMetric.valueLabel}</TableHead>
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead className="text-right">Observed days</TableHead>
-                    <TableHead className="text-right">Occurrences</TableHead>
+                    <TableHead className="text-right">{occurrenceLabel}</TableHead>
                     <TableHead className="text-right">{recordLabel}</TableHead>
                     <TableHead className="text-right">Share</TableHead>
                   </TableRow>
@@ -250,7 +256,11 @@ export function WeekdayPatternAnalysis({
             </div>
 
             <p className="border-t border-border pt-3 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">How to read this:</span> averages use all calendar occurrences in the selected range, including weekdays with no recorded row. Use observed days and records to judge data coverage.
+              <span className="font-medium text-foreground">How to read this:</span>{" "}
+              {averageBasis === "observed"
+                ? "averages use observed selling days only; weekdays with no recorded row are excluded."
+                : "averages use all calendar occurrences in the selected range, including weekdays with no recorded row."}{" "}
+              Use observed days and records to judge data coverage.
             </p>
           </>
         )}

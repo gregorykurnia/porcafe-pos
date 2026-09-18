@@ -31,6 +31,7 @@ export type WeekdayPatternOptions<T> = {
   to: string;
   getDate: (record: T) => string;
   getValue: (record: T) => number;
+  occurrenceMode?: "calendar" | "observed";
 };
 
 export const WEEKDAY_DEFINITIONS: WeekdayDefinition[] = [
@@ -85,6 +86,7 @@ export function analyzeWeekdayPattern<T>(
 ): WeekdayPatternSummary {
   const fromTimestamp = dateToUTCMillis(options.from);
   const toTimestamp = dateToUTCMillis(options.to);
+  const occurrenceMode = options.occurrenceMode ?? "calendar";
   const rowsByIndex = new Map<number, WeekdayPatternRow>();
   const observedDatesByIndex = new Map<number, Set<string>>();
 
@@ -117,10 +119,12 @@ export function analyzeWeekdayPattern<T>(
 
   const rangeDays = Math.floor((toTimestamp - fromTimestamp) / DAY_MS) + 1;
 
-  for (let timestamp = fromTimestamp; timestamp <= toTimestamp; timestamp += DAY_MS) {
-    const index = new Date(timestamp).getUTCDay();
-    const row = rowsByIndex.get(index)!;
-    row.occurrences += 1;
+  if (occurrenceMode === "calendar") {
+    for (let timestamp = fromTimestamp; timestamp <= toTimestamp; timestamp += DAY_MS) {
+      const index = new Date(timestamp).getUTCDay();
+      const row = rowsByIndex.get(index)!;
+      row.occurrences += 1;
+    }
   }
 
   let total = 0;
@@ -147,6 +151,7 @@ export function analyzeWeekdayPattern<T>(
   for (const definition of WEEKDAY_DEFINITIONS) {
     const row = rowsByIndex.get(definition.index)!;
     row.observedDays = observedDatesByIndex.get(definition.index)!.size;
+    if (occurrenceMode === "observed") row.occurrences = row.observedDays;
     row.average = row.occurrences > 0 ? row.total / row.occurrences : 0;
     row.share = total !== 0 ? row.total / total : 0;
   }

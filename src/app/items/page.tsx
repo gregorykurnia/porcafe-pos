@@ -100,7 +100,7 @@ const ITEM_WEEKDAY_METRICS: WeekdayMetricOption[] = [
   {
     key: "average",
     label: "Average Main portions",
-    valueLabel: "Average / occurrence",
+    valueLabel: "Average / selling day",
     getValue: (row) => row.average,
     formatValue: formatQuantity,
   },
@@ -1342,6 +1342,7 @@ export default function ItemsPage() {
       to: selectedWeekdayTo,
       getDate: (sale) => sale.date,
       getValue: (sale) => sale.qty,
+      occurrenceMode: "observed",
     }),
     [selectedWeekdayFrom, selectedWeekdayTo, weekdaySales]
   );
@@ -2282,7 +2283,7 @@ export default function ItemsPage() {
         id="items-weekday-pattern"
         title="Main portions sold by weekday"
         description="Compare recorded Main portions across weekdays to spot recurring patterns in the selected range."
-        rangeDescription="Uses the existing canonical Main-item performance stream. Add Ons are excluded; the data has item rows, not customer transaction IDs."
+        rangeDescription="Uses the existing canonical Main-item performance stream. Add Ons and no-sale days are excluded; the data has item rows, not customer transaction IDs."
         from={selectedWeekdayFrom}
         to={selectedWeekdayTo}
         onFromChange={setWeekdayFrom}
@@ -2298,6 +2299,8 @@ export default function ItemsPage() {
         formatTotal={formatQuantity}
         formatAverage={formatQuantity}
         recordLabel="Main item rows"
+        averageBasis="observed"
+        occurrenceLabel="Selling days"
       />
 
       <Card>

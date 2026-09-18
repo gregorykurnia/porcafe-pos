@@ -50,6 +50,24 @@ test("normalizes averages by weekday occurrences across longer ranges", () => {
   assert.equal(result.observedDays, 2);
 });
 
+test("can count only observed selling days as weekday occurrences", () => {
+  const result = analyzeWeekdayPattern(
+    [{ date: "2026-09-14", value: 100 }],
+    {
+      from: "2026-09-14",
+      to: "2026-09-27",
+      getDate: (record) => record.date,
+      getValue: (record) => record.value,
+      occurrenceMode: "observed",
+    }
+  );
+
+  assert.equal(result.rows[0].occurrences, 1);
+  assert.equal(result.rows[0].average, 100);
+  assert.equal(result.rows[1].occurrences, 0);
+  assert.equal(result.rows[1].average, 0);
+});
+
 test("retains duplicate records while counting one observed calendar day", () => {
   const result = analyzeWeekdayPattern(
     [
