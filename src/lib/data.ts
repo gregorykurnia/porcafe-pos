@@ -13,7 +13,7 @@ import {
   runTransaction,
   type QueryConstraint,
 } from "firebase/firestore";
-import { addDays, addMonths, addWeeks, format, parseISO } from "date-fns";
+import { addDays, addMonths, addWeeks, format, isValid, parseISO } from "date-fns";
 import { db } from "./firebase";
 import { formatDisplay } from "./dates";
 import type {
@@ -447,15 +447,58 @@ export async function upsertInventorySupplierItem(
 ) {
   const now = Date.now();
   const { id: inputId, createdAt, ...rest } = supplierItem;
-  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
-  if (createdAt !== undefined) payload.createdAt = createdAt;
+  const effectiveFrom = supplierItem.costEffectiveFrom ?? format(new Date(now), "yyyy-MM-dd");
+  if (!supplierItem.supplierId || !supplierItem.materialId || !supplierItem.materialName.trim()) {
+    throw new Error("Choose a supplier and material.");
+  }
+  if (!Number.isFinite(supplierItem.costPerUnit) || supplierItem.costPerUnit < 0) {
+    throw new Error("Unit cost must be zero or greater.");
+  }
+  if (!/^[A-Z]{3}$/.test(supplierItem.currency)) {
+    throw new Error("Currency must be a three-letter code, such as IDR.");
+  }
+  if (supplierItem.minimumOrderQuantity !== undefined && (!Number.isFinite(supplierItem.minimumOrderQuantity) || supplierItem.minimumOrderQuantity <= 0)) {
+    throw new Error("Minimum order quantity must be greater than zero.");
+  }
+  if (supplierItem.leadTimeDays !== undefined && (!Number.isInteger(supplierItem.leadTimeDays) || supplierItem.leadTimeDays < 0)) {
+    throw new Error("Lead time must be zero or more whole days.");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) || !isValid(parseISO(effectiveFrom)) || format(parseISO(effectiveFrom), "yyyy-MM-dd") !== effectiveFrom) {
+    throw new Error("Choose a valid cost effective date.");
+  }
 
   if (inputId) {
-    await setDoc(doc(db, "inventorySupplierItems", inputId), omitUndefined(payload), { merge: true });
+    const supplierItemRef = doc(db, "inventorySupplierItems", inputId);
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(supplierItemRef);
+      if (!snapshot.exists()) throw new Error("This supplier-material link no longer exists.");
+      const current = mapInventorySupplierItem(snapshot.id, snapshot.data());
+      const priceChanged = current.costPerUnit !== supplierItem.costPerUnit || current.currency !== supplierItem.currency;
+      const history = [...(current.costHistory ?? [])];
+      const oldEffectiveFrom = current.costEffectiveFrom
+        ?? format(new Date(current.createdAt), "yyyy-MM-dd");
+      if (priceChanged && !history.some((version) => version.effectiveFrom === oldEffectiveFrom && version.costPerUnit === current.costPerUnit && version.currency === current.currency)) {
+        history.push({ costPerUnit: current.costPerUnit, currency: current.currency, effectiveFrom: oldEffectiveFrom });
+      }
+      const { costHistory: _ignoredHistory, ...restWithoutHistory } = rest;
+      transaction.set(supplierItemRef, omitUndefined({
+        ...restWithoutHistory,
+        costEffectiveFrom: priceChanged ? effectiveFrom : current.costEffectiveFrom ?? oldEffectiveFrom,
+        costHistory: history,
+        updatedAt: now,
+      }), { merge: true });
+    });
     return inputId;
   }
 
-  const ref = await addDoc(inventorySupplierItemsCol, omitUndefined({ ...payload, createdAt: now }));
+  const { costHistory: _ignoredHistory, ...restWithoutHistory } = rest;
+  const ref = await addDoc(inventorySupplierItemsCol, omitUndefined({
+    ...restWithoutHistory,
+    costEffectiveFrom: effectiveFrom,
+    costHistory: [],
+    createdAt: now,
+    updatedAt: now,
+  }));
   return ref.id;
 }
 

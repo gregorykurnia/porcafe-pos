@@ -112,6 +112,12 @@ export type InventorySupplierItem = {
   unit: InventoryUnit;
   costPerUnit: number;
   currency: string;
+  costEffectiveFrom?: string;
+  costHistory?: Array<{
+    costPerUnit: number;
+    currency: string;
+    effectiveFrom: string;
+  }>;
   supplierSku?: string;
   minimumOrderQuantity?: number;
   leadTimeDays?: number;

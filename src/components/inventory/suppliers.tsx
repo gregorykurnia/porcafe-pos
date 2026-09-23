@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { todayISO } from "@/lib/dates";
 import {
   deleteInventorySupplierItem,
   getInventoryStockSetup,
@@ -196,6 +197,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [costPerUnit, setCostPerUnit] = useState("");
+  const [costEffectiveFrom, setCostEffectiveFrom] = useState(todayISO());
   const [currency, setCurrency] = useState("IDR");
   const [supplierSku, setSupplierSku] = useState("");
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState("");
@@ -317,6 +319,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
     setSelectedSupplierId("");
     setSelectedMaterialId("");
     setCostPerUnit("");
+    setCostEffectiveFrom(todayISO());
     setCurrency("IDR");
     setSupplierSku("");
     setMinimumOrderQuantity("");
@@ -331,6 +334,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
     setSelectedSupplierId(item.supplierId);
     setSelectedMaterialId(item.materialId);
     setCostPerUnit(String(item.costPerUnit));
+    setCostEffectiveFrom(item.costEffectiveFrom ?? new Date(item.createdAt).toISOString().slice(0, 10));
     setCurrency(item.currency);
     setSupplierSku(item.supplierSku ?? "");
     setMinimumOrderQuantity(item.minimumOrderQuantity === undefined ? "" : String(item.minimumOrderQuantity));
@@ -385,6 +389,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         unit: material.baseUnit,
         costPerUnit: cost,
         currency: currency.trim().toUpperCase() || "IDR",
+        costEffectiveFrom,
         supplierSku: supplierSku.trim() || undefined,
         minimumOrderQuantity: minimumQuantity,
         leadTimeDays: leadTime,
@@ -494,6 +499,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
               <div className="space-y-1.5"><Label htmlFor="supplier-link-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}><SelectTrigger id="supplier-link-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label htmlFor="supplier-link-material">Material</Label><Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}><SelectTrigger id="supplier-link-material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label htmlFor="supplier-link-cost">Cost per {selectedMaterial?.baseUnit ?? "unit"}</Label><Input id="supplier-link-cost" type="number" min="0" step="0.01" value={costPerUnit} onChange={(event) => setCostPerUnit(event.target.value)} placeholder="0" /></div>
+              <div className="space-y-1.5"><Label htmlFor="supplier-link-cost-effective">Cost effective from</Label><Input id="supplier-link-cost-effective" type="date" value={costEffectiveFrom} onChange={(event) => setCostEffectiveFrom(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="supplier-link-currency">Currency</Label><Input id="supplier-link-currency" value={currency} onChange={(event) => setCurrency(event.target.value)} placeholder="IDR" /></div>
               <div className="space-y-1.5"><Label htmlFor="supplier-link-sku">Supplier SKU / code</Label><Input id="supplier-link-sku" value={supplierSku} onChange={(event) => setSupplierSku(event.target.value)} placeholder="Optional" /></div>
               <div className="space-y-1.5"><Label htmlFor="supplier-link-minimum">Minimum order quantity</Label><Input id="supplier-link-minimum" type="number" min="0" step="0.01" value={minimumOrderQuantity} onChange={(event) => setMinimumOrderQuantity(event.target.value)} placeholder="Optional" /></div>
@@ -515,7 +521,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
             return <TableRow key={item.id}>
               <TableCell><span className="font-medium">{material?.name ?? item.materialName}</span><span className="block text-xs text-muted-foreground">{item.unit}</span></TableCell>
               <TableCell>{supplier?.name ?? "Archived supplier"}</TableCell>
-              <TableCell className="tabular-nums">{item.currency} {item.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}<span className="block text-xs text-muted-foreground">per {item.unit}</span></TableCell>
+              <TableCell className="tabular-nums">{item.currency} {item.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}<span className="block text-xs text-muted-foreground">per {item.unit} · effective {item.costEffectiveFrom ?? "date not recorded"}</span>{item.costHistory && item.costHistory.length > 0 && <span className="mt-1 block whitespace-normal text-xs text-muted-foreground">Previous: {[...item.costHistory].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom)).map((version) => `${version.currency} ${version.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })} from ${version.effectiveFrom}`).join(" · ")}</span>}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{item.minimumOrderQuantity !== undefined ? `Min ${item.minimumOrderQuantity} · ` : ""}{item.leadTimeDays !== undefined ? `${item.leadTimeDays} day lead` : "No lead time"}</TableCell>
               <TableCell>{item.preferred ? <Badge variant="default">Preferred</Badge> : <Badge variant="outline">Alternate</Badge>}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => startEditingSupplierItem(item)} disabled={supplierItemSaving}><Pencil className="size-3.5" />Edit</Button><Button size="sm" variant="destructive" onClick={() => void removeSupplierItem(item)} disabled={supplierItemSaving}>Remove</Button></div></TableCell>
