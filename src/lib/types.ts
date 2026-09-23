@@ -151,6 +151,28 @@ export type InventorySupplierOrder = {
   updatedAt: number;
 };
 
+export type InventorySupplierDeliveryFrequency = "daily" | "weekly" | "monthly" | "custom";
+
+export type InventorySupplierDeliverySchedule = {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+  frequency: InventorySupplierDeliveryFrequency;
+  customIntervalDays?: number;
+  startOn: string;
+  nextRunOn: string;
+  endOn?: string;
+  active: boolean;
+  lastRunOn?: string;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type InventoryAliasEntityType =
   | "menu_item"
   | "material"

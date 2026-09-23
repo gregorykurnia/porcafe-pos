@@ -20,7 +20,10 @@ import {
   listInventorySuppliers,
   listInventorySupplierItems,
   listInventorySupplierOrders,
+  listInventorySupplierDeliverySchedules,
+  runDueInventorySupplierDeliverySchedules,
 } from "@/lib/data";
+import { todayISO } from "@/lib/dates";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
@@ -28,6 +31,7 @@ import type {
   InventoryRecipeVersion,
   InventorySupplier,
   InventorySupplierOrder,
+  InventorySupplierDeliverySchedule,
   InventorySupplierItem,
   MenuItem,
 } from "@/lib/types";
@@ -44,6 +48,7 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<InventorySupplier[]>([]);
   const [supplierItems, setSupplierItems] = useState<InventorySupplierItem[]>([]);
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
+  const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +56,8 @@ export default function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines, loadedSuppliers, loadedSupplierItems, loadedSupplierOrders] = await Promise.all([
+      await runDueInventorySupplierDeliverySchedules(todayISO());
+      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines, loadedSuppliers, loadedSupplierItems, loadedSupplierOrders, loadedSupplierSchedules] = await Promise.all([
         listMenuItems(),
         listInventoryMaterials(),
         listInventoryAliasMappings(),
@@ -60,6 +66,7 @@ export default function InventoryPage() {
         listInventorySuppliers(),
         listInventorySupplierItems(),
         listInventorySupplierOrders(),
+        listInventorySupplierDeliverySchedules(),
       ]);
       setMenuItems(items);
       setMaterials(loadedMaterials);
@@ -69,6 +76,7 @@ export default function InventoryPage() {
       setSuppliers(loadedSuppliers);
       setSupplierItems(loadedSupplierItems);
       setSupplierOrders(loadedSupplierOrders);
+      setSupplierSchedules(loadedSupplierSchedules);
     } catch (loadError) {
       console.error("Failed to load inventory foundation", loadError);
       setError(loadError instanceof Error ? loadError.message : "Could not load inventory foundation.");
@@ -117,7 +125,7 @@ export default function InventoryPage() {
           <TabsContent value="import" className="mt-5"><ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
           <TabsContent value="materials" className="mt-5"><Materials materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="recipes" className="mt-5"><Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
-          <TabsContent value="suppliers" className="mt-5"><Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} onChanged={refresh} /></TabsContent>
+          <TabsContent value="suppliers" className="mt-5"><Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} onChanged={refresh} /></TabsContent>
         </Tabs>
       )}
     </div>

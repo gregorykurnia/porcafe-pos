@@ -13,6 +13,7 @@ import {
   runTransaction,
   type QueryConstraint,
 } from "firebase/firestore";
+import { addDays, addMonths, addWeeks, format, parseISO } from "date-fns";
 import { db } from "./firebase";
 import { formatDisplay } from "./dates";
 import type {
@@ -26,6 +27,8 @@ import type {
   InventorySupplier,
   InventorySupplierOrder,
   InventorySupplierOrderLine,
+  InventorySupplierDeliveryFrequency,
+  InventorySupplierDeliverySchedule,
   InventorySupplierItem,
   InventoryRecipeLine,
   InventoryRecipeVersion,
@@ -338,6 +341,7 @@ const inventoryMaterialsCol = collection(db, "inventoryMaterials");
 const inventorySuppliersCol = collection(db, "inventorySuppliers");
 const inventorySupplierItemsCol = collection(db, "inventorySupplierItems");
 const inventorySupplierOrdersCol = collection(db, "inventorySupplierOrders");
+const inventorySupplierDeliverySchedulesCol = collection(db, "inventorySupplierDeliverySchedules");
 const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
 const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
 const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
@@ -360,6 +364,10 @@ function mapInventorySupplierItem(id: string, data: Record<string, unknown>): In
 
 function mapInventorySupplierOrder(id: string, data: Record<string, unknown>): InventorySupplierOrder {
   return { id, ...(data as Omit<InventorySupplierOrder, "id">) };
+}
+
+function mapInventorySupplierDeliverySchedule(id: string, data: Record<string, unknown>): InventorySupplierDeliverySchedule {
+  return { id, ...(data as Omit<InventorySupplierDeliverySchedule, "id">) };
 }
 
 function mapInventoryAlias(id: string, data: Record<string, unknown>): InventoryAliasMapping {
@@ -568,6 +576,113 @@ export async function receiveInventorySupplierOrder(input: InventorySupplierRece
 
     return { changed: true, status: nextStatus };
   });
+}
+
+export async function listInventorySupplierDeliverySchedules(): Promise<InventorySupplierDeliverySchedule[]> {
+  const snap = await getDocs(inventorySupplierDeliverySchedulesCol);
+  return snap.docs
+    .map((d) => mapInventorySupplierDeliverySchedule(d.id, d.data()))
+    .sort((a, b) => a.nextRunOn.localeCompare(b.nextRunOn) || a.materialName.localeCompare(b.materialName));
+}
+
+export async function upsertInventorySupplierDeliverySchedule(
+  schedule: Omit<InventorySupplierDeliverySchedule, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = schedule;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+
+  if (inputId) {
+    await setDoc(doc(db, "inventorySupplierDeliverySchedules", inputId), omitUndefined(payload), { merge: true });
+    return inputId;
+  }
+
+  const ref = await addDoc(inventorySupplierDeliverySchedulesCol, omitUndefined({ ...payload, createdAt: now }));
+  return ref.id;
+}
+
+function nextSupplierDeliveryDate(
+  date: string,
+  frequency: InventorySupplierDeliveryFrequency,
+  customIntervalDays?: number,
+): string {
+  const parsed = parseISO(date);
+  const next = frequency === "daily"
+    ? addDays(parsed, 1)
+    : frequency === "weekly"
+      ? addWeeks(parsed, 1)
+      : frequency === "monthly"
+        ? addMonths(parsed, 1)
+        : addDays(parsed, customIntervalDays ?? 1);
+  return format(next, "yyyy-MM-dd");
+}
+
+function advanceSupplierDeliveryPastDate(schedule: InventorySupplierDeliverySchedule, asOfDate: string): string {
+  let nextRunOn = nextSupplierDeliveryDate(schedule.nextRunOn, schedule.frequency, schedule.customIntervalDays);
+  let guard = 0;
+  while (nextRunOn <= asOfDate && guard < 400) {
+    nextRunOn = nextSupplierDeliveryDate(nextRunOn, schedule.frequency, schedule.customIntervalDays);
+    guard += 1;
+  }
+  return nextRunOn;
+}
+
+export async function runDueInventorySupplierDeliverySchedules(asOfDate: string): Promise<{ schedulesRun: number; movementIds: string[] }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) throw new Error("Choose a valid schedule date.");
+  const setup = await getInventoryStockSetup();
+  if (!setup?.initialized) return { schedulesRun: 0, movementIds: [] };
+
+  const schedules = await listInventorySupplierDeliverySchedules();
+  const dueSchedules = schedules.filter((schedule) => schedule.active && schedule.nextRunOn <= asOfDate && (!schedule.endOn || schedule.nextRunOn <= schedule.endOn));
+  const movementIds: string[] = [];
+  let schedulesRun = 0;
+
+  for (const schedule of dueSchedules) {
+    const scheduleRef = doc(inventorySupplierDeliverySchedulesCol, schedule.id);
+    const result = await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(scheduleRef);
+      if (!snapshot.exists()) return { changed: false, movementId: null as string | null };
+      const current = mapInventorySupplierDeliverySchedule(snapshot.id, snapshot.data());
+      if (!current.active || current.nextRunOn > asOfDate || (current.endOn && current.nextRunOn > current.endOn)) {
+        return { changed: false, movementId: null as string | null };
+      }
+
+      const runDate = current.nextRunOn;
+      const nextRunOn = advanceSupplierDeliveryPastDate(current, asOfDate);
+      const stillActive = !current.endOn || nextRunOn <= current.endOn;
+      const movementId = `scheduled-delivery-${inventoryDocPart(current.id)}-${inventoryDocPart(runDate)}`;
+      const now = Date.now();
+      transaction.set(
+        doc(db, "inventoryMovements", movementId),
+        omitUndefined({
+          materialId: current.materialId,
+          materialName: current.materialName,
+          unit: current.unit,
+          quantity: current.quantity,
+          movementType: "receiving" satisfies InventoryMovementType,
+          occurredOn: runDate,
+          reason: `Recurring supplier delivery received from ${current.supplierName}`,
+          sourceRef: `supplier-delivery-schedule:${current.id}:${runDate}`,
+          notes: current.notes,
+          createdAt: now,
+        }),
+        { merge: true }
+      );
+      transaction.set(scheduleRef, omitUndefined({ lastRunOn: runDate, nextRunOn, active: stillActive, updatedAt: now }), { merge: true });
+      return { changed: true, movementId };
+    });
+
+    if (result.changed && result.movementId) {
+      schedulesRun += 1;
+      movementIds.push(result.movementId);
+    }
+  }
+
+  return { schedulesRun, movementIds };
 }
 
 export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {

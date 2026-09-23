@@ -21,13 +21,15 @@ import {
 import { normalizeInventoryName } from "@/lib/inventory";
 import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
 import { SupplierOrders } from "@/components/inventory/supplier-orders";
-import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
+import { SupplierSchedules } from "@/components/inventory/supplier-schedules";
+import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierDeliverySchedule, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
 
 type SuppliersProps = {
   materials: InventoryMaterial[];
   suppliers: InventorySupplier[];
   supplierItems: InventorySupplierItem[];
   orders: InventorySupplierOrder[];
+  schedules: InventorySupplierDeliverySchedule[];
   onChanged: () => Promise<void>;
 };
 
@@ -185,7 +187,7 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, stockI
   );
 }
 
-export function Suppliers({ materials, suppliers, supplierItems, orders, onChanged }: SuppliersProps) {
+export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, onChanged }: SuppliersProps) {
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [supplierSaving, setSupplierSaving] = useState(false);
@@ -523,6 +525,8 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, onChang
       </Card>
 
       <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+
+      <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
     </div>
   );
 }
