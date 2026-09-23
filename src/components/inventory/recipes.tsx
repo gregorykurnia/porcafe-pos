@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { saveInventoryRecipeVersion } from "@/lib/data";
 import { INVENTORY_UNITS, normalizeRecipeBoxLines, recipeStatusLabel, validateRecipe } from "@/lib/inventory";
 import {
-  INVENTORY_SOURCE_GROUPS,
+  INVENTORY_COMPONENT_TARGET_NAMES,
   inventoryComponentId,
   inventoryRecipeId,
   slugifyInventoryId,
@@ -48,8 +48,9 @@ function draftLineId(): string {
 function newRecipe(menuItems: MenuItem[], recipes: InventoryRecipeVersion[]): InventoryRecipeVersion {
   const firstMenu = menuItems[0];
   const targetType: RecipeTargetType = firstMenu ? "menu_item" : "prepared_component";
-  const targetId = firstMenu?.id ?? inventoryComponentId(INVENTORY_SOURCE_GROUPS.find((group) => group.targetType === "prepared_component")?.targetName ?? "New component");
-  const targetName = firstMenu?.name ?? "New component";
+  const defaultComponentName = INVENTORY_COMPONENT_TARGET_NAMES[0] ?? "New component";
+  const targetId = firstMenu?.id ?? inventoryComponentId(defaultComponentName);
+  const targetName = firstMenu?.name ?? defaultComponentName;
   const version = Math.max(0, ...recipes.filter((recipe) => recipe.targetId === targetId).map((recipe) => recipe.version)) + 1;
   const now = timestamp();
   return {
@@ -81,10 +82,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   const [saving, setSaving] = useState(false);
 
   const componentOptions = useMemo(() => {
-    const options = new Map<string, string>();
-    for (const group of INVENTORY_SOURCE_GROUPS) {
-      if (group.targetType === "prepared_component") options.set(inventoryComponentId(group.targetName), group.targetName);
-    }
+    const options = new Map(INVENTORY_COMPONENT_TARGET_NAMES.map((name) => [inventoryComponentId(name), name]));
     for (const recipe of recipes) {
       if (recipe.targetType === "prepared_component") options.set(recipe.targetId, recipe.targetName);
     }
@@ -114,12 +112,13 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   }
 
   function setTargetType(value: RecipeTargetType) {
+    const defaultComponent = componentOptions.find(([, name]) => name === "Rice") ?? componentOptions[0];
     const targetId = value === "menu_item"
       ? menuItems[0]?.id ?? ""
-      : componentOptions[0]?.[0] ?? "";
+      : defaultComponent?.[0] ?? "";
     const targetName = value === "menu_item"
       ? menuItems[0]?.name ?? ""
-      : componentOptions[0]?.[1] ?? "";
+      : defaultComponent?.[1] ?? "";
     const version = Math.max(0, ...recipes.filter((recipe) => recipe.targetId === targetId).map((recipe) => recipe.version)) + 1;
     updateRecipe({
       id: "",

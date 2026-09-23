@@ -218,7 +218,7 @@ const SOURCE_GROUPS: SourceGroup[] = [
 
 const INGREDIENT_ALIASES: Record<string, { name: string; type: InventorySourceIngredientType }> = {
   sate: { name: "Pork satay", type: "material" },
-  nasi: { name: "Rice", type: "material" },
+  nasi: { name: "Rice", type: "component" },
   telur: { name: "Egg", type: "material" },
   egg: { name: "Egg", type: "material" },
   kailan: { name: "Kailan", type: "material" },
@@ -361,6 +361,15 @@ export const INVENTORY_SOURCE_GROUPS = SOURCE_GROUPS.map(({ id, targetLabel, tar
   targetName,
   targetType,
 }));
+
+export const INVENTORY_COMPONENT_TARGET_NAMES = [
+  ...new Set([
+    "Rice",
+    ...INVENTORY_SOURCE_GROUPS
+      .filter((group) => group.targetType === "prepared_component")
+      .map((group) => group.targetName),
+  ]),
+];
 
 export const INVENTORY_SOURCE_BOUNDARY = "Rows 1–75 of Kebutuhan Bahan Baku per Porsi";
 
