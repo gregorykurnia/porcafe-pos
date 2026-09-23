@@ -68,6 +68,9 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
 };
 
 type ReorderStatus = "stock-high" | "to-order" | "on-way" | "not-configured" | "alerts-off" | "not-initialized";
+type ReorderOverviewFilter = "all" | ReorderStatus;
+type ReorderSortKey = "material" | "stock" | "threshold" | "quantity" | "supplier" | "status";
+type ReorderSort = { key: ReorderSortKey; direction: "asc" | "desc" };
 type SupplierPricingSortKey = "material" | "supplier" | "cost" | "buyingDetails" | "status";
 type SupplierPricingSort = { key: SupplierPricingSortKey; direction: "asc" | "desc" } | null;
 
@@ -120,7 +123,7 @@ function reorderStatusLabel(status: ReorderStatus): string {
   if (status === "to-order") return "To Order";
   if (status === "on-way") return "Ordered / On the Way";
   if (status === "stock-high") return "Stock Still High";
-  if (status === "not-configured") return "Set threshold";
+  if (status === "not-configured") return "Needs setup";
   if (status === "alerts-off") return "Alerts off";
   return "Stock not initialized";
 }
@@ -131,13 +134,137 @@ function reorderStatusVariant(status: ReorderStatus): "default" | "secondary" | 
   return "outline";
 }
 
+const reorderStatusOrder: ReorderStatus[] = ["to-order", "on-way", "stock-high", "not-configured", "alerts-off", "not-initialized"];
+
+const reorderStatusFilters: ReorderStatus[] = ["to-order", "on-way", "stock-high", "not-configured", "alerts-off", "not-initialized"];
+
+type ReorderOverviewProps = {
+  materials: InventoryMaterial[];
+  suppliers: InventorySupplier[];
+  balances: InventoryBalance[];
+  stockInitialized: boolean;
+  stockLoading: boolean;
+  openOrderMaterialIds: Set<string>;
+};
+
+function ReorderOverviewHead({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: ReorderSortKey;
+  sort: ReorderSort;
+  onSort: (key: ReorderSortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const direction = active ? sort.direction : undefined;
+  const Icon = direction ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+
+  return (
+    <TableHead className={className} aria-sort={direction ? (direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`${label}, ${direction ? (direction === "asc" ? "ascending" : "descending") : "not sorted"}`}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${active ? "text-foreground" : "text-muted-foreground"}`}
+      >
+        {label}
+        <Icon className="size-3" />
+      </button>
+    </TableHead>
+  );
+}
+
+function ReorderOverview({ materials, suppliers, balances, stockInitialized, stockLoading, openOrderMaterialIds }: ReorderOverviewProps) {
+  const [statusFilter, setStatusFilter] = useState<ReorderOverviewFilter>("all");
+  const [sort, setSort] = useState<ReorderSort>({ key: "status", direction: "asc" });
+  const balanceByMaterialId = useMemo(() => new Map(balances.map((balance) => [balance.materialId, balance])), [balances]);
+  const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
+  const rows = useMemo(() => materials.map((material) => {
+    const balance = balanceByMaterialId.get(material.id);
+    return {
+      material,
+      balance,
+      status: getReorderStatus(material, balance, stockInitialized, openOrderMaterialIds.has(material.id)),
+      supplierName: material.preferredSupplierId ? supplierById.get(material.preferredSupplierId)?.name ?? "Archived supplier" : "No preferred supplier",
+    };
+  }), [balanceByMaterialId, materials, openOrderMaterialIds, stockInitialized, supplierById]);
+  const counts = useMemo(() => {
+    const nextCounts = new Map<ReorderOverviewFilter, number>([["all", rows.length]]);
+    for (const status of reorderStatusFilters) nextCounts.set(status, rows.filter((row) => row.status === status).length);
+    return nextCounts;
+  }, [rows]);
+  const filteredRows = useMemo(() => {
+    const filtered = rows.filter((row) => statusFilter === "all" || row.status === statusFilter);
+    const sign = sort.direction === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let comparison = 0;
+      if (sort.key === "material") {
+        comparison = a.material.name.localeCompare(b.material.name, "id", { sensitivity: "base" });
+      } else if (sort.key === "supplier") {
+        comparison = a.supplierName.localeCompare(b.supplierName, "id", { sensitivity: "base" });
+      } else if (sort.key === "status") {
+        comparison = reorderStatusOrder.indexOf(a.status) - reorderStatusOrder.indexOf(b.status);
+      } else {
+        const left = sort.key === "stock" ? a.balance?.currentQuantity : sort.key === "threshold" ? a.material.reorderThreshold : a.material.reorderQuantity;
+        const right = sort.key === "stock" ? b.balance?.currentQuantity : sort.key === "threshold" ? b.material.reorderThreshold : b.material.reorderQuantity;
+        if (left === null || left === undefined) return right === null || right === undefined ? a.material.name.localeCompare(b.material.name, "id", { sensitivity: "base" }) : 1;
+        if (right === null || right === undefined) return -1;
+        comparison = left - right;
+      }
+      return comparison === 0 ? a.material.name.localeCompare(b.material.name, "id", { sensitivity: "base" }) : comparison * sign;
+    });
+  }, [rows, sort, statusFilter]);
+
+  function toggleSort(key: ReorderSortKey) {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reorder overview</CardTitle>
+        <CardDescription>Filter materials by stock status, then sort the list to see what needs attention.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {stockLoading ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Loading current stock and reorder statuses…</p> : materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <>
+          <div className="flex flex-wrap gap-2" aria-label="Filter reorder materials by status">
+            <Button type="button" size="sm" variant={statusFilter === "all" ? "default" : "outline"} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All <span className="ml-1 tabular-nums opacity-75">{counts.get("all") ?? 0}</span></Button>
+            {reorderStatusFilters.map((status) => <Button key={status} type="button" size="sm" variant={statusFilter === status ? "default" : "outline"} aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}>{reorderStatusLabel(status)} <span className="ml-1 tabular-nums opacity-75">{counts.get(status) ?? 0}</span></Button>)}
+          </div>
+          {filteredRows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No materials match this status.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow>
+            <ReorderOverviewHead label="Material" sortKey="material" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Current stock" sortKey="stock" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Alert at" sortKey="threshold" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Order quantity" sortKey="quantity" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Preferred supplier" sortKey="supplier" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
+          </TableRow></TableHeader><TableBody>{filteredRows.map(({ material, balance, status, supplierName }) => <TableRow key={material.id}>
+            <TableCell><span className="font-medium">{material.name}</span><span className="block text-xs text-muted-foreground">{material.baseUnit}</span></TableCell>
+            <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+            <TableCell className="tabular-nums">{material.reorderThreshold === undefined ? "—" : material.reorderThreshold.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+            <TableCell className="tabular-nums">{material.reorderQuantity === undefined ? "—" : material.reorderQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+            <TableCell>{supplierName}</TableCell>
+            <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
+          </TableRow>)}</TableBody></Table></div>}
+        </>}
+      </CardContent>
+    </Card>
+  );
+}
+
 type ReorderSettingsProps = {
   materials: InventoryMaterial[];
   suppliers: InventorySupplier[];
   supplierItems: InventorySupplierItem[];
   balances: InventoryBalance[];
-  stockInitialized: boolean;
-  openOrderMaterialIds: Set<string>;
   onChanged: () => Promise<void>;
 };
 
@@ -146,8 +273,6 @@ type ReorderSettingRowProps = {
   suppliers: InventorySupplier[];
   supplierItems: InventorySupplierItem[];
   balance?: InventoryBalance;
-  stockInitialized: boolean;
-  hasOpenOrder: boolean;
   onChanged: () => Promise<void>;
 };
 
@@ -156,8 +281,6 @@ function ReorderSettingRow({
   suppliers,
   supplierItems,
   balance,
-  stockInitialized,
-  hasOpenOrder,
   onChanged,
 }: ReorderSettingRowProps) {
   const [threshold, setThreshold] = useState(material.reorderThreshold === undefined ? "" : String(material.reorderThreshold));
@@ -170,8 +293,6 @@ function ReorderSettingRow({
     .filter((item) => item.materialId === material.id)
     .map((item) => supplierById.get(item.supplierId))
     .filter((supplier): supplier is InventorySupplier => Boolean(supplier)), [material.id, supplierById, supplierItems]);
-  const status = getReorderStatus(material, balance, stockInitialized, hasOpenOrder);
-
   async function save() {
     const nextThreshold = threshold.trim() ? Number(threshold) : undefined;
     const nextQuantity = quantity.trim() ? Number(quantity) : undefined;
@@ -217,21 +338,20 @@ function ReorderSettingRow({
       <TableCell className="min-w-28"><Input aria-label={`Reorder quantity for ${material.name}`} type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="—" /></TableCell>
       <TableCell className="min-w-44"><Select value={preferredSupplierId || "none"} onValueChange={(value) => setPreferredSupplierId(value === "none" ? "" : value)}><SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Optional" /></SelectTrigger><SelectContent><SelectItem value="none">No preferred supplier</SelectItem>{linkedSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></TableCell>
       <TableCell><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={alertEnabled} onChange={(event) => setAlertEnabled(event.target.checked)} className="size-4 accent-primary" /><span className="sr-only">Enable low-stock alert for {material.name}</span><Bell className="size-4 text-muted-foreground" /></label></TableCell>
-      <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
       <TableCell className="text-right"><Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button></TableCell>
     </TableRow>
   );
 }
 
-function ReorderSettings({ materials, suppliers, supplierItems, balances, stockInitialized, openOrderMaterialIds, onChanged }: ReorderSettingsProps) {
+function ReorderSettings({ materials, suppliers, supplierItems, balances, onChanged }: ReorderSettingsProps) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Reorder settings</CardTitle>
-        <CardDescription>Set the stock level that should surface an in-app “To Order” alert for each material.</CardDescription>
+        <CardDescription>Configure alert thresholds, suggested quantities, and preferred suppliers for each material.</CardDescription>
       </CardHeader>
       <CardContent>
-        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} stockInitialized={stockInitialized} hasOpenOrder={openOrderMaterialIds.has(material.id)} onChanged={onChanged} />)}</TableBody></Table></div>}
+        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} onChanged={onChanged} />)}</TableBody></Table></div>}
       </CardContent>
     </Card>
   );
@@ -544,11 +664,11 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
       </div>
 
+      <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} />
+
       <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
-      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Use the supplier order form above to place an order.</p></div></CardContent></Card>}
-
-      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} openOrderMaterialIds={openOrderMaterialIds} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
