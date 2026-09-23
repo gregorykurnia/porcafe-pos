@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import { Archive, Bell, CalendarClock, CircleAlert, ClipboardList, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
@@ -190,6 +190,8 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, stockI
 }
 
 export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, onChanged }: SuppliersProps) {
+  const supplierFormRef = useRef<HTMLDivElement>(null);
+  const supplierItemFormRef = useRef<HTMLDivElement>(null);
   const [today] = useState(() => todayISO());
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -272,6 +274,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
       address: supplier.address ?? "",
       notes: supplier.notes ?? "",
     });
+    supplierFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function resetSupplierForm() {
@@ -362,6 +365,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
     setLeadTimeDays(item.leadTimeDays === undefined ? "" : String(item.leadTimeDays));
     setPreferred(item.preferred);
     setSupplierItemNotes(item.notes ?? "");
+    supplierItemFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function saveSupplierItem() {
@@ -446,6 +450,22 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
 
   return (
     <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Orders on the way</p><p className="text-xl font-semibold tabular-nums">{activeOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CalendarClock className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Scheduled stock-ins</p><p className="text-xl font-semibold tabular-nums">{activeScheduleCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><ClipboardList className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Orders in the last 7 days</p><p className="text-xl font-semibold tabular-nums">{recentOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
+      </div>
+
+      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+
+      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Use the supplier order form above to place an order.</p></div></CardContent></Card>}
+
+      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} openOrderMaterialIds={openOrderMaterialIds} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+
+      <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+
       <Card className="border-primary/15 bg-primary/5">
         <CardContent className="flex gap-3 p-4">
           <Truck className="mt-0.5 size-5 shrink-0 text-primary" />
@@ -456,43 +476,10 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Orders on the way</p><p className="text-xl font-semibold tabular-nums">{activeOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CalendarClock className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Scheduled stock-ins</p><p className="text-xl font-semibold tabular-nums">{activeScheduleCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><ClipboardList className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Orders in the last 7 days</p><p className="text-xl font-semibold tabular-nums">{recentOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
-      </div>
-
-      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Use the supplier order form below to place an order.</p></div></CardContent></Card>}
-
-      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} openOrderMaterialIds={openOrderMaterialIds} onChanged={async () => { await onChanged(); await refreshStock(); }} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{editingSupplierId ? "Edit supplier" : "Add a supplier"}</CardTitle>
-          <CardDescription>Keep supplier contact details here; archived suppliers remain available in historical records.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label htmlFor="supplier-name">Name</Label><Input id="supplier-name" value={supplierForm.name} onChange={(event) => updateSupplierForm("name", event.target.value)} placeholder="e.g. PT Supplier Utama" /></div>
-            <div className="space-y-1.5"><Label htmlFor="supplier-contact">Contact person</Label><Input id="supplier-contact" value={supplierForm.contactPerson} onChange={(event) => updateSupplierForm("contactPerson", event.target.value)} placeholder="Optional" /></div>
-            <div className="space-y-1.5"><Label htmlFor="supplier-phone">Phone</Label><Input id="supplier-phone" value={supplierForm.phone} onChange={(event) => updateSupplierForm("phone", event.target.value)} placeholder="Optional" /></div>
-            <div className="space-y-1.5"><Label htmlFor="supplier-email">Email</Label><Input id="supplier-email" type="email" value={supplierForm.email} onChange={(event) => updateSupplierForm("email", event.target.value)} placeholder="Optional" /></div>
-            <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="supplier-address">Address</Label><Input id="supplier-address" value={supplierForm.address} onChange={(event) => updateSupplierForm("address", event.target.value)} placeholder="Optional" /></div>
-            <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="supplier-notes">Notes</Label><textarea id="supplier-notes" value={supplierForm.notes} onChange={(event) => updateSupplierForm("notes", event.target.value)} className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Optional" /></div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={() => void saveSupplier()} disabled={supplierSaving}><Plus className="size-4" />{supplierSaving ? "Saving…" : editingSupplierId ? "Save changes" : "Add supplier"}</Button>
-            {editingSupplierId && <Button variant="outline" onClick={resetSupplierForm} disabled={supplierSaving}>Cancel</Button>}
-          </div>
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader><CardTitle>Supplier master</CardTitle><CardDescription>{suppliers.length} supplier{suppliers.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
         <CardContent>
-          {suppliers.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No suppliers yet. Add one above to start linking supply sources.</p> : (
+          {suppliers.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No suppliers yet. Add one below to start linking supply sources.</p> : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Contact</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
@@ -511,29 +498,28 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{editingSupplierItemId ? "Edit supplier item" : "Link a supplier to a material"}</CardTitle>
-          <CardDescription>Store the current supplier price and purchasing details using the material’s existing base unit.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {activeSuppliers.length === 0 || activeMaterials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier and an active material before creating a link.</p> : <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}><SelectTrigger id="supplier-link-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-material">Material</Label><Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}><SelectTrigger id="supplier-link-material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-cost">Cost per {selectedMaterial?.baseUnit ?? "unit"}</Label><Input id="supplier-link-cost" type="number" min="0" step="0.01" value={costPerUnit} onChange={(event) => setCostPerUnit(event.target.value)} placeholder="0" /></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-cost-effective">Cost effective from</Label><Input id="supplier-link-cost-effective" type="date" value={costEffectiveFrom} onChange={(event) => setCostEffectiveFrom(event.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-currency">Currency</Label><Input id="supplier-link-currency" value={currency} onChange={(event) => setCurrency(event.target.value)} placeholder="IDR" /></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-sku">Supplier SKU / code</Label><Input id="supplier-link-sku" value={supplierSku} onChange={(event) => setSupplierSku(event.target.value)} placeholder="Optional" /></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-minimum">Minimum order quantity</Label><Input id="supplier-link-minimum" type="number" min="0" step="0.01" value={minimumOrderQuantity} onChange={(event) => setMinimumOrderQuantity(event.target.value)} placeholder="Optional" /></div>
-              <div className="space-y-1.5"><Label htmlFor="supplier-link-lead-time">Lead time (days)</Label><Input id="supplier-link-lead-time" type="number" min="0" step="1" value={leadTimeDays} onChange={(event) => setLeadTimeDays(event.target.value)} placeholder="Optional" /></div>
-              <div className="flex items-end pb-1"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={preferred} onChange={(event) => setPreferred(event.target.checked)} className="size-4 accent-primary" />Preferred supplier for this material</label></div>
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-3"><Label htmlFor="supplier-link-notes">Notes</Label><textarea id="supplier-link-notes" value={supplierItemNotes} onChange={(event) => setSupplierItemNotes(event.target.value)} className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Optional" /></div>
+      <div ref={supplierFormRef}>
+        <Card>
+          <CardHeader>
+            <CardTitle>{editingSupplierId ? "Edit supplier" : "Add a supplier"}</CardTitle>
+            <CardDescription>Keep supplier contact details here; archived suppliers remain available in historical records.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><Label htmlFor="supplier-name">Name</Label><Input id="supplier-name" value={supplierForm.name} onChange={(event) => updateSupplierForm("name", event.target.value)} placeholder="e.g. PT Supplier Utama" /></div>
+              <div className="space-y-1.5"><Label htmlFor="supplier-contact">Contact person</Label><Input id="supplier-contact" value={supplierForm.contactPerson} onChange={(event) => updateSupplierForm("contactPerson", event.target.value)} placeholder="Optional" /></div>
+              <div className="space-y-1.5"><Label htmlFor="supplier-phone">Phone</Label><Input id="supplier-phone" value={supplierForm.phone} onChange={(event) => updateSupplierForm("phone", event.target.value)} placeholder="Optional" /></div>
+              <div className="space-y-1.5"><Label htmlFor="supplier-email">Email</Label><Input id="supplier-email" type="email" value={supplierForm.email} onChange={(event) => updateSupplierForm("email", event.target.value)} placeholder="Optional" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="supplier-address">Address</Label><Input id="supplier-address" value={supplierForm.address} onChange={(event) => updateSupplierForm("address", event.target.value)} placeholder="Optional" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="supplier-notes">Notes</Label><textarea id="supplier-notes" value={supplierForm.notes} onChange={(event) => updateSupplierForm("notes", event.target.value)} className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Optional" /></div>
             </div>
-            <div className="flex flex-wrap gap-2"><Button onClick={() => void saveSupplierItem()} disabled={supplierItemSaving}><Link2 className="size-4" />{supplierItemSaving ? "Saving…" : editingSupplierItemId ? "Save changes" : "Link supplier"}</Button>{editingSupplierItemId && <Button variant="outline" onClick={resetSupplierItemForm} disabled={supplierItemSaving}>Cancel</Button>}</div>
-          </>}
-        </CardContent>
-      </Card>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void saveSupplier()} disabled={supplierSaving}><Plus className="size-4" />{supplierSaving ? "Saving…" : editingSupplierId ? "Save changes" : "Add supplier"}</Button>
+              {editingSupplierId && <Button variant="outline" onClick={resetSupplierForm} disabled={supplierSaving}>Cancel</Button>}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Supplier pricing by material</CardTitle><CardDescription>{supplierItems.length} supplier link{supplierItems.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
@@ -553,7 +539,31 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         </CardContent>
       </Card>
 
-      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+      <div ref={supplierItemFormRef}>
+        <Card>
+          <CardHeader>
+            <CardTitle>{editingSupplierItemId ? "Edit supplier item" : "Link a supplier to a material"}</CardTitle>
+            <CardDescription>Store the current supplier price and purchasing details using the material’s existing base unit.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {activeSuppliers.length === 0 || activeMaterials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier and an active material before creating a link.</p> : <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}><SelectTrigger id="supplier-link-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-material">Material</Label><Select value={selectedMaterialId} onValueChange={setSelectedMaterialId}><SelectTrigger id="supplier-link-material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-cost">Cost per {selectedMaterial?.baseUnit ?? "unit"}</Label><Input id="supplier-link-cost" type="number" min="0" step="0.01" value={costPerUnit} onChange={(event) => setCostPerUnit(event.target.value)} placeholder="0" /></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-cost-effective">Cost effective from</Label><Input id="supplier-link-cost-effective" type="date" value={costEffectiveFrom} onChange={(event) => setCostEffectiveFrom(event.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-currency">Currency</Label><Input id="supplier-link-currency" value={currency} onChange={(event) => setCurrency(event.target.value)} placeholder="IDR" /></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-sku">Supplier SKU / code</Label><Input id="supplier-link-sku" value={supplierSku} onChange={(event) => setSupplierSku(event.target.value)} placeholder="Optional" /></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-minimum">Minimum order quantity</Label><Input id="supplier-link-minimum" type="number" min="0" step="0.01" value={minimumOrderQuantity} onChange={(event) => setMinimumOrderQuantity(event.target.value)} placeholder="Optional" /></div>
+                <div className="space-y-1.5"><Label htmlFor="supplier-link-lead-time">Lead time (days)</Label><Input id="supplier-link-lead-time" type="number" min="0" step="1" value={leadTimeDays} onChange={(event) => setLeadTimeDays(event.target.value)} placeholder="Optional" /></div>
+                <div className="flex items-end pb-1"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={preferred} onChange={(event) => setPreferred(event.target.checked)} className="size-4 accent-primary" />Preferred supplier for this material</label></div>
+                <div className="space-y-1.5 sm:col-span-2 lg:col-span-3"><Label htmlFor="supplier-link-notes">Notes</Label><textarea id="supplier-link-notes" value={supplierItemNotes} onChange={(event) => setSupplierItemNotes(event.target.value)} className="min-h-20 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Optional" /></div>
+              </div>
+              <div className="flex flex-wrap gap-2"><Button onClick={() => void saveSupplierItem()} disabled={supplierItemSaving}><Link2 className="size-4" />{supplierItemSaving ? "Saving…" : editingSupplierItemId ? "Save changes" : "Link supplier"}</Button>{editingSupplierItemId && <Button variant="outline" onClick={resetSupplierItemForm} disabled={supplierItemSaving}>Cancel</Button>}</div>
+            </>}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader><CardTitle>Supplier movement audit</CardTitle><CardDescription>{filteredSupplierMovements.length} matching stock movement{filteredSupplierMovements.length === 1 ? "" : "s"}. Each row links a physical stock change to its supplier order or scheduled delivery.</CardDescription></CardHeader>
@@ -567,7 +577,6 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         </CardContent>
       </Card>
 
-      <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
     </div>
   );
 }

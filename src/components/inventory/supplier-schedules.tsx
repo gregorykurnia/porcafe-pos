@@ -150,6 +150,11 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
       </Card>
 
       <Card>
+        <CardHeader><CardTitle>Delivery schedules</CardTitle><CardDescription>{schedules.length} schedule{schedules.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
+        <CardContent>{schedules.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No recurring delivery schedules yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Frequency</TableHead><TableHead>Next run</TableHead><TableHead>Time</TableHead><TableHead>Last run</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{schedules.map((schedule) => <TableRow key={schedule.id}><TableCell className="font-medium">{schedule.supplierName}</TableCell><TableCell>{schedule.materialName}<span className="block text-xs text-muted-foreground">{schedule.unit}</span></TableCell><TableCell className="tabular-nums">{schedule.quantity}</TableCell><TableCell>{schedule.frequency === "custom" ? `Every ${schedule.customIntervalDays} days` : FREQUENCIES.find((option) => option.value === schedule.frequency)?.label}</TableCell><TableCell>{formatDisplay(schedule.nextRunOn)}</TableCell><TableCell>{schedule.executionTime ?? "08:00"}</TableCell><TableCell>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</TableCell><TableCell><Badge variant={schedule.active ? "secondary" : "outline"}>{schedule.active ? "Active" : "Paused"}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => void toggleSchedule(schedule)}>{schedule.active ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle>Set a recurring delivery</CardTitle><CardDescription>Only materials already linked to the selected supplier can be scheduled.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           {activeSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier and supplier-material link first.</p> : <>
@@ -167,11 +172,6 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
             <Button onClick={() => void saveSchedule()} disabled={saving}><Plus className="size-4" />{saving ? "Saving…" : "Save schedule"}</Button>
           </>}
         </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Delivery schedules</CardTitle><CardDescription>{schedules.length} schedule{schedules.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
-        <CardContent>{schedules.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No recurring delivery schedules yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Frequency</TableHead><TableHead>Next run</TableHead><TableHead>Time</TableHead><TableHead>Last run</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{schedules.map((schedule) => <TableRow key={schedule.id}><TableCell className="font-medium">{schedule.supplierName}</TableCell><TableCell>{schedule.materialName}<span className="block text-xs text-muted-foreground">{schedule.unit}</span></TableCell><TableCell className="tabular-nums">{schedule.quantity}</TableCell><TableCell>{schedule.frequency === "custom" ? `Every ${schedule.customIntervalDays} days` : FREQUENCIES.find((option) => option.value === schedule.frequency)?.label}</TableCell><TableCell>{formatDisplay(schedule.nextRunOn)}</TableCell><TableCell>{schedule.executionTime ?? "08:00"}</TableCell><TableCell>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</TableCell><TableCell><Badge variant={schedule.active ? "secondary" : "outline"}>{schedule.active ? "Active" : "Paused"}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => void toggleSchedule(schedule)}>{schedule.active ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent>
       </Card>
     </div>
   );
