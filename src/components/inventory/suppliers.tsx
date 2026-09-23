@@ -246,6 +246,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <ReorderOverviewHead label="Order quantity" sortKey="quantity" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Preferred supplier" sortKey="supplier" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
+            <TableHead className="text-right">Action</TableHead>
           </TableRow></TableHeader><TableBody>{filteredRows.map(({ material, balance, status, supplierName }) => <TableRow key={material.id}>
             <TableCell><span className="font-medium">{material.name}</span><span className="block text-xs text-muted-foreground">{material.baseUnit}</span></TableCell>
             <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
@@ -253,6 +254,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell className="tabular-nums">{material.reorderQuantity === undefined ? "—" : material.reorderQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
             <TableCell>{supplierName}</TableCell>
             <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
+            <TableCell className="text-right">{status === "to-order" ? <Button asChild size="sm" variant="outline"><a href="#create-supplier-order" aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</a></Button> : "—"}</TableCell>
           </TableRow>)}</TableBody></Table></div>}
         </>}
       </CardContent>

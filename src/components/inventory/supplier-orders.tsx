@@ -284,7 +284,7 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
         </CardContent>
       </Card>
 
-      <div ref={orderFormRef}>
+      <div id="create-supplier-order" ref={orderFormRef} className="scroll-mt-24">
         <Card>
           <CardHeader><CardTitle>{editingOrderId ? "Edit supplier order" : "Create supplier order"}</CardTitle><CardDescription>{activeOrders.length} active order{activeOrders.length === 1 ? "" : "s"} currently on the way. Stock changes only when receipt quantities are recorded.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
