@@ -82,6 +82,10 @@ export type InventoryMaterial = {
   active: boolean;
   reviewStatus: InventoryReviewStatus;
   sourceRefs: string[];
+  reorderThreshold?: number;
+  reorderQuantity?: number;
+  preferredSupplierId?: string;
+  lowStockAlertEnabled?: boolean;
   createdAt: number;
   updatedAt: number;
 };

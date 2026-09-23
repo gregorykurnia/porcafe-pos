@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Archive, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
+import { Archive, Bell, CircleAlert, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,11 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   deleteInventorySupplierItem,
+  getInventoryStockSetup,
+  listInventoryMovements,
+  upsertInventoryMaterial,
   upsertInventorySupplier,
   upsertInventorySupplierItem,
 } from "@/lib/data";
 import { normalizeInventoryName } from "@/lib/inventory";
-import type { InventoryMaterial, InventorySupplier, InventorySupplierItem } from "@/lib/types";
+import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
+import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierItem } from "@/lib/types";
 
 type SuppliersProps = {
   materials: InventoryMaterial[];
@@ -43,6 +47,136 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
   notes: "",
 };
 
+type ReorderStatus = "stock-high" | "to-order" | "not-configured" | "alerts-off" | "not-initialized";
+
+function getReorderStatus(
+  material: InventoryMaterial,
+  balance: InventoryBalance | undefined,
+  stockInitialized: boolean,
+): ReorderStatus {
+  if (!stockInitialized || balance?.currentQuantity === null || balance === undefined) return "not-initialized";
+  if (material.reorderThreshold === undefined) return "not-configured";
+  if (!material.lowStockAlertEnabled) return "alerts-off";
+  return balance.currentQuantity <= material.reorderThreshold ? "to-order" : "stock-high";
+}
+
+function reorderStatusLabel(status: ReorderStatus): string {
+  if (status === "to-order") return "To Order";
+  if (status === "stock-high") return "Stock Still High";
+  if (status === "not-configured") return "Set threshold";
+  if (status === "alerts-off") return "Alerts off";
+  return "Stock not initialized";
+}
+
+function reorderStatusVariant(status: ReorderStatus): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "to-order") return "destructive";
+  if (status === "stock-high") return "secondary";
+  return "outline";
+}
+
+type ReorderSettingsProps = {
+  materials: InventoryMaterial[];
+  suppliers: InventorySupplier[];
+  supplierItems: InventorySupplierItem[];
+  balances: InventoryBalance[];
+  stockInitialized: boolean;
+  onChanged: () => Promise<void>;
+};
+
+type ReorderSettingRowProps = {
+  material: InventoryMaterial;
+  suppliers: InventorySupplier[];
+  supplierItems: InventorySupplierItem[];
+  balance?: InventoryBalance;
+  stockInitialized: boolean;
+  onChanged: () => Promise<void>;
+};
+
+function ReorderSettingRow({
+  material,
+  suppliers,
+  supplierItems,
+  balance,
+  stockInitialized,
+  onChanged,
+}: ReorderSettingRowProps) {
+  const [threshold, setThreshold] = useState(material.reorderThreshold === undefined ? "" : String(material.reorderThreshold));
+  const [quantity, setQuantity] = useState(material.reorderQuantity === undefined ? "" : String(material.reorderQuantity));
+  const [preferredSupplierId, setPreferredSupplierId] = useState(material.preferredSupplierId ?? "");
+  const [alertEnabled, setAlertEnabled] = useState(material.lowStockAlertEnabled ?? false);
+  const [saving, setSaving] = useState(false);
+  const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
+  const linkedSuppliers = useMemo(() => supplierItems
+    .filter((item) => item.materialId === material.id)
+    .map((item) => supplierById.get(item.supplierId))
+    .filter((supplier): supplier is InventorySupplier => Boolean(supplier)), [material.id, supplierById, supplierItems]);
+  const status = getReorderStatus(material, balance, stockInitialized);
+
+  async function save() {
+    const nextThreshold = threshold.trim() ? Number(threshold) : undefined;
+    const nextQuantity = quantity.trim() ? Number(quantity) : undefined;
+    if (nextThreshold !== undefined && (!Number.isFinite(nextThreshold) || nextThreshold < 0)) {
+      toast.error("Reorder threshold must be zero or greater.");
+      return;
+    }
+    if (nextQuantity !== undefined && (!Number.isFinite(nextQuantity) || nextQuantity <= 0)) {
+      toast.error("Suggested reorder quantity must be greater than zero.");
+      return;
+    }
+    if (alertEnabled && nextThreshold === undefined) {
+      toast.error("Set a reorder threshold before enabling the alert.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await upsertInventoryMaterial({
+        ...material,
+        id: material.id,
+        createdAt: material.createdAt,
+        reorderThreshold: nextThreshold,
+        reorderQuantity: nextQuantity,
+        preferredSupplierId: preferredSupplierId || undefined,
+        lowStockAlertEnabled: alertEnabled,
+      });
+      toast.success("Reorder settings saved");
+      await onChanged();
+    } catch (error) {
+      console.error("Failed to save reorder settings", error);
+      toast.error(error instanceof Error ? error.message : "Failed to save reorder settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TableRow>
+      <TableCell><span className="font-medium">{material.name}</span><span className="block text-xs text-muted-foreground">{material.baseUnit}</span></TableCell>
+      <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+      <TableCell className="min-w-28"><Input aria-label={`Reorder threshold for ${material.name}`} type="number" min="0" step="0.01" value={threshold} onChange={(event) => setThreshold(event.target.value)} placeholder="—" /></TableCell>
+      <TableCell className="min-w-28"><Input aria-label={`Reorder quantity for ${material.name}`} type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="—" /></TableCell>
+      <TableCell className="min-w-44"><Select value={preferredSupplierId || "none"} onValueChange={(value) => setPreferredSupplierId(value === "none" ? "" : value)}><SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Optional" /></SelectTrigger><SelectContent><SelectItem value="none">No preferred supplier</SelectItem>{linkedSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></TableCell>
+      <TableCell><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={alertEnabled} onChange={(event) => setAlertEnabled(event.target.checked)} className="size-4 accent-primary" /><span className="sr-only">Enable low-stock alert for {material.name}</span><Bell className="size-4 text-muted-foreground" /></label></TableCell>
+      <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
+      <TableCell className="text-right"><Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button></TableCell>
+    </TableRow>
+  );
+}
+
+function ReorderSettings({ materials, suppliers, supplierItems, balances, stockInitialized, onChanged }: ReorderSettingsProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Reorder settings</CardTitle>
+        <CardDescription>Set the stock level that should surface an in-app “To Order” alert for each material.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} stockInitialized={stockInitialized} onChanged={onChanged} />)}</TableBody></Table></div>}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Suppliers({ materials, suppliers, supplierItems, onChanged }: SuppliersProps) {
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
@@ -60,12 +194,35 @@ export function Suppliers({ materials, suppliers, supplierItems, onChanged }: Su
   const [supplierItemNotes, setSupplierItemNotes] = useState("");
   const [editingSupplierItemId, setEditingSupplierItemId] = useState<string | null>(null);
   const [supplierItemSaving, setSupplierItemSaving] = useState(false);
+  const [stockSetup, setStockSetup] = useState<InventoryStockSetup | null>(null);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [stockLoading, setStockLoading] = useState(true);
 
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active), [suppliers]);
   const selectedMaterial = activeMaterials.find((material) => material.id === selectedMaterialId);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
+  const balances = useMemo(() => summarizeInventoryBalances(materials, movements, stockSetup), [materials, movements, stockSetup]);
+  const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized)) === "to-order").length, [activeMaterials, balances, stockSetup]);
+
+  const refreshStock = useCallback(async () => {
+    setStockLoading(true);
+    try {
+      const [nextSetup, nextMovements] = await Promise.all([getInventoryStockSetup(), listInventoryMovements()]);
+      setStockSetup(nextSetup);
+      setMovements(nextMovements);
+    } catch (error) {
+      console.error("Failed to load reorder stock", error);
+      toast.error(error instanceof Error ? error.message : "Could not load current stock for reorder settings");
+    } finally {
+      setStockLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => void refreshStock());
+  }, [refreshStock]);
 
   function updateSupplierForm(field: keyof SupplierForm, value: string) {
     setSupplierForm((current) => ({ ...current, [field]: value }));
@@ -261,6 +418,16 @@ export function Suppliers({ materials, suppliers, supplierItems, onChanged }: Su
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Stock ledger</p><p className="font-semibold">{stockSetup?.initialized ? "Initialized" : "Needs setup"}</p></div></CardContent></Card>
+      </div>
+
+      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Create supplier orders in the next phase.</p></div></CardContent></Card>}
+
+      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <Card>
         <CardHeader>
