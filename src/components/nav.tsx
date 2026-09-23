@@ -34,9 +34,8 @@ export function Nav() {
       {/* Top bar (desktop + mobile) */}
       <header className="sticky top-0 z-40 border-b border-primary/10 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight text-primary">
-            <Image src="/logo-mark.png" alt="Charred by Porcafe" width={30} height={30} className="shrink-0 rounded-md" priority />
-            <span>Charred by Porcafe</span>
+          <Link href="/" className="flex items-center">
+            <Image src="/logo.png" alt="Charred by Porcafe" width={72} height={57} className="shrink-0 object-contain" priority />
           </Link>
           <nav aria-label="Primary navigation" className="hidden gap-1 rounded-xl bg-primary/5 p-1 sm:flex">
             {links.map((l) => {
