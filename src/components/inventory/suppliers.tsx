@@ -69,7 +69,7 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
 
 type ReorderStatus = "stock-high" | "to-order" | "on-way" | "not-configured" | "alerts-off" | "not-initialized";
 type ReorderOverviewFilter = "all" | ReorderStatus;
-type ReorderSortKey = "material" | "stock" | "threshold" | "quantity" | "supplier" | "status";
+type ReorderSortKey = "material" | "stock" | "threshold" | "gap" | "quantity" | "supplier" | "status";
 type ReorderSort = { key: ReorderSortKey; direction: "asc" | "desc" };
 type SupplierPricingSortKey = "material" | "supplier" | "cost" | "buyingDetails" | "status";
 type SupplierPricingSort = { key: SupplierPricingSortKey; direction: "asc" | "desc" } | null;
@@ -134,6 +134,16 @@ function reorderStatusVariant(status: ReorderStatus): "default" | "secondary" | 
   return "outline";
 }
 
+function ReorderGap({ gap, thresholdConfigured, unit, status }: { gap?: number; thresholdConfigured: boolean; unit: string; status: ReorderStatus }) {
+  if (!thresholdConfigured) return <span className="text-muted-foreground">No alert level</span>;
+  if (gap === undefined) return <>—</>;
+
+  const color = gap > 0 ? "text-success" : status === "on-way" ? "text-warning" : "text-danger";
+  if (gap === 0) return <span className={`font-medium ${color}`}>At alert level</span>;
+
+  return <span className={`font-medium ${color}`}>{Math.abs(gap).toLocaleString("id-ID", { maximumFractionDigits: 2 })} {unit} {gap < 0 ? "below" : "above"}</span>;
+}
+
 const reorderStatusOrder: ReorderStatus[] = ["to-order", "on-way", "stock-high", "not-configured", "alerts-off", "not-initialized"];
 
 const reorderStatusFilters: ReorderStatus[] = ["to-order", "on-way", "stock-high", "not-configured", "alerts-off", "not-initialized"];
@@ -186,9 +196,13 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const rows = useMemo(() => materials.map((material) => {
     const balance = balanceByMaterialId.get(material.id);
+    const currentQuantity = balance?.currentQuantity;
     return {
       material,
       balance,
+      gapToAlert: material.reorderThreshold !== undefined && currentQuantity !== null && currentQuantity !== undefined
+        ? currentQuantity - material.reorderThreshold
+        : undefined,
       status: getReorderStatus(material, balance, stockInitialized, openOrderMaterialIds.has(material.id)),
       supplierName: material.preferredSupplierId ? supplierById.get(material.preferredSupplierId)?.name ?? "Archived supplier" : "No preferred supplier",
     };
@@ -210,8 +224,8 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
       } else if (sort.key === "status") {
         comparison = reorderStatusOrder.indexOf(a.status) - reorderStatusOrder.indexOf(b.status);
       } else {
-        const left = sort.key === "stock" ? a.balance?.currentQuantity : sort.key === "threshold" ? a.material.reorderThreshold : a.material.reorderQuantity;
-        const right = sort.key === "stock" ? b.balance?.currentQuantity : sort.key === "threshold" ? b.material.reorderThreshold : b.material.reorderQuantity;
+        const left = sort.key === "stock" ? a.balance?.currentQuantity : sort.key === "threshold" ? a.material.reorderThreshold : sort.key === "quantity" ? a.material.reorderQuantity : a.gapToAlert;
+        const right = sort.key === "stock" ? b.balance?.currentQuantity : sort.key === "threshold" ? b.material.reorderThreshold : sort.key === "quantity" ? b.material.reorderQuantity : b.gapToAlert;
         if (left === null || left === undefined) return right === null || right === undefined ? a.material.name.localeCompare(b.material.name, "id", { sensitivity: "base" }) : 1;
         if (right === null || right === undefined) return -1;
         comparison = left - right;
@@ -243,14 +257,16 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <ReorderOverviewHead label="Material" sortKey="material" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Current stock" sortKey="stock" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Alert at" sortKey="threshold" sort={sort} onSort={toggleSort} />
+            <ReorderOverviewHead label="Gap to alert" sortKey="gap" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Order quantity" sortKey="quantity" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Preferred supplier" sortKey="supplier" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
             <TableHead className="text-right">Action</TableHead>
-          </TableRow></TableHeader><TableBody>{filteredRows.map(({ material, balance, status, supplierName }) => <TableRow key={material.id}>
+          </TableRow></TableHeader><TableBody>{filteredRows.map(({ material, balance, gapToAlert, status, supplierName }) => <TableRow key={material.id}>
             <TableCell><span className="font-medium">{material.name}</span><span className="block text-xs text-muted-foreground">{material.baseUnit}</span></TableCell>
             <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
             <TableCell className="tabular-nums">{material.reorderThreshold === undefined ? "—" : material.reorderThreshold.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+            <TableCell><ReorderGap gap={gapToAlert} thresholdConfigured={material.reorderThreshold !== undefined} unit={material.baseUnit} status={status} /></TableCell>
             <TableCell className="tabular-nums">{material.reorderQuantity === undefined ? "—" : material.reorderQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
             <TableCell>{supplierName}</TableCell>
             <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
