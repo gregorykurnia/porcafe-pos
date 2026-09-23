@@ -27,7 +27,7 @@ import {
   sourceRowIsImportable,
   type InventorySourceRow,
 } from "@/lib/inventory-source";
-import { ensureRecipeBoxLine, normalizeInventoryName, RECIPE_BOX_MATERIAL_ID, RECIPE_BOX_NAME, validateRecipe } from "@/lib/inventory";
+import { normalizeInventoryName, normalizeRecipeBoxLines, RECIPE_BOX_MATERIAL_ID, RECIPE_BOX_NAME, validateRecipe } from "@/lib/inventory";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
@@ -332,7 +332,7 @@ export function ImportReview({
         createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
       };
-      const lines = ensureRecipeBoxLine(recipeId, importableRows.map((row) => {
+      const lines = normalizeRecipeBoxLines(recipe, importableRows.map((row) => {
         const ingredientId = ingredientIdForRow(row)!;
         const existingLine = recipeLines.find(
           (line) => line.recipeId === recipeId && line.sourceRef === row.sourceRef

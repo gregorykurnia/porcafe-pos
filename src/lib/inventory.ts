@@ -32,11 +32,32 @@ export function findMaterialByName(materials: InventoryMaterial[], name: string)
 export const RECIPE_BOX_MATERIAL_ID = "material-box";
 export const RECIPE_BOX_NAME = "Box";
 
-export function ensureRecipeBoxLine(
-  recipeId: string,
+const BOX_RECIPE_TARGET_NAMES = new Set([
+  "chicken nanban",
+  "crispy pork belly and egg",
+  "crispy pork belly and satay",
+  "crispy pork belly mentai",
+  "pork belly satay and egg",
+  "pork satay and egg",
+  "smokey pork",
+]);
+
+function normalizeRecipeTargetName(value: string): string {
+  return normalizeSourceLabel(value).replace(/\s*&\s*/g, " and ");
+}
+
+export function recipeRequiresBox(
+  recipe: Pick<InventoryRecipeVersion, "targetType" | "targetName">,
+): boolean {
+  return recipe.targetType === "menu_item" && BOX_RECIPE_TARGET_NAMES.has(normalizeRecipeTargetName(recipe.targetName));
+}
+
+export function normalizeRecipeBoxLines(
+  recipe: Pick<InventoryRecipeVersion, "id" | "targetType" | "targetName">,
   lines: InventoryRecipeLine[],
   now = Date.now()
 ): InventoryRecipeLine[] {
+  const requiresBox = recipeRequiresBox(recipe);
   let found = false;
   const normalizedLines: InventoryRecipeLine[] = [];
 
@@ -45,11 +66,11 @@ export function ensureRecipeBoxLine(
       normalizedLines.push(line);
       continue;
     }
-    if (found) continue;
+    if (!requiresBox || found) continue;
     found = true;
     normalizedLines.push({
       ...line,
-      recipeId,
+      recipeId: recipe.id,
       ingredientType: "material",
       ingredientId: RECIPE_BOX_MATERIAL_ID,
       ingredientName: RECIPE_BOX_NAME,
@@ -62,10 +83,10 @@ export function ensureRecipeBoxLine(
     });
   }
 
-  if (!found) {
+  if (requiresBox && !found) {
     normalizedLines.push({
-      id: `${recipeId}-line-box`,
-      recipeId,
+      id: `${recipe.id}-line-box`,
+      recipeId: recipe.id,
       ingredientType: "material",
       ingredientId: RECIPE_BOX_MATERIAL_ID,
       ingredientName: RECIPE_BOX_NAME,
