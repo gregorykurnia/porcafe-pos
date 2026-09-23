@@ -71,6 +71,25 @@ function sourceRowsForGroup(groupId: string): InventorySourceRow[] {
   return INVENTORY_SOURCE_ROWS.filter((row) => row.sourceGroup === groupId);
 }
 
+function conflictingMenuGroupIds(menuSelections: Record<string, string>): Set<string> {
+  const groupsByTarget = new Map<string, string[]>();
+  for (const group of INVENTORY_SOURCE_GROUPS) {
+    if (group.targetType !== "menu_item") continue;
+    const targetId = menuSelections[group.id];
+    if (!targetId) continue;
+    const groups = groupsByTarget.get(targetId) ?? [];
+    groups.push(group.id);
+    groupsByTarget.set(targetId, groups);
+  }
+
+  const conflicts = new Set<string>();
+  for (const groups of groupsByTarget.values()) {
+    if (groups.length < 2) continue;
+    for (const groupId of groups) conflicts.add(groupId);
+  }
+  return conflicts;
+}
+
 export function ImportReview({
   menuItems,
   materials,
@@ -83,6 +102,10 @@ export function ImportReview({
   const [materialSelections, setMaterialSelections] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState<"mappings" | "foundation" | null>(null);
+  const conflictingMenuGroups = useMemo(
+    () => conflictingMenuGroupIds(menuSelections),
+    [menuSelections]
+  );
 
   const rawSourceLabels = useMemo(
     () => [...new Set(INVENTORY_SOURCE_ROWS.filter((row) => row.ingredientType === "material" && row.status !== "excluded").map((row) => row.ingredientSourceLabel))].sort(),
@@ -91,15 +114,21 @@ export function ImportReview({
 
   useEffect(() => {
     const menuDefaults: Record<string, string> = {};
+    const assignedTargetIds = new Set<string>();
     for (const group of INVENTORY_SOURCE_GROUPS) {
       if (group.targetType !== "menu_item") continue;
       const alias = aliases.find(
         (candidate) => candidate.entityType === "menu_item" && candidate.sourceLabel === group.targetLabel
       );
-      const menu = alias?.targetId
+      const aliasedMenu = alias?.targetId
         ? menuItems.find((item) => item.id === alias.targetId)
-        : matchingMenuItem(menuItems, group.targetLabel, group.targetName);
+        : undefined;
+      const canonicalMenu = matchingMenuItem(menuItems, group.targetLabel, group.targetName);
+      const menu = [canonicalMenu, aliasedMenu].find(
+        (candidate) => candidate && !assignedTargetIds.has(candidate.id)
+      );
       menuDefaults[group.id] = menu?.id ?? "";
+      if (menu) assignedTargetIds.add(menu.id);
     }
     const materialDefaults: Record<string, string> = {};
     for (const sourceLabel of rawSourceLabels) {
@@ -144,7 +173,8 @@ export function ImportReview({
   }
 
   function rowIsApproved(row: InventorySourceRow): boolean {
-    return sourceRowIsImportable(row) && Boolean(targetIdForRow(row)) && Boolean(ingredientIdForRow(row));
+    const targetIsConflicting = row.targetType === "menu_item" && conflictingMenuGroups.has(row.sourceGroup);
+    return sourceRowIsImportable(row) && Boolean(targetIdForRow(row)) && !targetIsConflicting && Boolean(ingredientIdForRow(row));
   }
 
   const approvedRows = INVENTORY_SOURCE_ROWS.filter(rowIsApproved);
@@ -328,6 +358,10 @@ export function ImportReview({
   }
 
   async function commitFoundation() {
+    if (conflictingMenuGroups.size > 0) {
+      toast.error("Each source menu group must map to a different live menu item.");
+      return;
+    }
     if (unresolvedRows > 0 || sourceNeedsReview > 0) {
       toast.error("Resolve mapping and source review rows before creating draft recipes.");
       return;
@@ -347,12 +381,18 @@ export function ImportReview({
         return;
       }
     }
+    const recipeIdsBeingReplaced = new Set(recipesToCommit.map(({ recipe }) => recipe.id));
+    const newLineIds = new Set(recipesToCommit.flatMap(({ lines }) => lines.map((line) => line.id)));
+    const deleteLineIds = recipeLines
+      .filter((line) => recipeIdsBeingReplaced.has(line.recipeId) && !newLineIds.has(line.id))
+      .map((line) => line.id);
     setSaving("foundation");
     try {
       await commitInventoryFoundation({
         materials: materialsToCommit,
         aliases: buildAliases(),
         recipes: recipesToCommit,
+        deleteLineIds,
       });
       toast.success(`${recipesToCommit.length} draft recipe groups saved. No stock usage was created.`);
       await onChanged();
@@ -398,6 +438,7 @@ export function ImportReview({
             {INVENTORY_SOURCE_GROUPS.map((group) => {
               const rows = sourceRowsForGroup(group.id);
               const selected = targetIdForRow(rows[0]);
+              const hasTargetConflict = conflictingMenuGroups.has(group.id);
               return (
                 <div key={group.id} className="rounded-xl border border-border/70 bg-surface/50 p-3">
                   <div className="flex items-start justify-between gap-3">
@@ -406,19 +447,29 @@ export function ImportReview({
                       <p className="font-medium">{group.targetLabel}</p>
                       {group.targetName !== group.targetLabel && <p className="text-xs text-muted-foreground">Planned target: {group.targetName}</p>}
                     </div>
-                    {selected ? statusBadge("approved") : statusBadge("mapping")}
+                    {hasTargetConflict ? statusBadge("needs-review") : selected ? statusBadge("approved") : statusBadge("mapping")}
                   </div>
                   {group.targetType === "prepared_component" ? (
                     <p className="mt-3 text-sm text-muted-foreground">Prepared component ID: <span className="font-mono text-xs">{inventoryComponentId(group.targetName)}</span></p>
                   ) : (
                     <div className="mt-3 space-y-1.5">
                       <Label htmlFor={`menu-map-${group.id}`} className="text-xs">Live menu item</Label>
-                      <Select value={menuSelections[group.id] ?? ""} onValueChange={(value) => setMenuSelections((current) => ({ ...current, [group.id]: value }))}>
+                      <Select value={menuSelections[group.id] ?? ""} onValueChange={(value) => {
+                        const conflictsWithAnotherGroup = INVENTORY_SOURCE_GROUPS.some(
+                          (candidate) => candidate.id !== group.id && candidate.targetType === "menu_item" && menuSelections[candidate.id] === value
+                        );
+                        if (conflictsWithAnotherGroup) {
+                          toast.error("Each source menu group must map to a different live menu item.");
+                          return;
+                        }
+                        setMenuSelections((current) => ({ ...current, [group.id]: value }));
+                      }}>
                         <SelectTrigger id={`menu-map-${group.id}`} className="w-full"><SelectValue placeholder="Choose a live menu item" /></SelectTrigger>
                         <SelectContent>
                           {menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
                         </SelectContent>
                       </Select>
+                      {hasTargetConflict && <p className="mt-1 text-xs text-destructive">This menu item is already assigned to another source group.</p>}
                     </div>
                   )}
                 </div>

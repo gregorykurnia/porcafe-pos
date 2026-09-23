@@ -444,6 +444,7 @@ export type InventoryFoundationCommit = {
   materials: InventoryMaterial[];
   aliases: InventoryAliasMapping[];
   recipes: Array<{ recipe: InventoryRecipeVersion; lines: InventoryRecipeLine[] }>;
+  deleteLineIds?: string[];
 };
 
 // The import preview is intentionally committed in one batch. The first
@@ -480,6 +481,9 @@ export async function commitInventoryFoundation(input: InventoryFoundationCommit
         { merge: true }
       );
     }
+  }
+  for (const lineId of input.deleteLineIds ?? []) {
+    batch.delete(doc(db, "inventoryRecipeLines", lineId));
   }
 
   await batch.commit();
