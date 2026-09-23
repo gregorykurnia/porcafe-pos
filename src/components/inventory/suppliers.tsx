@@ -3,7 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Archive, Bell, CalendarClock, CircleAlert, ClipboardList, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
+import {
+  Archive,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Bell,
+  CalendarClock,
+  CircleAlert,
+  ClipboardList,
+  Link2,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Truck,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +68,40 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
 };
 
 type ReorderStatus = "stock-high" | "to-order" | "on-way" | "not-configured" | "alerts-off" | "not-initialized";
+type SupplierPricingSortKey = "material" | "supplier" | "cost" | "buyingDetails" | "status";
+type SupplierPricingSort = { key: SupplierPricingSortKey; direction: "asc" | "desc" } | null;
+
+function SupplierPricingHead({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: SupplierPricingSortKey;
+  sort: SupplierPricingSort;
+  onSort: (key: SupplierPricingSortKey) => void;
+  className?: string;
+}) {
+  const active = sort?.key === sortKey;
+  const direction = active ? sort?.direction : undefined;
+  const Icon = direction ? (direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+
+  return (
+    <TableHead className={className} aria-sort={direction ? (direction === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        aria-label={`${label}, ${direction ? (direction === "asc" ? "ascending" : "descending") : "not sorted"}`}
+        className={`inline-flex items-center gap-1 hover:text-foreground ${active ? "text-foreground" : "text-muted-foreground"}`}
+      >
+        {label}
+        <Icon className="size-3" />
+      </button>
+    </TableHead>
+  );
+}
 
 function getReorderStatus(
   material: InventoryMaterial,
@@ -210,6 +258,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const [supplierItemNotes, setSupplierItemNotes] = useState("");
   const [editingSupplierItemId, setEditingSupplierItemId] = useState<string | null>(null);
   const [supplierItemSaving, setSupplierItemSaving] = useState(false);
+  const [supplierPricingSort, setSupplierPricingSort] = useState<SupplierPricingSort>(null);
   const [stockSetup, setStockSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
@@ -222,6 +271,36 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const selectedMaterial = activeMaterials.find((material) => material.id === selectedMaterialId);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
+  const sortedSupplierItems = useMemo(() => {
+    if (!supplierPricingSort) return supplierItems;
+
+    const { key, direction } = supplierPricingSort;
+    const sign = direction === "asc" ? 1 : -1;
+    return [...supplierItems].sort((a, b) => {
+      let comparison = 0;
+      if (key === "material") {
+        comparison = (materialById.get(a.materialId)?.name ?? a.materialName).localeCompare(
+          materialById.get(b.materialId)?.name ?? b.materialName,
+          "id",
+          { sensitivity: "base" },
+        );
+      } else if (key === "supplier") {
+        comparison = (supplierById.get(a.supplierId)?.name ?? "Archived supplier").localeCompare(
+          supplierById.get(b.supplierId)?.name ?? "Archived supplier",
+          "id",
+          { sensitivity: "base" },
+        );
+      } else if (key === "cost") {
+        comparison = a.costPerUnit - b.costPerUnit || a.currency.localeCompare(b.currency);
+      } else if (key === "buyingDetails") {
+        comparison = (a.minimumOrderQuantity ?? Number.POSITIVE_INFINITY) - (b.minimumOrderQuantity ?? Number.POSITIVE_INFINITY)
+          || (a.leadTimeDays ?? Number.POSITIVE_INFINITY) - (b.leadTimeDays ?? Number.POSITIVE_INFINITY);
+      } else {
+        comparison = Number(a.preferred) - Number(b.preferred);
+      }
+      return comparison * sign;
+    });
+  }, [materialById, supplierById, supplierItems, supplierPricingSort]);
   const balances = useMemo(() => summarizeInventoryBalances(materials, movements, stockSetup), [materials, movements, stockSetup]);
   const openOrderMaterialIds = useMemo(() => new Set(orders.filter((order) => order.status === "ordered" || order.status === "partially_received").flatMap((order) => order.lines.map((line) => line.materialId))), [orders]);
   const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized), openOrderMaterialIds.has(material.id)) === "to-order").length, [activeMaterials, balances, openOrderMaterialIds, stockSetup]);
@@ -351,6 +430,13 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
     setPreferred(false);
     setSupplierItemNotes("");
     setEditingSupplierItemId(null);
+  }
+
+  function toggleSupplierPricingSort(key: SupplierPricingSortKey) {
+    setSupplierPricingSort((current) => ({
+      key,
+      direction: current?.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
   }
 
   function startEditingSupplierItem(item: InventorySupplierItem) {
@@ -522,9 +608,16 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Supplier pricing by material</CardTitle><CardDescription>{supplierItems.length} supplier link{supplierItems.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Supplier pricing by material</CardTitle><CardDescription>{supplierItems.length} supplier link{supplierItems.length === 1 ? "" : "s"} currently defined. Click a column heading to sort.</CardDescription></CardHeader>
         <CardContent>
-          {supplierItems.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier links yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Supplier</TableHead><TableHead>Cost</TableHead><TableHead>Buying details</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{supplierItems.map((item) => {
+          {supplierItems.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier links yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow>
+            <SupplierPricingHead label="Material" sortKey="material" sort={supplierPricingSort} onSort={toggleSupplierPricingSort} />
+            <SupplierPricingHead label="Supplier" sortKey="supplier" sort={supplierPricingSort} onSort={toggleSupplierPricingSort} />
+            <SupplierPricingHead label="Cost" sortKey="cost" sort={supplierPricingSort} onSort={toggleSupplierPricingSort} />
+            <SupplierPricingHead label="Buying details" sortKey="buyingDetails" sort={supplierPricingSort} onSort={toggleSupplierPricingSort} />
+            <SupplierPricingHead label="Status" sortKey="status" sort={supplierPricingSort} onSort={toggleSupplierPricingSort} />
+            <TableHead className="text-right">Action</TableHead>
+          </TableRow></TableHeader><TableBody>{sortedSupplierItems.map((item) => {
             const supplier = supplierById.get(item.supplierId);
             const material = materialById.get(item.materialId);
             return <TableRow key={item.id}>
