@@ -2,6 +2,7 @@ import {
   applyInventoryConsumptionEvent,
   type InventoryConsumptionMaterial,
 } from "./data";
+import { normalizeInventoryName } from "./inventory";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -18,6 +19,29 @@ export type InventoryBalance = {
   movementQuantity: number;
   isNegative: boolean;
 };
+
+const CURRENT_STOCK_EXCLUDED_MATERIAL_NAMES = new Set(
+  [
+    "Calamansi",
+    "Curly red chili",
+    "Curly red chilli",
+    "Ginger",
+    "Green bird's eye chili",
+    "Green bird's eye chilli",
+    "Kaffir lime leaves",
+    "Red bird's eye chili",
+    "Red bird's eye chilli",
+    "Salt",
+    "Salted anchovies",
+    "Seasoning",
+    "Seasoning (salt, sugar, MSG)",
+    "Young lemongrass",
+  ].map(normalizeInventoryName),
+);
+
+export function filterCurrentStockBalances(balances: InventoryBalance[]): InventoryBalance[] {
+  return balances.filter((balance) => !CURRENT_STOCK_EXCLUDED_MATERIAL_NAMES.has(normalizeInventoryName(balance.materialName)));
+}
 
 export function sumInventoryMovements(movements: InventoryMovement[], materialId: string): number {
   return movements
@@ -67,4 +91,3 @@ export function aggregateUsageMaterials(event: InventoryUsageEvent): InventoryCo
 export async function syncInventoryConsumption(event: InventoryUsageEvent) {
   return applyInventoryConsumptionEvent(event, aggregateUsageMaterials(event));
 }
-

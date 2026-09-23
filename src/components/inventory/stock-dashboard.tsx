@@ -26,7 +26,7 @@ import {
   recordInventoryStockCount,
 } from "@/lib/data";
 import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
-import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
+import { filterCurrentStockBalances, summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -97,7 +97,8 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
 
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
   const balances = useMemo(() => summarizeInventoryBalances(materials, movements, setup), [materials, movements, setup]);
-  const lowStockBalances = balances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
+  const currentStockBalances = useMemo(() => filterCurrentStockBalances(balances), [balances]);
+  const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
 
@@ -267,7 +268,7 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
         <>
           <div className="grid gap-3 sm:grid-cols-3">
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Stock status</p><p className="mt-1 font-semibold text-success">Initialized</p><p className="mt-1 text-xs text-muted-foreground">{setup.openingDate ? `From ${formatDisplay(setup.openingDate)}` : "Opening date not recorded"}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Active materials</p><p className="mt-1 text-xl font-semibold tabular-nums">{balances.length}</p><p className="mt-1 text-xs text-muted-foreground">Numeric balances enabled</p></CardContent></Card>
+            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Active materials</p><p className="mt-1 text-xl font-semibold tabular-nums">{currentStockBalances.length}</p><p className="mt-1 text-xs text-muted-foreground">Numeric balances enabled</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Low / negative</p><p className={`mt-1 text-xl font-semibold tabular-nums ${lowStockBalances.length > 0 ? "text-danger" : "text-success"}`}>{lowStockBalances.length}</p><p className="mt-1 text-xs text-muted-foreground">At or below zero; warnings only</p></CardContent></Card>
           </div>
 
@@ -275,7 +276,7 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
 
           <Card>
             <CardHeader><CardTitle>Current stock</CardTitle><CardDescription>Balances are the sum of opening stock, manual movements, stock-count corrections, recipe consumption, and reversals.</CardDescription></CardHeader>
-            <CardContent>{balances.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">Current balance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{balances.map((balance) => <TableRow key={balance.materialId}><TableCell className="font-medium">{balance.materialName}</TableCell><TableCell className="text-muted-foreground">{balance.unit}</TableCell><TableCell className={`text-right font-semibold tabular-nums ${balance.isNegative ? "text-danger" : ""}`}>{materialBalanceLabel(balance)}</TableCell><TableCell>{balance.isNegative ? <Badge variant="destructive">Negative</Badge> : balance.currentQuantity === 0 ? <Badge variant="destructive">Low stock</Badge> : <Badge variant="secondary">Available</Badge>}</TableCell></TableRow>)}</TableBody></Table>}</CardContent>
+            <CardContent>{currentStockBalances.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">Current balance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{currentStockBalances.map((balance) => <TableRow key={balance.materialId}><TableCell className="font-medium">{balance.materialName}</TableCell><TableCell className="text-muted-foreground">{balance.unit}</TableCell><TableCell className={`text-right font-semibold tabular-nums ${balance.isNegative ? "text-danger" : ""}`}>{materialBalanceLabel(balance)}</TableCell><TableCell>{balance.isNegative ? <Badge variant="destructive">Negative</Badge> : balance.currentQuantity === 0 ? <Badge variant="destructive">Low stock</Badge> : <Badge variant="secondary">Available</Badge>}</TableCell></TableRow>)}</TableBody></Table>}</CardContent>
           </Card>
 
           <div className="grid gap-5 lg:grid-cols-2">

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { aggregateUsageMaterials, summarizeInventoryBalances } from "./inventory-ledger";
+import { aggregateUsageMaterials, filterCurrentStockBalances, summarizeInventoryBalances } from "./inventory-ledger";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -114,9 +114,34 @@ test("sums ledger movements and flags zero or negative stock", () => {
   assert.equal(egg?.isNegative, false);
 });
 
+test("filters the requested materials from the current stock display", () => {
+  const balances = [
+    "Rice",
+    "Calamansi",
+    "Curly red chilli",
+    "Ginger",
+    "Green bird's eye chilli",
+    "Kaffir lime leaves",
+    "Red bird's eye chilli",
+    "Salt",
+    "Salted anchovies",
+    "Seasoning",
+    "Seasoning (salt, sugar, MSG)",
+    "Young lemongrass",
+  ].map((name) => ({
+    materialId: name,
+    materialName: name,
+    unit: "g" as const,
+    currentQuantity: 10,
+    movementQuantity: 10,
+    isNegative: false,
+  }));
+
+  assert.deepEqual(filterCurrentStockBalances(balances).map((balance) => balance.materialName), ["Rice"]);
+});
+
 test("aggregates calculated usage by material before ledger application", () => {
   const aggregated = aggregateUsageMaterials(usageEvent);
   assert.deepEqual(aggregated, [{ materialId: "rice", materialName: "Rice", unit: "g", quantity: 200 }]);
   assert.deepEqual(aggregateUsageMaterials({ ...usageEvent, status: "needs-review" }), []);
 });
-
