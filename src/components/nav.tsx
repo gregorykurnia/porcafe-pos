@@ -68,14 +68,15 @@ export function Nav() {
 
       {/* Bottom nav (mobile) */}
       <nav aria-label="Mobile navigation" className="safe-area-bottom fixed inset-x-0 bottom-0 z-40 border-t border-primary/10 bg-background/95 backdrop-blur-md sm:hidden">
-        <div className="mx-auto flex max-w-6xl px-2 py-1.5">
+        <div className="mx-auto flex w-full min-w-0 max-w-6xl gap-1 px-1.5 py-1.5">
           {links.map((l) => {
             const active = pathname === l.href;
             return (
               <Link
                 key={l.href}
                 href={l.href}
-                className="flex min-h-11 flex-1 flex-col items-center gap-1 py-1.5"
+                aria-current={active ? "page" : undefined}
+                className="flex min-h-11 min-w-0 flex-1 flex-col items-center gap-1 py-1.5"
               >
                 <span
                   className={cn(
@@ -85,7 +86,7 @@ export function Nav() {
                 >
                   <l.icon className={cn("size-5", active ? "text-primary" : "text-primary/45")} />
                 </span>
-                <span className={cn("text-xs font-medium", active ? "text-primary" : "text-primary/45")}>
+                <span className={cn("max-w-full truncate whitespace-nowrap text-xs font-medium", active ? "text-primary" : "text-primary/45")}>
                   {l.label}
                 </span>
               </Link>

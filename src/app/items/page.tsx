@@ -711,7 +711,7 @@ function TicketScanDialog({
           <ScanLine className="size-4" /> Scan sheet
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {previewUrl && step === "revenue"

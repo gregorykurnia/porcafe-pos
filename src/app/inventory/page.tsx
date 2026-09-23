@@ -112,13 +112,13 @@ export default function InventoryPage() {
         <Card className="border-danger/20 bg-danger/5"><CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">Could not load inventory foundation</p><p className="mt-1 text-sm text-muted-foreground">{error}</p></div><button type="button" onClick={() => void refresh()} className="text-sm font-medium text-primary underline underline-offset-4">Retry</button></CardContent></Card>
       ) : (
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as InventoryTab)}>
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="stock"><Scale className="size-4" />Stock</TabsTrigger>
-            <TabsTrigger value="usage"><BookOpen className="size-4" />Usage recap</TabsTrigger>
-            <TabsTrigger value="import"><FileSpreadsheet className="size-4" />Import review</TabsTrigger>
-            <TabsTrigger value="materials"><Boxes className="size-4" />Materials</TabsTrigger>
-            <TabsTrigger value="recipes"><BookOpen className="size-4" />Recipes</TabsTrigger>
-            <TabsTrigger value="suppliers"><Handshake className="size-4" />Suppliers & ordering</TabsTrigger>
+          <TabsList aria-label="Inventory sections" className="grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto lg:inline-flex lg:w-auto lg:gap-0 lg:group-data-horizontal/tabs:h-8">
+            <TabsTrigger value="stock" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Scale className="hidden size-4 shrink-0 lg:block" /><span>Stock</span></TabsTrigger>
+            <TabsTrigger value="usage" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><BookOpen className="hidden size-4 shrink-0 lg:block" /><span>Usage recap</span></TabsTrigger>
+            <TabsTrigger value="import" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><FileSpreadsheet className="hidden size-4 shrink-0 lg:block" /><span>Import review</span></TabsTrigger>
+            <TabsTrigger value="materials" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Boxes className="hidden size-4 shrink-0 lg:block" /><span>Materials</span></TabsTrigger>
+            <TabsTrigger value="recipes" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><BookOpen className="hidden size-4 shrink-0 lg:block" /><span>Recipes</span></TabsTrigger>
+            <TabsTrigger value="suppliers" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Handshake className="hidden size-4 shrink-0 lg:block" /><span>Suppliers &amp; ordering</span></TabsTrigger>
           </TabsList>
           <TabsContent value="stock" className="mt-5"><StockDashboard materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>

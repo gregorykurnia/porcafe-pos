@@ -350,7 +350,7 @@ function DuplicateDateReviewDialog({
           Review records
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Review {formatDisplay(group.date)}</DialogTitle>
           <DialogDescription>
