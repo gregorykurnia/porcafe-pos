@@ -19,6 +19,7 @@ import {
   listMenuItems,
   listInventorySuppliers,
   listInventorySupplierItems,
+  listInventorySupplierOrders,
 } from "@/lib/data";
 import type {
   InventoryAliasMapping,
@@ -26,6 +27,7 @@ import type {
   InventoryRecipeLine,
   InventoryRecipeVersion,
   InventorySupplier,
+  InventorySupplierOrder,
   InventorySupplierItem,
   MenuItem,
 } from "@/lib/types";
@@ -41,6 +43,7 @@ export default function InventoryPage() {
   const [recipeLines, setRecipeLines] = useState<InventoryRecipeLine[]>([]);
   const [suppliers, setSuppliers] = useState<InventorySupplier[]>([]);
   const [supplierItems, setSupplierItems] = useState<InventorySupplierItem[]>([]);
+  const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +51,7 @@ export default function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines, loadedSuppliers, loadedSupplierItems] = await Promise.all([
+      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines, loadedSuppliers, loadedSupplierItems, loadedSupplierOrders] = await Promise.all([
         listMenuItems(),
         listInventoryMaterials(),
         listInventoryAliasMappings(),
@@ -56,6 +59,7 @@ export default function InventoryPage() {
         listInventoryRecipeLines(),
         listInventorySuppliers(),
         listInventorySupplierItems(),
+        listInventorySupplierOrders(),
       ]);
       setMenuItems(items);
       setMaterials(loadedMaterials);
@@ -64,6 +68,7 @@ export default function InventoryPage() {
       setRecipeLines(loadedLines);
       setSuppliers(loadedSuppliers);
       setSupplierItems(loadedSupplierItems);
+      setSupplierOrders(loadedSupplierOrders);
     } catch (loadError) {
       console.error("Failed to load inventory foundation", loadError);
       setError(loadError instanceof Error ? loadError.message : "Could not load inventory foundation.");
@@ -112,7 +117,7 @@ export default function InventoryPage() {
           <TabsContent value="import" className="mt-5"><ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
           <TabsContent value="materials" className="mt-5"><Materials materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="recipes" className="mt-5"><Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
-          <TabsContent value="suppliers" className="mt-5"><Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} onChanged={refresh} /></TabsContent>
+          <TabsContent value="suppliers" className="mt-5"><Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} onChanged={refresh} /></TabsContent>
         </Tabs>
       )}
     </div>

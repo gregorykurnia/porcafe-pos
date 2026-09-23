@@ -24,6 +24,7 @@ import type {
   InventoryAliasMapping,
   InventoryMaterial,
   InventorySupplier,
+  InventorySupplierOrder,
   InventorySupplierItem,
   InventoryRecipeLine,
   InventoryRecipeVersion,
@@ -335,6 +336,7 @@ export async function migrateLegacyItemSalesToDailyLogs(options?: {
 const inventoryMaterialsCol = collection(db, "inventoryMaterials");
 const inventorySuppliersCol = collection(db, "inventorySuppliers");
 const inventorySupplierItemsCol = collection(db, "inventorySupplierItems");
+const inventorySupplierOrdersCol = collection(db, "inventorySupplierOrders");
 const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
 const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
 const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
@@ -353,6 +355,10 @@ function mapInventorySupplier(id: string, data: Record<string, unknown>): Invent
 
 function mapInventorySupplierItem(id: string, data: Record<string, unknown>): InventorySupplierItem {
   return { id, ...(data as Omit<InventorySupplierItem, "id">) };
+}
+
+function mapInventorySupplierOrder(id: string, data: Record<string, unknown>): InventorySupplierOrder {
+  return { id, ...(data as Omit<InventorySupplierOrder, "id">) };
 }
 
 function mapInventoryAlias(id: string, data: Record<string, unknown>): InventoryAliasMapping {
@@ -446,6 +452,33 @@ export async function upsertInventorySupplierItem(
 
 export async function deleteInventorySupplierItem(id: string) {
   await deleteDoc(doc(db, "inventorySupplierItems", id));
+}
+
+export async function listInventorySupplierOrders(): Promise<InventorySupplierOrder[]> {
+  const snap = await getDocs(inventorySupplierOrdersCol);
+  return snap.docs
+    .map((d) => mapInventorySupplierOrder(d.id, d.data()))
+    .sort((a, b) => b.orderedOn.localeCompare(a.orderedOn) || b.createdAt - a.createdAt);
+}
+
+export async function upsertInventorySupplierOrder(
+  order: Omit<InventorySupplierOrder, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = order;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+
+  if (inputId) {
+    await setDoc(doc(db, "inventorySupplierOrders", inputId), omitUndefined(payload), { merge: true });
+    return inputId;
+  }
+
+  const ref = await addDoc(inventorySupplierOrdersCol, omitUndefined({ ...payload, createdAt: now }));
+  return ref.id;
 }
 
 export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {

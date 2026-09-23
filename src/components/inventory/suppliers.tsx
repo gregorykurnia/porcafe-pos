@@ -20,12 +20,14 @@ import {
 } from "@/lib/data";
 import { normalizeInventoryName } from "@/lib/inventory";
 import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
-import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierItem } from "@/lib/types";
+import { SupplierOrders } from "@/components/inventory/supplier-orders";
+import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
 
 type SuppliersProps = {
   materials: InventoryMaterial[];
   suppliers: InventorySupplier[];
   supplierItems: InventorySupplierItem[];
+  orders: InventorySupplierOrder[];
   onChanged: () => Promise<void>;
 };
 
@@ -47,14 +49,16 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
   notes: "",
 };
 
-type ReorderStatus = "stock-high" | "to-order" | "not-configured" | "alerts-off" | "not-initialized";
+type ReorderStatus = "stock-high" | "to-order" | "on-way" | "not-configured" | "alerts-off" | "not-initialized";
 
 function getReorderStatus(
   material: InventoryMaterial,
   balance: InventoryBalance | undefined,
   stockInitialized: boolean,
+  hasOpenOrder: boolean,
 ): ReorderStatus {
   if (!stockInitialized || balance?.currentQuantity === null || balance === undefined) return "not-initialized";
+  if (hasOpenOrder) return "on-way";
   if (material.reorderThreshold === undefined) return "not-configured";
   if (!material.lowStockAlertEnabled) return "alerts-off";
   return balance.currentQuantity <= material.reorderThreshold ? "to-order" : "stock-high";
@@ -62,6 +66,7 @@ function getReorderStatus(
 
 function reorderStatusLabel(status: ReorderStatus): string {
   if (status === "to-order") return "To Order";
+  if (status === "on-way") return "Ordered / On the Way";
   if (status === "stock-high") return "Stock Still High";
   if (status === "not-configured") return "Set threshold";
   if (status === "alerts-off") return "Alerts off";
@@ -80,6 +85,7 @@ type ReorderSettingsProps = {
   supplierItems: InventorySupplierItem[];
   balances: InventoryBalance[];
   stockInitialized: boolean;
+  openOrderMaterialIds: Set<string>;
   onChanged: () => Promise<void>;
 };
 
@@ -89,6 +95,7 @@ type ReorderSettingRowProps = {
   supplierItems: InventorySupplierItem[];
   balance?: InventoryBalance;
   stockInitialized: boolean;
+  hasOpenOrder: boolean;
   onChanged: () => Promise<void>;
 };
 
@@ -98,6 +105,7 @@ function ReorderSettingRow({
   supplierItems,
   balance,
   stockInitialized,
+  hasOpenOrder,
   onChanged,
 }: ReorderSettingRowProps) {
   const [threshold, setThreshold] = useState(material.reorderThreshold === undefined ? "" : String(material.reorderThreshold));
@@ -110,7 +118,7 @@ function ReorderSettingRow({
     .filter((item) => item.materialId === material.id)
     .map((item) => supplierById.get(item.supplierId))
     .filter((supplier): supplier is InventorySupplier => Boolean(supplier)), [material.id, supplierById, supplierItems]);
-  const status = getReorderStatus(material, balance, stockInitialized);
+  const status = getReorderStatus(material, balance, stockInitialized, hasOpenOrder);
 
   async function save() {
     const nextThreshold = threshold.trim() ? Number(threshold) : undefined;
@@ -163,7 +171,7 @@ function ReorderSettingRow({
   );
 }
 
-function ReorderSettings({ materials, suppliers, supplierItems, balances, stockInitialized, onChanged }: ReorderSettingsProps) {
+function ReorderSettings({ materials, suppliers, supplierItems, balances, stockInitialized, openOrderMaterialIds, onChanged }: ReorderSettingsProps) {
   return (
     <Card>
       <CardHeader>
@@ -171,13 +179,13 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, stockI
         <CardDescription>Set the stock level that should surface an in-app “To Order” alert for each material.</CardDescription>
       </CardHeader>
       <CardContent>
-        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} stockInitialized={stockInitialized} onChanged={onChanged} />)}</TableBody></Table></div>}
+        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} stockInitialized={stockInitialized} hasOpenOrder={openOrderMaterialIds.has(material.id)} onChanged={onChanged} />)}</TableBody></Table></div>}
       </CardContent>
     </Card>
   );
 }
 
-export function Suppliers({ materials, suppliers, supplierItems, onChanged }: SuppliersProps) {
+export function Suppliers({ materials, suppliers, supplierItems, orders, onChanged }: SuppliersProps) {
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [supplierSaving, setSupplierSaving] = useState(false);
@@ -204,7 +212,8 @@ export function Suppliers({ materials, suppliers, supplierItems, onChanged }: Su
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
   const balances = useMemo(() => summarizeInventoryBalances(materials, movements, stockSetup), [materials, movements, stockSetup]);
-  const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized)) === "to-order").length, [activeMaterials, balances, stockSetup]);
+  const openOrderMaterialIds = useMemo(() => new Set(orders.filter((order) => order.status === "ordered" || order.status === "partially_received").flatMap((order) => order.lines.map((line) => line.materialId))), [orders]);
+  const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized), openOrderMaterialIds.has(material.id)) === "to-order").length, [activeMaterials, balances, openOrderMaterialIds, stockSetup]);
 
   const refreshStock = useCallback(async () => {
     setStockLoading(true);
@@ -425,9 +434,9 @@ export function Suppliers({ materials, suppliers, supplierItems, onChanged }: Su
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Stock ledger</p><p className="font-semibold">{stockSetup?.initialized ? "Initialized" : "Needs setup"}</p></div></CardContent></Card>
       </div>
 
-      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Create supplier orders in the next phase.</p></div></CardContent></Card>}
+      {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Use the supplier order form below to place an order.</p></div></CardContent></Card>}
 
-      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+      <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} openOrderMaterialIds={openOrderMaterialIds} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <Card>
         <CardHeader>
@@ -512,6 +521,8 @@ export function Suppliers({ materials, suppliers, supplierItems, onChanged }: Su
           })}</TableBody></Table></div>}
         </CardContent>
       </Card>
+
+      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={onChanged} />
     </div>
   );
 }

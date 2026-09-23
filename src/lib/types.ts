@@ -121,6 +121,34 @@ export type InventorySupplierItem = {
   updatedAt: number;
 };
 
+export type InventorySupplierOrderStatus = "ordered" | "partially_received" | "received" | "cancelled";
+
+export type InventorySupplierOrderLine = {
+  id: string;
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  quantity: number;
+  receivedQuantity: number;
+  unitCost: number;
+  currency: string;
+};
+
+export type InventorySupplierOrder = {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  orderReference: string;
+  orderedOn: string;
+  expectedOn?: string;
+  status: InventorySupplierOrderStatus;
+  notes?: string;
+  totalCost: number;
+  lines: InventorySupplierOrderLine[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type InventoryAliasEntityType =
   | "menu_item"
   | "material"
