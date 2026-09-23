@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { saveInventoryRecipeVersion } from "@/lib/data";
-import { INVENTORY_UNITS, recipeStatusLabel, validateRecipe } from "@/lib/inventory";
+import { ensureRecipeBoxLine, INVENTORY_UNITS, recipeStatusLabel, validateRecipe } from "@/lib/inventory";
 import {
   INVENTORY_SOURCE_GROUPS,
   inventoryComponentId,
@@ -100,7 +100,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   function editRecipe(recipe: InventoryRecipeVersion) {
     setSelectedId(recipe.id);
     setDraftRecipe({ ...recipe });
-    setDraftLines(recipeLines.filter((line) => line.recipeId === recipe.id).map((line) => ({ ...line })));
+    setDraftLines(ensureRecipeBoxLine(recipe.id, recipeLines.filter((line) => line.recipeId === recipe.id).map((line) => ({ ...line }))));
   }
 
   function startNewRecipe() {
@@ -204,13 +204,13 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
       createdAt: draftRecipe.createdAt || now,
       updatedAt: now,
     };
-    const lines = draftLines.map((line, index) => ({
+    const lines = ensureRecipeBoxLine(recipeId, draftLines.map((line, index) => ({
       ...line,
       id: line.sourceRef ? `${recipeId}-line-${slugifyInventoryId(line.sourceRef)}` : line.id.startsWith("draft-line-") ? `${recipeId}-line-${index + 1}` : line.id,
       recipeId,
       createdAt: line.createdAt || now,
       updatedAt: now,
-    }));
+    })), now);
     const validation = validateRecipe(recipe, lines, materials, recipes, recipeLines);
     if (!validation.valid) {
       toast.error(validation.errors[0] ?? "Recipe needs review before saving.");

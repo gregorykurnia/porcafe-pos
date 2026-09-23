@@ -29,6 +29,59 @@ export function findMaterialByName(materials: InventoryMaterial[], name: string)
   return materials.find((material) => material.normalizedName === normalized);
 }
 
+export const RECIPE_BOX_MATERIAL_ID = "material-box";
+export const RECIPE_BOX_NAME = "Box";
+
+export function ensureRecipeBoxLine(
+  recipeId: string,
+  lines: InventoryRecipeLine[],
+  now = Date.now()
+): InventoryRecipeLine[] {
+  let found = false;
+  const normalizedLines: InventoryRecipeLine[] = [];
+
+  for (const line of lines) {
+    if (line.ingredientId !== RECIPE_BOX_MATERIAL_ID) {
+      normalizedLines.push(line);
+      continue;
+    }
+    if (found) continue;
+    found = true;
+    normalizedLines.push({
+      ...line,
+      recipeId,
+      ingredientType: "material",
+      ingredientId: RECIPE_BOX_MATERIAL_ID,
+      ingredientName: RECIPE_BOX_NAME,
+      quantity: 1,
+      unit: "pcs",
+      sourceRef: null,
+      reviewStatus: "approved",
+      note: "Required packaging",
+      updatedAt: now,
+    });
+  }
+
+  if (!found) {
+    normalizedLines.push({
+      id: `${recipeId}-line-box`,
+      recipeId,
+      ingredientType: "material",
+      ingredientId: RECIPE_BOX_MATERIAL_ID,
+      ingredientName: RECIPE_BOX_NAME,
+      quantity: 1,
+      unit: "pcs",
+      sourceRef: null,
+      reviewStatus: "approved",
+      note: "Required packaging",
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  return normalizedLines;
+}
+
 export function validateRecipe(
   recipe: InventoryRecipeVersion,
   lines: InventoryRecipeLine[],

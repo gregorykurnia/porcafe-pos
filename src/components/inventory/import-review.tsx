@@ -27,7 +27,7 @@ import {
   sourceRowIsImportable,
   type InventorySourceRow,
 } from "@/lib/inventory-source";
-import { normalizeInventoryName, validateRecipe } from "@/lib/inventory";
+import { ensureRecipeBoxLine, normalizeInventoryName, RECIPE_BOX_MATERIAL_ID, RECIPE_BOX_NAME, validateRecipe } from "@/lib/inventory";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
@@ -252,6 +252,19 @@ export function ImportReview({
   function buildMaterials(): InventoryMaterial[] {
     const timestamp = now();
     const byId = new Map<string, InventoryMaterial>();
+    const existingBox = materials.find((material) => material.id === RECIPE_BOX_MATERIAL_ID);
+    byId.set(RECIPE_BOX_MATERIAL_ID, {
+      id: RECIPE_BOX_MATERIAL_ID,
+      name: RECIPE_BOX_NAME,
+      normalizedName: "box",
+      type: "packaging",
+      baseUnit: "pcs",
+      active: existingBox?.active ?? true,
+      reviewStatus: "approved",
+      sourceRefs: existingBox?.sourceRefs ?? [],
+      createdAt: existingBox?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    });
     const sourceRows = INVENTORY_SOURCE_ROWS.filter(
       (row) => row.ingredientType === "material" && row.status !== "excluded"
     );
@@ -319,7 +332,7 @@ export function ImportReview({
         createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
       };
-      const lines: InventoryRecipeLine[] = importableRows.map((row) => {
+      const lines = ensureRecipeBoxLine(recipeId, importableRows.map((row) => {
         const ingredientId = ingredientIdForRow(row)!;
         const existingLine = recipeLines.find(
           (line) => line.recipeId === recipeId && line.sourceRef === row.sourceRef
@@ -340,7 +353,7 @@ export function ImportReview({
           createdAt: existingLine?.createdAt ?? timestamp,
           updatedAt: timestamp,
         };
-      });
+      }), timestamp);
       result.push({ recipe, lines });
     }
     return result;
