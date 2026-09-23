@@ -522,7 +522,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, onChang
         </CardContent>
       </Card>
 
-      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={onChanged} />
+      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
     </div>
   );
 }

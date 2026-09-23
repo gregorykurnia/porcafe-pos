@@ -145,6 +145,8 @@ export type InventorySupplierOrder = {
   notes?: string;
   totalCost: number;
   lines: InventorySupplierOrderLine[];
+  receiptIds?: string[];
+  receivedOn?: string;
   createdAt: number;
   updatedAt: number;
 };

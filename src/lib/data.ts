@@ -25,6 +25,7 @@ import type {
   InventoryMaterial,
   InventorySupplier,
   InventorySupplierOrder,
+  InventorySupplierOrderLine,
   InventorySupplierItem,
   InventoryRecipeLine,
   InventoryRecipeVersion,
@@ -479,6 +480,94 @@ export async function upsertInventorySupplierOrder(
 
   const ref = await addDoc(inventorySupplierOrdersCol, omitUndefined({ ...payload, createdAt: now }));
   return ref.id;
+}
+
+export type InventorySupplierReceiptInput = {
+  orderId: string;
+  receiptId: string;
+  receivedOn: string;
+  lines: Array<{ lineId: string; quantity: number }>;
+};
+
+export async function receiveInventorySupplierOrder(input: InventorySupplierReceiptInput): Promise<{ changed: boolean; status: InventorySupplierOrder["status"] }> {
+  if (!input.orderId || !input.receiptId) throw new Error("A supplier order and receipt reference are required.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.receivedOn)) throw new Error("Choose a valid receiving date.");
+  if (input.lines.length === 0) throw new Error("Add at least one received line.");
+
+  const setup = await getInventoryStockSetup();
+  if (!setup?.initialized) throw new Error("Initialize opening stock before receiving supplier stock.");
+
+  const orderRef = doc(inventorySupplierOrdersCol, input.orderId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error("This supplier order no longer exists.");
+    const order = mapInventorySupplierOrder(snapshot.id, snapshot.data());
+    if (order.receiptIds?.includes(input.receiptId)) return { changed: false, status: order.status };
+    if (order.status === "cancelled") throw new Error("Cancelled supplier orders cannot receive stock.");
+    if (order.status === "received") throw new Error("This supplier order is already fully received.");
+
+    const receivedByLine = new Map<string, number>();
+    for (const line of input.lines) {
+      if (receivedByLine.has(line.lineId)) throw new Error("A received line was included more than once.");
+      if (!Number.isFinite(line.quantity) || line.quantity <= 0) throw new Error("Received quantities must be greater than zero.");
+      receivedByLine.set(line.lineId, line.quantity);
+    }
+
+    const movementLines: Array<{ line: InventorySupplierOrderLine; quantity: number }> = [];
+    const nextLines = order.lines.map((line) => {
+      const quantity = receivedByLine.get(line.id) ?? 0;
+      if (quantity === 0) return line;
+      if (line.receivedQuantity + quantity > line.quantity) {
+        throw new Error(`Received quantity for ${line.materialName} cannot exceed the ordered quantity.`);
+      }
+      movementLines.push({ line, quantity });
+      return { ...line, receivedQuantity: line.receivedQuantity + quantity };
+    });
+
+    for (const lineId of receivedByLine.keys()) {
+      if (!order.lines.some((line) => line.id === lineId)) throw new Error("A received line does not belong to this order.");
+    }
+    if (movementLines.length === 0) throw new Error("Receive a positive quantity for at least one line.");
+
+    const nextStatus: InventorySupplierOrder["status"] = nextLines.every((line) => line.receivedQuantity >= line.quantity)
+      ? "received"
+      : "partially_received";
+    const now = Date.now();
+    const receiptIds = [...(order.receiptIds ?? []), input.receiptId];
+    transaction.set(
+      orderRef,
+      omitUndefined({
+        lines: nextLines,
+        status: nextStatus,
+        receiptIds,
+        receivedOn: nextStatus === "received" ? input.receivedOn : undefined,
+        updatedAt: now,
+      }),
+      { merge: true }
+    );
+
+    for (const { line, quantity } of movementLines) {
+      const movementId = `supplier-receipt-${inventoryDocPart(input.orderId)}-${inventoryDocPart(input.receiptId)}-${inventoryDocPart(line.id)}`;
+      transaction.set(
+        doc(db, "inventoryMovements", movementId),
+        omitUndefined({
+          materialId: line.materialId,
+          materialName: line.materialName,
+          unit: line.unit,
+          quantity,
+          movementType: "receiving" satisfies InventoryMovementType,
+          occurredOn: input.receivedOn,
+          reason: `Supplier order ${order.orderReference} received`,
+          sourceRef: `supplier-order:${order.id}:receipt:${input.receiptId}`,
+          notes: `${order.supplierName} · ${order.orderReference}`,
+          createdAt: now,
+        }),
+        { merge: true }
+      );
+    }
+
+    return { changed: true, status: nextStatus };
+  });
 }
 
 export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {

@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { todayISO, formatDisplay } from "@/lib/dates";
-import { upsertInventorySupplierOrder } from "@/lib/data";
+import { receiveInventorySupplierOrder, upsertInventorySupplierOrder } from "@/lib/data";
 import type {
   InventoryMaterial,
   InventorySupplier,
@@ -57,6 +58,11 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   const [notes, setNotes] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
+  const [receivingOrder, setReceivingOrder] = useState<InventorySupplierOrder | null>(null);
+  const [receiptId, setReceiptId] = useState("");
+  const [receivedOn, setReceivedOn] = useState(todayISO());
+  const [receiveQuantities, setReceiveQuantities] = useState<Record<string, string>>({});
+  const [receivingSaving, setReceivingSaving] = useState(false);
 
   const supplierLinks = useMemo(() => supplierItems.filter((item) => item.supplierId === selectedSupplierId && materialById.has(item.materialId)), [materialById, selectedSupplierId, supplierItems]);
   const selectedLink = supplierLinks.find((item) => item.materialId === selectedMaterialId);
@@ -104,6 +110,47 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
     setOrderReference("");
     setNotes("");
     setDraftLines([]);
+  }
+
+  function openReceiving(order: InventorySupplierOrder) {
+    setReceivingOrder(order);
+    setReceiptId(`receipt-${order.id}-${crypto.randomUUID()}`);
+    setReceivedOn(todayISO());
+    setReceiveQuantities(Object.fromEntries(order.lines.map((line) => [line.id, ""])));
+  }
+
+  function closeReceiving() {
+    setReceivingOrder(null);
+    setReceiptId("");
+    setReceiveQuantities({});
+  }
+
+  async function saveReceipt() {
+    if (!receivingOrder) return;
+    const lines = receivingOrder.lines
+      .map((line) => ({ lineId: line.id, quantity: Number(receiveQuantities[line.id]) }))
+      .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0);
+    if (lines.length === 0) {
+      toast.error("Enter a positive quantity for at least one line.");
+      return;
+    }
+    setReceivingSaving(true);
+    try {
+      const result = await receiveInventorySupplierOrder({
+        orderId: receivingOrder.id,
+        receiptId,
+        receivedOn,
+        lines,
+      });
+      toast.success(result.status === "received" ? "Supplier order received and stock updated" : "Partial receipt recorded and stock updated");
+      closeReceiving();
+      await onChanged();
+    } catch (error) {
+      console.error("Failed to receive supplier order", error);
+      toast.error(error instanceof Error ? error.message : "Failed to receive supplier order");
+    } finally {
+      setReceivingSaving(false);
+    }
   }
 
   async function saveOrder() {
@@ -191,8 +238,19 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
 
       <Card>
         <CardHeader><CardTitle>Order history</CardTitle><CardDescription>Orders remain here after the supplier is archived.</CardDescription></CardHeader>
-        <CardContent>{orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{orders.map((order) => { const currency = order.lines[0]?.currency ?? ""; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">{formatDisplay(order.orderedOn)}</span></TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit}`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell></TableRow>; })}</TableBody></Table></div>}</CardContent>
+        <CardContent>{orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{orders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">{formatDisplay(order.orderedOn)}</span></TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit}`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell><TableCell className="text-right">{canReceive && <Button size="sm" onClick={() => openReceiving(order)}>Receive</Button>}</TableCell></TableRow>; })}</TableBody></Table></div>}</CardContent>
       </Card>
+
+      <Dialog open={Boolean(receivingOrder)} onOpenChange={(open) => { if (!open) closeReceiving(); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Receive supplier order</DialogTitle><DialogDescription>{receivingOrder?.orderReference} · {receivingOrder?.supplierName}. Enter only the quantities that arrived in this receipt.</DialogDescription></DialogHeader>
+          <div className="space-y-4">
+            <div className="max-w-52 space-y-1.5"><Label htmlFor="receive-date">Received date</Label><Input id="receive-date" type="date" value={receivedOn} onChange={(event) => setReceivedOn(event.target.value)} /></div>
+            <div className="overflow-x-auto rounded-xl border"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Remaining</TableHead><TableHead>Received now</TableHead></TableRow></TableHeader><TableBody>{receivingOrder?.lines.map((line) => { const remaining = line.quantity - line.receivedQuantity; return <TableRow key={line.id}><TableCell className="font-medium">{line.materialName}<span className="block text-xs text-muted-foreground">{line.unit}</span></TableCell><TableCell className="tabular-nums">{remaining}</TableCell><TableCell className="w-40"><Input aria-label={`Received quantity for ${line.materialName}`} type="number" min="0" max={remaining} step="0.01" value={receiveQuantities[line.id] ?? ""} onChange={(event) => setReceiveQuantities((current) => ({ ...current, [line.id]: event.target.value }))} placeholder="0" disabled={remaining <= 0} /></TableCell></TableRow>; })}</TableBody></Table></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={closeReceiving} disabled={receivingSaving}>Cancel</Button><Button onClick={() => void saveReceipt()} disabled={receivingSaving}>{receivingSaving ? "Saving…" : "Record receipt"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
