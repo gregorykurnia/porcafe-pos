@@ -52,10 +52,13 @@ function now(): number {
 }
 
 function matchingMenuItem(menuItems: MenuItem[], sourceLabel: string, canonicalName: string): MenuItem | undefined {
-  const source = normalizeSourceLabel(sourceLabel);
-  const canonical = normalizeSourceLabel(canonicalName);
+  const normalizeMenuMatch = (value: string) => normalizeSourceLabel(value)
+    .replace(/\band\b/g, "&")
+    .replace(/\s*&\s*/g, " & ");
+  const source = normalizeMenuMatch(sourceLabel);
+  const canonical = normalizeMenuMatch(canonicalName);
   return menuItems.find((item) => {
-    const name = normalizeSourceLabel(item.name);
+    const name = normalizeMenuMatch(item.name);
     return name === canonical || name === source || (source === "nanban" && name.includes("nanban"));
   });
 }
