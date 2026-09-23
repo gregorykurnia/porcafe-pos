@@ -1,5 +1,46 @@
 # Suppliers & Ordering Feature Prompt
 
+## Current implementation status
+
+This document is now also the launch checklist. The current implementation is a working first version, but it does **not** yet cover every item in the original prompt.
+
+### Implemented
+
+- Supplier master records: add, edit, archive, restore, and view.
+- Multiple suppliers per inventory material.
+- Supplier-material details: current unit cost, currency, SKU, minimum order quantity, lead time, preferred supplier, and notes.
+- Per-material reorder threshold, suggested reorder quantity, preferred supplier, and low-stock alert toggle.
+- In-app **Stock Still High**, **To Order**, and **Ordered / On the Way** indicators.
+- Supplier orders containing multiple materials from one supplier.
+- Order reference, expected delivery date, notes, quantity, cost snapshot, total cost, and order history.
+- Partial and full receiving.
+- Receiving updates inventory only after stock is received.
+- Receiving creates linked inventory movements with supplier/order references and idempotency protection.
+- **Received** status after all ordered stock arrives.
+- Recurring supplier delivery schedules: daily, weekly, monthly, and custom day intervals.
+- Scheduled deliveries create stock-in movements and system-generated audit references.
+- Existing inventory units are reused.
+- Low-stock alerts are currently in-app only.
+
+### Not yet implemented
+
+- Historical cost tracking or cost effective dates. The system currently stores the current supplier cost and snapshots the cost on each order.
+- Order-history filters by supplier, material, status, and date range.
+- Full order editing and a user-facing **Cancelled** order action. The data model supports the status, but the UI does not yet expose the workflow.
+- A separate expanded movement-audit view. Supplier receipts are recorded in the existing inventory movement ledger with reason, notes, and source references.
+- A true background scheduler. Recurring deliveries currently run when Inventory refreshes or when the user selects **Run due now**. They do not run while the app is completely closed.
+- Server-side authentication, authorization, and role-based permissions for supplier/order actions. The current app uses the existing client-side Firestore pattern.
+- Multiple warehouse or storage-location support.
+
+### Launch readiness
+
+The current version is suitable for a controlled pilot. Before calling the feature production-ready, decide whether these are launch blockers:
+
+1. Add a hosted background scheduler, or explicitly accept the current Inventory-refresh behavior.
+2. Add authentication and role permissions for managing suppliers, placing orders, receiving stock, and editing reorder settings.
+3. Decide whether order filters, cancellation, and cost history are required for the first public launch or can follow as enhancements.
+4. Confirm whether the existing movement ledger is sufficient as the audit trail, or whether a dedicated audit screen is needed.
+
 ## Implementation prompt
 
 Add a new **Suppliers & Ordering** subtab under **Inventory** in the existing POS system.
@@ -210,9 +251,9 @@ Use the units already stored in the inventory database, including units such as 
 
 These are not blockers, but should be decided during the implementation plan if the existing system does not already define them:
 
-- Whether users need a separate **Draft** or **Placed** order status before **Ordered / On the Way**.
-- Whether supplier deliveries can be received partially across multiple receiving events.
-- Whether a missed recurring delivery should be skipped, carried forward, or flagged for review.
-- Whether receiving stock requires user confirmation, or whether the recurring schedule should automatically mark it as received at the scheduled time.
-- Which roles are allowed to manage suppliers, create orders, receive stock, and edit reorder settings.
-- Whether the system supports multiple storage locations or warehouses, which may require thresholds and stock movements per location.
+- **Open:** whether users need a separate **Draft** or **Placed** order status before **Ordered / On the Way**. The current UI creates orders directly as **Ordered / On the Way**.
+- **Implemented:** supplier deliveries can be received partially across multiple receiving events.
+- **Default implemented:** missed recurring deliveries are skipped and the schedule advances to the next future run; they are not backfilled automatically.
+- **Default implemented:** manual supplier orders require a user to confirm receipt; recurring schedules automatically mark their due delivery as received when the schedule runner executes.
+- **Open:** which roles are allowed to manage suppliers, create orders, receive stock, and edit reorder settings.
+- **Open:** whether the system supports multiple storage locations or warehouses, which may require thresholds and stock movements per location.
