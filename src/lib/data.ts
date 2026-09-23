@@ -488,6 +488,10 @@ export async function upsertInventorySupplierItem(
       delete restWithoutHistory.costHistory;
       transaction.set(supplierItemRef, omitUndefined({
         ...restWithoutHistory,
+        supplierSku: supplierItem.supplierSku ?? deleteField(),
+        minimumOrderQuantity: supplierItem.minimumOrderQuantity ?? deleteField(),
+        leadTimeDays: supplierItem.leadTimeDays ?? deleteField(),
+        notes: supplierItem.notes ?? deleteField(),
         costEffectiveFrom: priceChanged ? effectiveFrom : current.costEffectiveFrom ?? oldEffectiveFrom,
         costHistory: history,
         updatedAt: now,
