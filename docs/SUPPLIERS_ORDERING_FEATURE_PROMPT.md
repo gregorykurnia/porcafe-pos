@@ -39,7 +39,7 @@ Use clear statuses such as:
 - **To Order**
 - **Ordered / On the Way**
 - **Partially Received**
-- **Received / Done**
+- **Received**
 - **Cancelled**
 
 Determine the item status automatically where possible:
@@ -47,7 +47,7 @@ Determine the item status automatically where possible:
 - If stock is above the reorder threshold, show **Stock Still High**.
 - If stock reaches or falls below the threshold and there is no open order, show **To Order**.
 - If an order has been placed but not fully received, show **Ordered / On the Way**.
-- If the order has been fully received, show **Received / Done**.
+- If the order has been fully received, show **Received**.
 - After receiving stock, recalculate the item status based on the new stock level.
 
 Allow users to manually create an order from the **To Order** state.
@@ -72,7 +72,7 @@ Each order should support:
 - Partial receiving.
 - Remaining quantity.
 
-Changing an order to **Received / Done** should only add the physically received quantity to inventory.
+Changing an order to **Received** should only add the physically received quantity to inventory.
 
 ### 5. Record movement and audit trail integration
 
@@ -100,7 +100,7 @@ Add item-level settings for:
 
 When current stock reaches the threshold, the item should appear in the **To Order** list.
 
-Initially, alerts can be shown inside the application. Structure the feature so email, push, WhatsApp, or other notifications can be added later.
+For now, show low-stock alerts inside the application only. Structure the feature so email, push, WhatsApp, or other notifications can be added later.
 
 ### 7. Ordering history
 
@@ -123,7 +123,7 @@ Include filters for supplier, item, status, and date range.
 
 ### 8. Recurring stock-in schedules
 
-Add a way to configure recurring stock additions for an item.
+Add a way to configure recurring supplier deliveries for an item. These schedules represent deliveries that are expected to be received on a recurring basis.
 
 Each schedule should support:
 
@@ -138,7 +138,7 @@ Each schedule should support:
 - Optional supplier or source.
 - Notes.
 
-When a schedule runs:
+When a scheduled supplier delivery is received:
 
 - Automatically add the configured quantity to stock.
 - Create a stock-in movement.
@@ -184,34 +184,35 @@ Ensure that:
 
 Before implementation, provide a brief plan covering the proposed data model, user flow, stock movement behavior, edge cases, and any assumptions that need approval.
 
-## Five things to confirm before implementation
+## Confirmed decisions
 
-### 1. What does “Done” mean?
+### 1. “Received” means stock has physically arrived
 
-Recommended: **Done** means the supplier order has been physically received. Inventory should only increase after receipt, not when the order is placed.
+Use **Received** as the status name. Inventory should only increase after the supplier order has physically arrived, not when the order is placed.
 
-### 2. Can one order contain multiple items?
+### 2. One order can contain multiple items
 
-Recommended: yes, as long as all items in that order are being purchased from the same supplier. Orders for different suppliers should be separate.
+One order can contain multiple items as long as they are being purchased from the same supplier. Orders for different suppliers should be separate.
 
-### 3. What do recurring stock-ins represent?
+### 3. Recurring stock-ins represent supplier deliveries
 
-Should they represent actual scheduled supplier deliveries, or internal/expected stock additions? The answer determines whether the schedule should automatically increase inventory or only create an expected delivery record.
+Recurring schedules represent supplier deliveries. When the scheduled delivery is received, automatically add the received quantity to inventory and create the corresponding stock movement and audit entry.
 
-### 4. Where should alerts appear?
+### 4. Low-stock alerts are in-app only for now
 
-Should low-stock alerts initially appear only inside the app, or should they also be sent by email, WhatsApp, push notification, or another channel?
+Display low-stock alerts inside the application only for the initial version. Keep the design extensible for future email, WhatsApp, or push notifications.
 
-### 5. What units do inventory items use?
+### 5. Use the existing inventory units
 
-Do items have fixed units such as pieces, kilograms, litres, bottles, boxes, or packs? This is important for quantities, costs, reorder levels, and minimum order amounts.
+Use the units already stored in the inventory database, including units such as pieces, kilograms, litres, bottles, boxes, or packs where applicable. Do not introduce a separate unit system unless the existing data model requires it.
 
-## Recommended initial defaults
+## Additional decisions to consider
 
-If no other preference is specified, use these defaults:
+These are not blockers, but should be decided during the implementation plan if the existing system does not already define them:
 
-- **Done** means fully received.
-- One order can contain multiple items from one supplier.
-- Recurring stock-ins automatically increase inventory and create an audit entry.
-- Low-stock alerts appear in-app first.
-- Each item uses its existing inventory unit, with conversion support deferred unless already available.
+- Whether users need a separate **Draft** or **Placed** order status before **Ordered / On the Way**.
+- Whether supplier deliveries can be received partially across multiple receiving events.
+- Whether a missed recurring delivery should be skipped, carried forward, or flagged for review.
+- Whether receiving stock requires user confirmation, or whether the recurring schedule should automatically mark it as received at the scheduled time.
+- Which roles are allowed to manage suppliers, create orders, receive stock, and edit reorder settings.
+- Whether the system supports multiple storage locations or warehouses, which may require thresholds and stock movements per location.
