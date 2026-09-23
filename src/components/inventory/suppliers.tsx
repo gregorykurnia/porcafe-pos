@@ -138,7 +138,7 @@ function ReorderGap({ gap, thresholdConfigured, unit, status }: { gap?: number; 
   if (!thresholdConfigured) return <span className="text-muted-foreground">No alert level</span>;
   if (gap === undefined) return <>—</>;
 
-  const color = gap > 0 ? "text-success" : status === "on-way" ? "text-warning" : "text-danger";
+  const color = gap > 0 ? "text-success" : gap === 0 || status === "on-way" ? "text-warning" : "text-danger";
   if (gap === 0) return <span className={`font-medium ${color}`}>At alert level</span>;
 
   return <span className={`font-medium ${color}`}>{Math.abs(gap).toLocaleString("id-ID", { maximumFractionDigits: 2 })} {unit} {gap < 0 ? "below" : "above"}</span>;
