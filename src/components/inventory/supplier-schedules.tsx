@@ -40,6 +40,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
   const [frequency, setFrequency] = useState<InventorySupplierDeliveryFrequency>("weekly");
   const [customIntervalDays, setCustomIntervalDays] = useState("");
   const [startOn, setStartOn] = useState(todayISO());
+  const [executionTime, setExecutionTime] = useState("08:00");
   const [endOn, setEndOn] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -57,6 +58,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
     setFrequency("weekly");
     setCustomIntervalDays("");
     setStartOn(todayISO());
+    setExecutionTime("08:00");
     setEndOn("");
     setNotes("");
   }
@@ -100,6 +102,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
         customIntervalDays: frequency === "custom" ? interval : undefined,
         startOn,
         nextRunOn: startOn,
+        executionTime,
         endOn: endOn || undefined,
         active: true,
         notes: notes.trim() || undefined,
@@ -129,7 +132,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
   async function runDueNow() {
     setRunning(true);
     try {
-      const result = await runDueInventorySupplierDeliverySchedules(todayISO());
+      const result = await runDueInventorySupplierDeliverySchedules(todayISO(), undefined, true);
       toast.success(result.schedulesRun > 0 ? `${result.schedulesRun} recurring delivery recorded` : "No recurring deliveries are due");
       await onChanged();
     } catch (error) {
@@ -143,20 +146,21 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
   return (
     <div className="space-y-5">
       <Card className="border-primary/15 bg-primary/5">
-        <CardContent className="flex items-start justify-between gap-3 p-4"><div className="flex gap-3"><CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" /><div><p className="font-medium">Recurring supplier deliveries</p><p className="mt-1 text-sm text-muted-foreground">Schedules are checked when Inventory refreshes. Due deliveries add stock and create a receiving movement with a system-generated audit reference.</p></div></div><Button variant="outline" onClick={() => void runDueNow()} disabled={running}><RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />{running ? "Checking…" : "Run due now"}</Button></CardContent>
+        <CardContent className="flex items-start justify-between gap-3 p-4"><div className="flex gap-3"><CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" /><div><p className="font-medium">Recurring supplier deliveries</p><p className="mt-1 text-sm text-muted-foreground">Deliveries become due at their configured local time. A hosted scheduler can call the protected inventory schedule endpoint; Inventory refresh also checks for due deliveries.</p></div></div><Button variant="outline" onClick={() => void runDueNow()} disabled={running}><RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />{running ? "Checking…" : "Run due now"}</Button></CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>Set a recurring delivery</CardTitle><CardDescription>Only materials already linked to the selected supplier can be scheduled.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
           {activeSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier and supplier-material link first.</p> : <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <div className="space-y-1.5"><Label htmlFor="schedule-supplier">Supplier</Label><Select value={supplierId} onValueChange={(value) => { setSupplierId(value); setMaterialId(""); }}><SelectTrigger id="schedule-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label htmlFor="schedule-material">Material</Label><Select value={materialId} onValueChange={setMaterialId} disabled={!supplierId}><SelectTrigger id="schedule-material" className="w-full"><SelectValue placeholder={supplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{linkedMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label htmlFor="schedule-quantity">Delivery quantity</Label><Input id="schedule-quantity" type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="0" /></div>
               <div className="space-y-1.5"><Label htmlFor="schedule-frequency">Frequency</Label><Select value={frequency} onValueChange={(value) => setFrequency(value as InventorySupplierDeliveryFrequency)}><SelectTrigger id="schedule-frequency" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{FREQUENCIES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
               {frequency === "custom" && <div className="space-y-1.5"><Label htmlFor="schedule-custom-days">Every (days)</Label><Input id="schedule-custom-days" type="number" min="1" step="1" value={customIntervalDays} onChange={(event) => setCustomIntervalDays(event.target.value)} placeholder="e.g. 10" /></div>}
               <div className="space-y-1.5"><Label htmlFor="schedule-start">Start date</Label><Input id="schedule-start" type="date" value={startOn} onChange={(event) => setStartOn(event.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="schedule-time">Delivery time</Label><Input id="schedule-time" type="time" value={executionTime} onChange={(event) => setExecutionTime(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="schedule-end">End date</Label><Input id="schedule-end" type="date" value={endOn} onChange={(event) => setEndOn(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="schedule-notes">Notes</Label><Input id="schedule-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" /></div>
             </div>
@@ -167,7 +171,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
 
       <Card>
         <CardHeader><CardTitle>Delivery schedules</CardTitle><CardDescription>{schedules.length} schedule{schedules.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
-        <CardContent>{schedules.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No recurring delivery schedules yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Frequency</TableHead><TableHead>Next run</TableHead><TableHead>Last run</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{schedules.map((schedule) => <TableRow key={schedule.id}><TableCell className="font-medium">{schedule.supplierName}</TableCell><TableCell>{schedule.materialName}<span className="block text-xs text-muted-foreground">{schedule.unit}</span></TableCell><TableCell className="tabular-nums">{schedule.quantity}</TableCell><TableCell>{schedule.frequency === "custom" ? `Every ${schedule.customIntervalDays} days` : FREQUENCIES.find((option) => option.value === schedule.frequency)?.label}</TableCell><TableCell>{formatDisplay(schedule.nextRunOn)}</TableCell><TableCell>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</TableCell><TableCell><Badge variant={schedule.active ? "secondary" : "outline"}>{schedule.active ? "Active" : "Paused"}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => void toggleSchedule(schedule)}>{schedule.active ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent>
+        <CardContent>{schedules.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No recurring delivery schedules yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Frequency</TableHead><TableHead>Next run</TableHead><TableHead>Time</TableHead><TableHead>Last run</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{schedules.map((schedule) => <TableRow key={schedule.id}><TableCell className="font-medium">{schedule.supplierName}</TableCell><TableCell>{schedule.materialName}<span className="block text-xs text-muted-foreground">{schedule.unit}</span></TableCell><TableCell className="tabular-nums">{schedule.quantity}</TableCell><TableCell>{schedule.frequency === "custom" ? `Every ${schedule.customIntervalDays} days` : FREQUENCIES.find((option) => option.value === schedule.frequency)?.label}</TableCell><TableCell>{formatDisplay(schedule.nextRunOn)}</TableCell><TableCell>{schedule.executionTime ?? "08:00"}</TableCell><TableCell>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</TableCell><TableCell><Badge variant={schedule.active ? "secondary" : "outline"}>{schedule.active ? "Active" : "Paused"}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => void toggleSchedule(schedule)}>{schedule.active ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent>
       </Card>
     </div>
   );

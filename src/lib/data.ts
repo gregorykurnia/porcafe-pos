@@ -4,6 +4,7 @@ import {
   addDoc,
   setDoc,
   deleteDoc,
+  deleteField,
   writeBatch,
   getDoc,
   getDocs,
@@ -446,7 +447,10 @@ export async function upsertInventorySupplierItem(
   }
 ) {
   const now = Date.now();
-  const { id: inputId, createdAt, ...rest } = supplierItem;
+  const inputId = supplierItem.id;
+  const rest = { ...supplierItem };
+  delete rest.id;
+  delete rest.createdAt;
   const effectiveFrom = supplierItem.costEffectiveFrom ?? format(new Date(now), "yyyy-MM-dd");
   if (!supplierItem.supplierId || !supplierItem.materialId || !supplierItem.materialName.trim()) {
     throw new Error("Choose a supplier and material.");
@@ -480,7 +484,8 @@ export async function upsertInventorySupplierItem(
       if (priceChanged && !history.some((version) => version.effectiveFrom === oldEffectiveFrom && version.costPerUnit === current.costPerUnit && version.currency === current.currency)) {
         history.push({ costPerUnit: current.costPerUnit, currency: current.currency, effectiveFrom: oldEffectiveFrom });
       }
-      const { costHistory: _ignoredHistory, ...restWithoutHistory } = rest;
+      const restWithoutHistory = { ...rest };
+      delete restWithoutHistory.costHistory;
       transaction.set(supplierItemRef, omitUndefined({
         ...restWithoutHistory,
         costEffectiveFrom: priceChanged ? effectiveFrom : current.costEffectiveFrom ?? oldEffectiveFrom,
@@ -491,7 +496,8 @@ export async function upsertInventorySupplierItem(
     return inputId;
   }
 
-  const { costHistory: _ignoredHistory, ...restWithoutHistory } = rest;
+  const restWithoutHistory = { ...rest };
+  delete restWithoutHistory.costHistory;
   const ref = await addDoc(inventorySupplierItemsCol, omitUndefined({
     ...restWithoutHistory,
     costEffectiveFrom: effectiveFrom,
@@ -520,17 +526,122 @@ export async function upsertInventorySupplierOrder(
   }
 ) {
   const now = Date.now();
-  const { id: inputId, createdAt, ...rest } = order;
-  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
-  if (createdAt !== undefined) payload.createdAt = createdAt;
-
-  if (inputId) {
-    await setDoc(doc(db, "inventorySupplierOrders", inputId), omitUndefined(payload), { merge: true });
-    return inputId;
+  const inputId = order.id;
+  const rest = { ...order };
+  delete rest.id;
+  delete rest.createdAt;
+  if (inputId) throw new Error("Use the order edit action to update an existing supplier order.");
+  if (order.status !== "ordered" || order.lines.some((line) => line.receivedQuantity !== 0)) {
+    throw new Error("New supplier orders must start as ordered with no received stock.");
   }
-
-  const ref = await addDoc(inventorySupplierOrdersCol, omitUndefined({ ...payload, createdAt: now }));
+  const totalCost = validateSupplierOrder(order);
+  const ref = await addDoc(inventorySupplierOrdersCol, omitUndefined({
+    ...rest,
+    totalCost,
+    history: [{ action: "created", occurredAt: now, summary: "Order placed" }],
+    createdAt: now,
+    updatedAt: now,
+  }));
   return ref.id;
+}
+
+function validInventoryDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && isValid(parseISO(value))
+    && format(parseISO(value), "yyyy-MM-dd") === value;
+}
+
+function validateSupplierOrder(order: Pick<InventorySupplierOrder, "supplierId" | "supplierName" | "orderReference" | "orderedOn" | "expectedOn" | "lines">): number {
+  if (!order.supplierId || !order.supplierName.trim()) throw new Error("Choose a supplier.");
+  if (!order.orderReference.trim()) throw new Error("Add an order reference.");
+  if (!validInventoryDate(order.orderedOn)) throw new Error("Choose a valid order date.");
+  if (order.expectedOn && (!validInventoryDate(order.expectedOn) || order.expectedOn < order.orderedOn)) {
+    throw new Error("Expected delivery must be a valid date on or after the order date.");
+  }
+  if (order.lines.length === 0) throw new Error("Add at least one material to the order.");
+  const lineIds = new Set<string>();
+  const materialIds = new Set<string>();
+  const currencies = new Set<string>();
+  for (const line of order.lines) {
+    if (!line.id || lineIds.has(line.id)) throw new Error("Every order line must have a unique reference.");
+    if (!line.materialId || !line.materialName.trim() || materialIds.has(line.materialId)) {
+      throw new Error("An order can include each material only once.");
+    }
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) throw new Error(`Order quantity for ${line.materialName} must be greater than zero.`);
+    if (!Number.isFinite(line.receivedQuantity) || line.receivedQuantity < 0 || line.receivedQuantity > line.quantity) {
+      throw new Error(`Received quantity for ${line.materialName} is invalid.`);
+    }
+    if (!Number.isFinite(line.unitCost) || line.unitCost < 0 || !/^[A-Z]{3}$/.test(line.currency)) {
+      throw new Error(`Unit cost or currency for ${line.materialName} is invalid.`);
+    }
+    currencies.add(line.currency);
+    lineIds.add(line.id);
+    materialIds.add(line.materialId);
+  }
+  if (currencies.size > 1) throw new Error("All lines on one supplier order must use the same currency.");
+  return order.lines.reduce((total, line) => total + line.quantity * line.unitCost, 0);
+}
+
+export type InventorySupplierOrderEditInput = Pick<
+  InventorySupplierOrder,
+  "supplierId" | "supplierName" | "orderReference" | "orderedOn" | "expectedOn" | "notes" | "lines"
+>;
+
+export async function updateInventorySupplierOrder(orderId: string, input: InventorySupplierOrderEditInput): Promise<void> {
+  if (!orderId) throw new Error("Choose a supplier order.");
+  const totalCost = validateSupplierOrder(input);
+  const orderRef = doc(inventorySupplierOrdersCol, orderId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error("This supplier order no longer exists.");
+    const current = mapInventorySupplierOrder(snapshot.id, snapshot.data());
+    if (current.status !== "ordered" && current.status !== "partially_received") {
+      throw new Error("Only open supplier orders can be edited.");
+    }
+    for (const receivedLine of current.lines.filter((line) => line.receivedQuantity > 0)) {
+      const editedLine = input.lines.find((line) => line.id === receivedLine.id);
+      if (!editedLine || editedLine.materialId !== receivedLine.materialId || editedLine.unit !== receivedLine.unit
+        || editedLine.receivedQuantity !== receivedLine.receivedQuantity || editedLine.quantity < receivedLine.receivedQuantity
+        || editedLine.unitCost !== receivedLine.unitCost || editedLine.currency !== receivedLine.currency) {
+        throw new Error(`Received quantities and cost snapshots for ${receivedLine.materialName} cannot be changed or removed.`);
+      }
+    }
+    if (input.lines.some((line) => !current.lines.some((existing) => existing.id === line.id) && line.receivedQuantity !== 0)) {
+      throw new Error("New order lines cannot include received quantities.");
+    }
+    if (input.lines.every((line) => line.receivedQuantity >= line.quantity)) {
+      throw new Error("Record a receipt or cancel the remaining quantities instead of editing the order as fully received.");
+    }
+    const now = Date.now();
+    transaction.set(orderRef, omitUndefined({
+      ...input,
+      expectedOn: input.expectedOn ?? deleteField(),
+      notes: input.notes ?? deleteField(),
+      totalCost,
+      status: current.status,
+      history: [...(current.history ?? []), { action: "edited", occurredAt: now, summary: "Order details updated" }],
+      updatedAt: now,
+    }), { merge: true });
+  });
+}
+
+export async function cancelInventorySupplierOrder(orderId: string): Promise<void> {
+  if (!orderId) throw new Error("Choose a supplier order.");
+  const orderRef = doc(inventorySupplierOrdersCol, orderId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error("This supplier order no longer exists.");
+    const current = mapInventorySupplierOrder(snapshot.id, snapshot.data());
+    if (current.status !== "ordered" && current.status !== "partially_received") {
+      throw new Error("Only open supplier orders can be cancelled.");
+    }
+    const now = Date.now();
+    transaction.set(orderRef, {
+      status: "cancelled",
+      history: [...(current.history ?? []), { action: "cancelled", occurredAt: now, summary: "Remaining quantities cancelled" }],
+      updatedAt: now,
+    }, { merge: true });
+  });
 }
 
 export type InventorySupplierReceiptInput = {
@@ -542,7 +653,7 @@ export type InventorySupplierReceiptInput = {
 
 export async function receiveInventorySupplierOrder(input: InventorySupplierReceiptInput): Promise<{ changed: boolean; status: InventorySupplierOrder["status"] }> {
   if (!input.orderId || !input.receiptId) throw new Error("A supplier order and receipt reference are required.");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.receivedOn)) throw new Error("Choose a valid receiving date.");
+  if (!validInventoryDate(input.receivedOn)) throw new Error("Choose a valid receiving date.");
   if (input.lines.length === 0) throw new Error("Add at least one received line.");
 
   const setup = await getInventoryStockSetup();
@@ -585,12 +696,18 @@ export async function receiveInventorySupplierOrder(input: InventorySupplierRece
       : "partially_received";
     const now = Date.now();
     const receiptIds = [...(order.receiptIds ?? []), input.receiptId];
+    const history = [...(order.history ?? []), {
+      action: "received" as const,
+      occurredAt: now,
+      summary: `${movementLines.length} line${movementLines.length === 1 ? "" : "s"} received on ${input.receivedOn}`,
+    }];
     transaction.set(
       orderRef,
       omitUndefined({
         lines: nextLines,
         status: nextStatus,
         receiptIds,
+        history,
         receivedOn: nextStatus === "received" ? input.receivedOn : undefined,
         updatedAt: now,
       }),
@@ -611,6 +728,8 @@ export async function receiveInventorySupplierOrder(input: InventorySupplierRece
           reason: `Supplier order ${order.orderReference} received`,
           sourceRef: `supplier-order:${order.id}:receipt:${input.receiptId}`,
           notes: `${order.supplierName} · ${order.orderReference}`,
+          createdByType: "user",
+          createdByLabel: "User recorded receipt",
           createdAt: now,
         }),
         { merge: true }
@@ -636,7 +755,19 @@ export async function upsertInventorySupplierDeliverySchedule(
 ) {
   const now = Date.now();
   const { id: inputId, createdAt, ...rest } = schedule;
-  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (!schedule.supplierId || !schedule.materialId || !schedule.materialName.trim()) throw new Error("Choose a supplier and material.");
+  if (!Number.isFinite(schedule.quantity) || schedule.quantity <= 0) throw new Error("Delivery quantity must be greater than zero.");
+  if (!validInventoryDate(schedule.startOn) || !validInventoryDate(schedule.nextRunOn) || (schedule.endOn && !validInventoryDate(schedule.endOn))) {
+    throw new Error("Choose valid schedule dates.");
+  }
+  if (schedule.endOn && schedule.endOn < schedule.startOn) throw new Error("End date cannot be before the start date.");
+  if (!/^\d{2}:\d{2}$/.test(schedule.executionTime ?? "08:00") || Number((schedule.executionTime ?? "08:00").slice(0, 2)) > 23 || Number((schedule.executionTime ?? "08:00").slice(3, 5)) > 59) {
+    throw new Error("Choose a valid delivery time.");
+  }
+  if (schedule.frequency === "custom" && (!Number.isInteger(schedule.customIntervalDays) || (schedule.customIntervalDays ?? 0) <= 0)) {
+    throw new Error("Custom intervals must be a whole number of days greater than zero.");
+  }
+  const payload: Record<string, unknown> = { ...rest, executionTime: schedule.executionTime ?? "08:00", updatedAt: now };
   if (createdAt !== undefined) payload.createdAt = createdAt;
 
   if (inputId) {
@@ -667,15 +798,30 @@ function nextSupplierDeliveryDate(
 function advanceSupplierDeliveryPastDate(schedule: InventorySupplierDeliverySchedule, asOfDate: string): string {
   let nextRunOn = nextSupplierDeliveryDate(schedule.nextRunOn, schedule.frequency, schedule.customIntervalDays);
   let guard = 0;
-  while (nextRunOn <= asOfDate && guard < 400) {
+  while (nextRunOn <= asOfDate && guard < 20000) {
     nextRunOn = nextSupplierDeliveryDate(nextRunOn, schedule.frequency, schedule.customIntervalDays);
     guard += 1;
   }
   return nextRunOn;
 }
 
-export async function runDueInventorySupplierDeliverySchedules(asOfDate: string): Promise<{ schedulesRun: number; movementIds: string[] }> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) throw new Error("Choose a valid schedule date.");
+function supplierDeliveryOnOrAfter(schedule: InventorySupplierDeliverySchedule, asOfDate: string): string {
+  let candidate = schedule.nextRunOn;
+  let guard = 0;
+  while (candidate < asOfDate && guard < 20000) {
+    candidate = nextSupplierDeliveryDate(candidate, schedule.frequency, schedule.customIntervalDays);
+    guard += 1;
+  }
+  return candidate;
+}
+
+export async function runDueInventorySupplierDeliverySchedules(
+  asOfDate: string,
+  asOfTime = format(new Date(), "HH:mm"),
+  forceDue = false,
+): Promise<{ schedulesRun: number; movementIds: string[] }> {
+  if (!validInventoryDate(asOfDate)) throw new Error("Choose a valid schedule date.");
+  if (!/^\d{2}:\d{2}$/.test(asOfTime) || Number(asOfTime.slice(0, 2)) > 23 || Number(asOfTime.slice(3, 5)) > 59) throw new Error("Choose a valid schedule time.");
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) return { schedulesRun: 0, movementIds: [] };
 
@@ -694,8 +840,21 @@ export async function runDueInventorySupplierDeliverySchedules(asOfDate: string)
         return { changed: false, movementId: null as string | null };
       }
 
-      const runDate = current.nextRunOn;
-      const nextRunOn = advanceSupplierDeliveryPastDate(current, asOfDate);
+      const runDate = supplierDeliveryOnOrAfter(current, asOfDate);
+      const eligibleByEndDate = !current.endOn || runDate <= current.endOn;
+      if (runDate > asOfDate || !eligibleByEndDate) {
+        const now = Date.now();
+        transaction.set(scheduleRef, omitUndefined({ nextRunOn: runDate, active: eligibleByEndDate, updatedAt: now }), { merge: true });
+        return { changed: false, movementId: null as string | null };
+      }
+      if (!forceDue && (current.executionTime ?? "08:00") > asOfTime) {
+        if (runDate !== current.nextRunOn) {
+          transaction.set(scheduleRef, { nextRunOn: runDate, updatedAt: Date.now() }, { merge: true });
+        }
+        return { changed: false, movementId: null as string | null };
+      }
+
+      const nextRunOn = advanceSupplierDeliveryPastDate({ ...current, nextRunOn: runDate }, asOfDate);
       const stillActive = !current.endOn || nextRunOn <= current.endOn;
       const movementId = `scheduled-delivery-${inventoryDocPart(current.id)}-${inventoryDocPart(runDate)}`;
       const now = Date.now();
@@ -711,6 +870,8 @@ export async function runDueInventorySupplierDeliverySchedules(asOfDate: string)
           reason: `Recurring supplier delivery received from ${current.supplierName}`,
           sourceRef: `supplier-delivery-schedule:${current.id}:${runDate}`,
           notes: current.notes,
+          createdByType: "schedule",
+          createdByLabel: "Automated recurring delivery",
           createdAt: now,
         }),
         { merge: true }

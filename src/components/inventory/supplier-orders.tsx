@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ClipboardList, Plus, Trash2 } from "lucide-react";
+import { Ban, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { todayISO, formatDisplay } from "@/lib/dates";
-import { receiveInventorySupplierOrder, upsertInventorySupplierOrder } from "@/lib/data";
+import { cancelInventorySupplierOrder, receiveInventorySupplierOrder, updateInventorySupplierOrder, upsertInventorySupplierOrder } from "@/lib/data";
 import type {
   InventoryMaterial,
   InventorySupplier,
@@ -53,11 +53,18 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [orderedOn, setOrderedOn] = useState(todayISO());
   const [expectedOn, setExpectedOn] = useState("");
   const [orderReference, setOrderReference] = useState("");
   const [notes, setNotes] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [supplierFilter, setSupplierFilter] = useState("all");
+  const [materialFilter, setMaterialFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [receivingOrder, setReceivingOrder] = useState<InventorySupplierOrder | null>(null);
   const [receiptId, setReceiptId] = useState("");
   const [receivedOn, setReceivedOn] = useState(todayISO());
@@ -67,6 +74,20 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   const supplierLinks = useMemo(() => supplierItems.filter((item) => item.supplierId === selectedSupplierId && materialById.has(item.materialId)), [materialById, selectedSupplierId, supplierItems]);
   const selectedLink = supplierLinks.find((item) => item.materialId === selectedMaterialId);
   const activeOrders = orders.filter((order) => order.status === "ordered" || order.status === "partially_received");
+  const orderSuppliers = editingOrderId ? suppliers : activeSuppliers;
+  const materialFilterOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const order of orders) for (const line of order.lines) names.set(line.materialId, line.materialName);
+    return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [orders]);
+  const filteredOrders = useMemo(() => orders.filter((order) => {
+    if (supplierFilter !== "all" && order.supplierId !== supplierFilter) return false;
+    if (materialFilter !== "all" && !order.lines.some((line) => line.materialId === materialFilter)) return false;
+    if (statusFilter !== "all" && order.status !== statusFilter) return false;
+    if (dateFrom && order.orderedOn < dateFrom) return false;
+    if (dateTo && order.orderedOn > dateTo) return false;
+    return true;
+  }), [dateFrom, dateTo, materialFilter, orders, statusFilter, supplierFilter]);
 
   function addLine() {
     const material = materialById.get(selectedMaterialId);
@@ -83,9 +104,10 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
       toast.error("That material is already in this order.");
       return;
     }
+    const lineId = `${material.id}-${crypto.randomUUID()}`;
     setDraftLines((current) => [...current, {
-      draftId: `${material.id}-${Date.now()}`,
-      id: `${material.id}-${Date.now()}`,
+      draftId: lineId,
+      id: lineId,
       materialId: material.id,
       materialName: material.name,
       unit: material.baseUnit,
@@ -98,6 +120,33 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
     setQuantity("");
   }
 
+  function editOrder(order: InventorySupplierOrder) {
+    setEditingOrderId(order.id);
+    setSelectedSupplierId(order.supplierId);
+    setOrderReference(order.orderReference);
+    setOrderedOn(order.orderedOn);
+    setExpectedOn(order.expectedOn ?? "");
+    setNotes(order.notes ?? "");
+    setDraftLines(order.lines.map((line) => ({ ...line, draftId: line.id })));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function cancelOrder(order: InventorySupplierOrder) {
+    if (!window.confirm(`Cancel ${order.orderReference}? Any quantities already received will remain in stock.`)) return;
+    setSaving(true);
+    try {
+      await cancelInventorySupplierOrder(order.id);
+      toast.success("Supplier order cancelled");
+      if (editingOrderId === order.id) resetForm();
+      await onChanged();
+    } catch (error) {
+      console.error("Failed to cancel supplier order", error);
+      toast.error(error instanceof Error ? error.message : "Failed to cancel supplier order");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function removeLine(draftId: string) {
     setDraftLines((current) => current.filter((line) => line.draftId !== draftId));
   }
@@ -106,10 +155,12 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
     setSelectedSupplierId("");
     setSelectedMaterialId("");
     setQuantity("");
+    setOrderedOn(todayISO());
     setExpectedOn("");
     setOrderReference("");
     setNotes("");
     setDraftLines([]);
+    setEditingOrderId(null);
   }
 
   function openReceiving(order: InventorySupplierOrder) {
@@ -163,8 +214,8 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
       toast.error("Add at least one material to the order.");
       return;
     }
-    if (expectedOn && !/^\d{4}-\d{2}-\d{2}$/.test(expectedOn)) {
-      toast.error("Choose a valid expected delivery date.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(orderedOn) || (expectedOn && (!/^\d{4}-\d{2}-\d{2}$/.test(expectedOn) || expectedOn < orderedOn))) {
+      toast.error("Choose valid order and expected delivery dates.");
       return;
     }
 
@@ -182,23 +233,27 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
         unitCost: line.unitCost,
         currency: line.currency,
       }));
-      await upsertInventorySupplierOrder({
+      const orderInput = {
         supplierId: supplier.id,
         supplierName: supplier.name,
         orderReference: reference,
-        orderedOn: todayISO(),
+        orderedOn,
         expectedOn: expectedOn || undefined,
-        status: "ordered",
         notes: notes.trim() || undefined,
-        totalCost,
         lines,
-      });
-      toast.success("Supplier order created");
+      };
+      if (editingOrderId) {
+        await updateInventorySupplierOrder(editingOrderId, orderInput);
+        toast.success("Supplier order updated");
+      } else {
+        await upsertInventorySupplierOrder({ ...orderInput, status: "ordered", totalCost });
+        toast.success("Supplier order created");
+      }
       resetForm();
       await onChanged();
     } catch (error) {
       console.error("Failed to create supplier order", error);
-      toast.error(error instanceof Error ? error.message : "Failed to create supplier order");
+      toast.error(error instanceof Error ? error.message : "Failed to save supplier order");
     } finally {
       setSaving(false);
     }
@@ -214,12 +269,13 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Create supplier order</CardTitle><CardDescription>{activeOrders.length} active order{activeOrders.length === 1 ? "" : "s"} currently on the way.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>{editingOrderId ? "Edit supplier order" : "Create supplier order"}</CardTitle><CardDescription>{activeOrders.length} active order{activeOrders.length === 1 ? "" : "s"} currently on the way. Stock changes only when receipt quantities are recorded.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
-          {activeSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier before creating an order.</p> : <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { setSelectedSupplierId(value); setSelectedMaterialId(""); setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
+          {orderSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier before creating an order.</p> : <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { setSelectedSupplierId(value); setSelectedMaterialId(""); setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{orderSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}{supplier.active ? "" : " · Archived"}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-1.5"><Label htmlFor="order-reference">Order reference</Label><Input id="order-reference" value={orderReference} onChange={(event) => setOrderReference(event.target.value)} placeholder="Optional" /></div>
+              <div className="space-y-1.5"><Label htmlFor="order-date">Order date</Label><Input id="order-date" type="date" value={orderedOn} onChange={(event) => setOrderedOn(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="order-expected">Expected delivery</Label><Input id="order-expected" type="date" value={expectedOn} onChange={(event) => setExpectedOn(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="order-notes">Notes</Label><Input id="order-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" /></div>
             </div>
@@ -231,14 +287,23 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
             </div>
 
             {draftLines.length > 0 && <div className="overflow-x-auto rounded-xl border"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Unit cost</TableHead><TableHead>Total</TableHead><TableHead className="w-12" /></TableRow></TableHeader><TableBody>{draftLines.map((line) => <TableRow key={line.draftId}><TableCell className="font-medium">{line.materialName}<span className="block text-xs text-muted-foreground">{line.unit}</span></TableCell><TableCell className="tabular-nums">{line.quantity}</TableCell><TableCell className="tabular-nums">{line.currency} {line.unitCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell className="tabular-nums">{line.currency} {(line.quantity * line.unitCost).toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Button size="icon-sm" variant="ghost" aria-label={`Remove ${line.materialName}`} onClick={() => removeLine(line.draftId)}><Trash2 /></Button></TableCell></TableRow>)}</TableBody></Table></div>}
-            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">A new order will be recorded as <span className="font-medium text-foreground">Ordered / On the Way</span>.</p><Button onClick={() => void saveOrder()} disabled={saving || draftLines.length === 0}>{saving ? "Creating…" : "Create order"}</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{editingOrderId ? "Received quantities and their cost snapshots stay fixed; you can edit the remaining order." : <>A new order will be recorded as <span className="font-medium text-foreground">Ordered / On the Way</span>.</>}</p><div className="flex gap-2">{editingOrderId && <Button variant="outline" onClick={resetForm} disabled={saving}>Stop editing</Button>}<Button onClick={() => void saveOrder()} disabled={saving || draftLines.length === 0}>{saving ? "Saving…" : editingOrderId ? "Save changes" : "Create order"}</Button></div></div>
           </>}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>Order history</CardTitle><CardDescription>Orders remain here after the supplier is archived.</CardDescription></CardHeader>
-        <CardContent>{orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{orders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">{formatDisplay(order.orderedOn)}</span></TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit}`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell><TableCell className="text-right">{canReceive && <Button size="sm" onClick={() => openReceiving(order)}>Receive</Button>}</TableCell></TableRow>; })}</TableBody></Table></div>}</CardContent>
+        <CardContent className="space-y-4">
+          {orders.length > 0 && <div className="grid gap-3 rounded-xl border bg-surface/40 p-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="space-y-1.5"><Label htmlFor="order-filter-supplier">Supplier</Label><Select value={supplierFilter} onValueChange={setSupplierFilter}><SelectTrigger id="order-filter-supplier" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All suppliers</SelectItem>{suppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><Label htmlFor="order-filter-material">Material</Label><Select value={materialFilter} onValueChange={setMaterialFilter}><SelectTrigger id="order-filter-material" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All materials</SelectItem>{materialFilterOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><Label htmlFor="order-filter-status">Status</Label><Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger id="order-filter-status" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="ordered">Ordered / On the Way</SelectItem><SelectItem value="partially_received">Partially Received</SelectItem><SelectItem value="received">Received</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem></SelectContent></Select></div>
+            <div className="space-y-1.5"><Label htmlFor="order-filter-from">Ordered from</Label><Input id="order-filter-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label htmlFor="order-filter-to">Ordered through</Label><Input id="order-filter-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
+          </div>}
+          {orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : filteredOrders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredOrders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; const canEdit = canReceive; const canCancel = canReceive; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">Ordered {formatDisplay(order.orderedOn)}</span>{order.history && order.history.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Activity ({order.history.length})</summary><div className="mt-1 space-y-1">{[...order.history].reverse().map((event, index) => <p key={`${event.occurredAt}-${index}`} className="text-muted-foreground">{new Date(event.occurredAt).toLocaleString("id-ID")} · {event.summary}</p>)}</div></details>}</TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit} (received ${line.receivedQuantity})`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell><TableCell><div className="flex justify-end gap-1">{canEdit && <Button size="sm" variant="outline" onClick={() => editOrder(order)} disabled={saving}><Pencil className="size-3.5" />Edit</Button>}{canReceive && <Button size="sm" onClick={() => openReceiving(order)} disabled={saving}>Receive</Button>}{canCancel && <Button size="sm" variant="destructive" onClick={() => void cancelOrder(order)} disabled={saving}><Ban className="size-3.5" />Cancel</Button>}</div></TableCell></TableRow>; })}</TableBody></Table></div>}
+        </CardContent>
       </Card>
 
       <Dialog open={Boolean(receivingOrder)} onOpenChange={(open) => { if (!open) closeReceiving(); }}>

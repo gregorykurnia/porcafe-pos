@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { addDays, format, parseISO } from "date-fns";
 import { toast } from "sonner";
-import { Archive, Bell, CircleAlert, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
+import { Archive, Bell, CalendarClock, CircleAlert, ClipboardList, Link2, Pencil, Plus, RotateCcw, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { todayISO } from "@/lib/dates";
+import { formatDisplay, todayISO } from "@/lib/dates";
 import {
   deleteInventorySupplierItem,
   getInventoryStockSetup,
@@ -189,6 +190,7 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, stockI
 }
 
 export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, onChanged }: SuppliersProps) {
+  const [today] = useState(() => todayISO());
   const [supplierForm, setSupplierForm] = useState<SupplierForm>(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [supplierSaving, setSupplierSaving] = useState(false);
@@ -209,6 +211,9 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const [stockSetup, setStockSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
+  const [auditMaterialId, setAuditMaterialId] = useState("all");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
 
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active), [suppliers]);
@@ -218,6 +223,22 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const balances = useMemo(() => summarizeInventoryBalances(materials, movements, stockSetup), [materials, movements, stockSetup]);
   const openOrderMaterialIds = useMemo(() => new Set(orders.filter((order) => order.status === "ordered" || order.status === "partially_received").flatMap((order) => order.lines.map((line) => line.materialId))), [orders]);
   const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized), openOrderMaterialIds.has(material.id)) === "to-order").length, [activeMaterials, balances, openOrderMaterialIds, stockSetup]);
+  const activeOrderCount = orders.filter((order) => order.status === "ordered" || order.status === "partially_received").length;
+  const activeScheduleCount = schedules.filter((schedule) => schedule.active).length;
+  const recentOrderCutoff = format(addDays(parseISO(today), -6), "yyyy-MM-dd");
+  const recentOrderCount = orders.filter((order) => order.orderedOn >= recentOrderCutoff && order.orderedOn <= today).length;
+  const supplierMovements = useMemo(() => movements.filter((movement) => movement.sourceRef.startsWith("supplier-order:") || movement.sourceRef.startsWith("supplier-delivery-schedule:")), [movements]);
+  const auditMaterialOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const movement of supplierMovements) names.set(movement.materialId, movement.materialName);
+    return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [supplierMovements]);
+  const filteredSupplierMovements = useMemo(() => supplierMovements.filter((movement) => {
+    if (auditMaterialId !== "all" && movement.materialId !== auditMaterialId) return false;
+    if (auditFrom && movement.occurredOn < auditFrom) return false;
+    if (auditTo && movement.occurredOn > auditTo) return false;
+    return true;
+  }), [auditFrom, auditMaterialId, auditTo, supplierMovements]);
 
   const refreshStock = useCallback(async () => {
     setStockLoading(true);
@@ -435,10 +456,12 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Orders on the way</p><p className="text-xl font-semibold tabular-nums">{activeOrderCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CalendarClock className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Scheduled stock-ins</p><p className="text-xl font-semibold tabular-nums">{activeScheduleCount}</p></div></CardContent></Card>
+        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><ClipboardList className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Orders in the last 7 days</p><p className="text-xl font-semibold tabular-nums">{recentOrderCount}</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Stock ledger</p><p className="font-semibold">{stockSetup?.initialized ? "Initialized" : "Needs setup"}</p></div></CardContent></Card>
       </div>
 
       {toOrderCount > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><CircleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">{toOrderCount} material{toOrderCount === 1 ? " is" : "s are"} ready to order</p><p className="mt-1 text-sm text-muted-foreground">These materials have reached their configured threshold. Use the supplier order form below to place an order.</p></div></CardContent></Card>}
@@ -531,6 +554,18 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
       </Card>
 
       <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+
+      <Card>
+        <CardHeader><CardTitle>Supplier movement audit</CardTitle><CardDescription>{filteredSupplierMovements.length} matching stock movement{filteredSupplierMovements.length === 1 ? "" : "s"}. Each row links a physical stock change to its supplier order or scheduled delivery.</CardDescription></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 rounded-xl border bg-surface/40 p-3 sm:grid-cols-3">
+            <div className="space-y-1.5"><Label htmlFor="supplier-audit-material">Material</Label><Select value={auditMaterialId} onValueChange={setAuditMaterialId}><SelectTrigger id="supplier-audit-material" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All materials</SelectItem>{auditMaterialOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><Label htmlFor="supplier-audit-from">From</Label><Input id="supplier-audit-from" type="date" value={auditFrom} onChange={(event) => setAuditFrom(event.target.value)} /></div>
+            <div className="space-y-1.5"><Label htmlFor="supplier-audit-to">Through</Label><Input id="supplier-audit-to" type="date" value={auditTo} onChange={(event) => setAuditTo(event.target.value)} /></div>
+          </div>
+          {filteredSupplierMovements.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No supplier stock movements match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Supplier / reference</TableHead><TableHead>Reason and notes</TableHead><TableHead>Created by</TableHead><TableHead>Source record</TableHead></TableRow></TableHeader><TableBody>{filteredSupplierMovements.map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}<span className="block text-xs text-muted-foreground">{movement.unit}</span></TableCell><TableCell className="whitespace-nowrap text-right font-medium tabular-nums text-success">+{movement.quantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })} {movement.unit}</TableCell><TableCell className="max-w-56 whitespace-normal">{movement.notes || (movement.sourceRef.startsWith("supplier-order:") ? "Supplier order receipt" : "Recurring supplier delivery")}</TableCell><TableCell className="max-w-64 whitespace-normal">{movement.reason}{movement.sourceRef.startsWith("supplier-delivery-schedule:") && movement.notes && <span className="block text-xs text-muted-foreground">{movement.notes}</span>}</TableCell><TableCell><Badge variant={movement.createdByType === "schedule" ? "secondary" : "outline"}>{movement.createdByLabel ?? (movement.createdByType === "schedule" ? "Automated schedule" : "User / legacy record")}</Badge></TableCell><TableCell className="max-w-64 whitespace-normal font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</TableCell></TableRow>)}</TableBody></Table></div>}
+        </CardContent>
+      </Card>
 
       <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
     </div>

@@ -140,6 +140,12 @@ export type InventorySupplierOrderLine = {
   currency: string;
 };
 
+export type InventorySupplierOrderEvent = {
+  action: "created" | "edited" | "cancelled" | "received";
+  occurredAt: number;
+  summary: string;
+};
+
 export type InventorySupplierOrder = {
   id: string;
   supplierId: string;
@@ -152,6 +158,7 @@ export type InventorySupplierOrder = {
   totalCost: number;
   lines: InventorySupplierOrderLine[];
   receiptIds?: string[];
+  history?: InventorySupplierOrderEvent[];
   receivedOn?: string;
   createdAt: number;
   updatedAt: number;
@@ -171,6 +178,7 @@ export type InventorySupplierDeliverySchedule = {
   customIntervalDays?: number;
   startOn: string;
   nextRunOn: string;
+  executionTime?: string;
   endOn?: string;
   active: boolean;
   lastRunOn?: string;
@@ -319,6 +327,8 @@ export type InventoryMovement = {
   observedQuantity?: number;
   balanceBefore?: number;
   balanceAfter?: number;
+  createdByType?: "user" | "schedule" | "system";
+  createdByLabel?: string;
   createdAt: number;
 };
 

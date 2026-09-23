@@ -9,37 +9,40 @@ This document is now also the launch checklist. The current implementation is a 
 - Supplier master records: add, edit, archive, restore, and view.
 - Multiple suppliers per inventory material.
 - Supplier-material details: current unit cost, currency, SKU, minimum order quantity, lead time, preferred supplier, and notes.
+- Cost history with effective dates. Orders continue to snapshot the unit cost at placement.
 - Per-material reorder threshold, suggested reorder quantity, preferred supplier, and low-stock alert toggle.
 - In-app **Stock Still High**, **To Order**, and **Ordered / On the Way** indicators.
 - Supplier orders containing multiple materials from one supplier.
 - Order reference, expected delivery date, notes, quantity, cost snapshot, total cost, and order history.
+- Order-history filters by supplier, material, status, and order date range.
+- Editing open orders and cancelling ordered or partially received orders. Received quantities and their cost snapshots are protected during edits.
 - Partial and full receiving.
 - Receiving updates inventory only after stock is received.
 - Receiving creates linked inventory movements with supplier/order references and idempotency protection.
 - **Received** status after all ordered stock arrives.
 - Recurring supplier delivery schedules: daily, weekly, monthly, and custom day intervals.
 - Scheduled deliveries create stock-in movements and system-generated audit references.
+- Expanded supplier movement audit with source references and user-versus-schedule attribution.
+- Protected Firebase Admin runner and per-schedule execution times for hosted background scheduling.
 - Existing inventory units are reused.
 - Low-stock alerts are currently in-app only.
 
 ### Not yet implemented
 
-- Historical cost tracking or cost effective dates. The system currently stores the current supplier cost and snapshots the cost on each order.
-- Order-history filters by supplier, material, status, and date range.
-- Full order editing and a user-facing **Cancelled** order action. The data model supports the status, but the UI does not yet expose the workflow.
-- A separate expanded movement-audit view. Supplier receipts are recorded in the existing inventory movement ledger with reason, notes, and source references.
-- A true background scheduler. Recurring deliveries currently run when Inventory refreshes or when the user selects **Run due now**. They do not run while the app is completely closed.
+- Deployment registration for the background scheduler. A protected Firebase Admin runner and execution-time support are implemented in code, but the hosting cron and server credentials must be configured.
 - Server-side authentication, authorization, and role-based permissions for supplier/order actions. The current app uses the existing client-side Firestore pattern.
 - Multiple warehouse or storage-location support.
+
+The movement records identify that a receipt was user-recorded, but cannot name the individual until the app has an authenticated user identity.
 
 ### Launch readiness
 
 The current version is suitable for a controlled pilot. Before calling the feature production-ready, decide whether these are launch blockers:
 
-1. Add a hosted background scheduler, or explicitly accept the current Inventory-refresh behavior.
-2. Add authentication and role permissions for managing suppliers, placing orders, receiving stock, and editing reorder settings.
-3. Decide whether order filters, cancellation, and cost history are required for the first public launch or can follow as enhancements.
-4. Confirm whether the existing movement ledger is sufficient as the audit trail, or whether a dedicated audit screen is needed.
+1. Configure the protected hosted runner with `CRON_SECRET` and Firebase Admin credentials. The Vercel setup and frequency constraints are documented in [SUPPLIERS_ORDERING_DEPLOYMENT.md](SUPPLIERS_ORDERING_DEPLOYMENT.md).
+2. Select an authentication provider and permission model for supplier management, ordering, receiving, and reorder settings.
+3. Decide whether inventory needs multiple locations. Sales usage currently has no location field, so per-location consumption and reorder thresholds need a defined ownership rule.
+4. Individual user attribution in the movement audit depends on the authentication decision.
 
 ## Implementation prompt
 
