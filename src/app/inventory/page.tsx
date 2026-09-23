@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Loader2, Scale } from "lucide-react";
+import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Handshake, Loader2, Scale } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,22 +10,27 @@ import { Materials } from "@/components/inventory/materials";
 import { Recipes } from "@/components/inventory/recipes";
 import { UsageRecap } from "@/components/inventory/usage-recap";
 import { StockDashboard } from "@/components/inventory/stock-dashboard";
+import { Suppliers } from "@/components/inventory/suppliers";
 import {
   listInventoryAliasMappings,
   listInventoryMaterials,
   listInventoryRecipeLines,
   listInventoryRecipeVersions,
   listMenuItems,
+  listInventorySuppliers,
+  listInventorySupplierItems,
 } from "@/lib/data";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
   InventoryRecipeLine,
   InventoryRecipeVersion,
+  InventorySupplier,
+  InventorySupplierItem,
   MenuItem,
 } from "@/lib/types";
 
-type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes";
+type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes" | "suppliers";
 
 export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<InventoryTab>("usage");
@@ -34,6 +39,8 @@ export default function InventoryPage() {
   const [aliases, setAliases] = useState<InventoryAliasMapping[]>([]);
   const [recipes, setRecipes] = useState<InventoryRecipeVersion[]>([]);
   const [recipeLines, setRecipeLines] = useState<InventoryRecipeLine[]>([]);
+  const [suppliers, setSuppliers] = useState<InventorySupplier[]>([]);
+  const [supplierItems, setSupplierItems] = useState<InventorySupplierItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,18 +48,22 @@ export default function InventoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines] = await Promise.all([
+      const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines, loadedSuppliers, loadedSupplierItems] = await Promise.all([
         listMenuItems(),
         listInventoryMaterials(),
         listInventoryAliasMappings(),
         listInventoryRecipeVersions(),
         listInventoryRecipeLines(),
+        listInventorySuppliers(),
+        listInventorySupplierItems(),
       ]);
       setMenuItems(items);
       setMaterials(loadedMaterials);
       setAliases(loadedAliases);
       setRecipes(loadedRecipes);
       setRecipeLines(loadedLines);
+      setSuppliers(loadedSuppliers);
+      setSupplierItems(loadedSupplierItems);
     } catch (loadError) {
       console.error("Failed to load inventory foundation", loadError);
       setError(loadError instanceof Error ? loadError.message : "Could not load inventory foundation.");
@@ -94,12 +105,14 @@ export default function InventoryPage() {
             <TabsTrigger value="import"><FileSpreadsheet className="size-4" />Import review</TabsTrigger>
             <TabsTrigger value="materials"><Boxes className="size-4" />Materials</TabsTrigger>
             <TabsTrigger value="recipes"><BookOpen className="size-4" />Recipes</TabsTrigger>
+            <TabsTrigger value="suppliers"><Handshake className="size-4" />Suppliers & ordering</TabsTrigger>
           </TabsList>
           <TabsContent value="stock" className="mt-5"><StockDashboard materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>
           <TabsContent value="import" className="mt-5"><ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
           <TabsContent value="materials" className="mt-5"><Materials materials={materials} onChanged={refresh} /></TabsContent>
           <TabsContent value="recipes" className="mt-5"><Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} /></TabsContent>
+          <TabsContent value="suppliers" className="mt-5"><Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} onChanged={refresh} /></TabsContent>
         </Tabs>
       )}
     </div>

@@ -86,6 +86,37 @@ export type InventoryMaterial = {
   updatedAt: number;
 };
 
+export type InventorySupplier = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  contactPerson?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  active: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type InventorySupplierItem = {
+  id: string;
+  supplierId: string;
+  materialId: string;
+  materialName: string;
+  unit: InventoryUnit;
+  costPerUnit: number;
+  currency: string;
+  supplierSku?: string;
+  minimumOrderQuantity?: number;
+  leadTimeDays?: number;
+  preferred: boolean;
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type InventoryAliasEntityType =
   | "menu_item"
   | "material"

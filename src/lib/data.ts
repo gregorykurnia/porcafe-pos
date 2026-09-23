@@ -23,6 +23,8 @@ import type {
   DailyItemLog,
   InventoryAliasMapping,
   InventoryMaterial,
+  InventorySupplier,
+  InventorySupplierItem,
   InventoryRecipeLine,
   InventoryRecipeVersion,
   InventoryUsageEvent,
@@ -331,6 +333,8 @@ export async function migrateLegacyItemSalesToDailyLogs(options?: {
 // events only; these records never mutate stock balances or legacy sales data.
 
 const inventoryMaterialsCol = collection(db, "inventoryMaterials");
+const inventorySuppliersCol = collection(db, "inventorySuppliers");
+const inventorySupplierItemsCol = collection(db, "inventorySupplierItems");
 const inventoryAliasesCol = collection(db, "inventoryAliasMappings");
 const inventoryRecipesCol = collection(db, "inventoryRecipeVersions");
 const inventoryRecipeLinesCol = collection(db, "inventoryRecipeLines");
@@ -341,6 +345,14 @@ const inventoryStockSetupRef = doc(db, "inventoryStockSetup", "default");
 
 function mapInventoryMaterial(id: string, data: Record<string, unknown>): InventoryMaterial {
   return { id, ...(data as Omit<InventoryMaterial, "id">) };
+}
+
+function mapInventorySupplier(id: string, data: Record<string, unknown>): InventorySupplier {
+  return { id, ...(data as Omit<InventorySupplier, "id">) };
+}
+
+function mapInventorySupplierItem(id: string, data: Record<string, unknown>): InventorySupplierItem {
+  return { id, ...(data as Omit<InventorySupplierItem, "id">) };
 }
 
 function mapInventoryAlias(id: string, data: Record<string, unknown>): InventoryAliasMapping {
@@ -378,6 +390,62 @@ export async function upsertInventoryMaterial(
 
   const ref = await addDoc(inventoryMaterialsCol, omitUndefined({ ...payload, createdAt: now }));
   return ref.id;
+}
+
+export async function listInventorySuppliers(): Promise<InventorySupplier[]> {
+  const snap = await getDocs(query(inventorySuppliersCol, orderBy("name", "asc")));
+  return snap.docs.map((d) => mapInventorySupplier(d.id, d.data()));
+}
+
+export async function upsertInventorySupplier(
+  supplier: Omit<InventorySupplier, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = supplier;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+
+  if (inputId) {
+    await setDoc(doc(db, "inventorySuppliers", inputId), omitUndefined(payload), { merge: true });
+    return inputId;
+  }
+
+  const ref = await addDoc(inventorySuppliersCol, omitUndefined({ ...payload, createdAt: now }));
+  return ref.id;
+}
+
+export async function listInventorySupplierItems(): Promise<InventorySupplierItem[]> {
+  const snap = await getDocs(inventorySupplierItemsCol);
+  return snap.docs
+    .map((d) => mapInventorySupplierItem(d.id, d.data()))
+    .sort((a, b) => a.materialName.localeCompare(b.materialName) || a.supplierId.localeCompare(b.supplierId));
+}
+
+export async function upsertInventorySupplierItem(
+  supplierItem: Omit<InventorySupplierItem, "id" | "createdAt" | "updatedAt"> & {
+    id?: string;
+    createdAt?: number;
+  }
+) {
+  const now = Date.now();
+  const { id: inputId, createdAt, ...rest } = supplierItem;
+  const payload: Record<string, unknown> = { ...rest, updatedAt: now };
+  if (createdAt !== undefined) payload.createdAt = createdAt;
+
+  if (inputId) {
+    await setDoc(doc(db, "inventorySupplierItems", inputId), omitUndefined(payload), { merge: true });
+    return inputId;
+  }
+
+  const ref = await addDoc(inventorySupplierItemsCol, omitUndefined({ ...payload, createdAt: now }));
+  return ref.id;
+}
+
+export async function deleteInventorySupplierItem(id: string) {
+  await deleteDoc(doc(db, "inventorySupplierItems", id));
 }
 
 export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {
