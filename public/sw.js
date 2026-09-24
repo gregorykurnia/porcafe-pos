@@ -1,5 +1,11 @@
-const CACHE = "porcafe-pos-v2";
+const CACHE = "porcafe-pos-v3";
 const CORE_ASSETS = ["/", "/manifest.json"];
+
+function isCacheableAsset(request, url) {
+  return url.pathname.startsWith("/_next/static/")
+    || url.pathname === "/manifest.json"
+    || ["script", "style", "font", "image"].includes(request.destination);
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -21,14 +27,23 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith("/api/")) return;
+
+  const isNavigation = event.request.mode === "navigate";
+  const isCacheable = isCacheableAsset(event.request, requestUrl);
+  // Let Next.js route and RSC requests go straight to the browser's network stack.
+  // Caching these responses adds storage work on every client-side navigation.
+  if (!isNavigation && !isCacheable) return;
+
   event.respondWith(
     fetch(event.request)
       .then((res) => {
-        const resClone = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, resClone));
+        if (isCacheable && res.ok) {
+          const resClone = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, resClone));
+        }
         return res;
       })
-      .catch(() => caches.match(event.request).then((r) => r || caches.match("/")))
+      .catch(() => caches.match(event.request).then((r) => r || (isNavigation ? caches.match("/") : Response.error())))
   );
 });
 
