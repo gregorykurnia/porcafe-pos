@@ -31,6 +31,19 @@ type SupplierOrdersProps = {
 
 type DraftLine = InventorySupplierOrderLine & { draftId: string };
 
+function expectedDeliveryDate(orderedOn: string, leadTimeDays: number | undefined): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(orderedOn) ||
+    leadTimeDays === undefined ||
+    !Number.isInteger(leadTimeDays) ||
+    leadTimeDays < 0) return "";
+
+  const date = new Date(`${orderedOn}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== orderedOn) return "";
+  date.setUTCDate(date.getUTCDate() + leadTimeDays);
+  const expectedOn = date.toISOString().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(expectedOn) ? expectedOn : "";
+}
+
 function orderStatusLabel(status: InventorySupplierOrder["status"]): string {
   if (status === "ordered") return "Ordered / On the Way";
   if (status === "partially_received") return "Partially Received";
@@ -56,6 +69,8 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   const [quantity, setQuantity] = useState("");
   const [orderedOn, setOrderedOn] = useState(todayISO());
   const [expectedOn, setExpectedOn] = useState("");
+  const [expectedOnManuallyAdjusted, setExpectedOnManuallyAdjusted] = useState(false);
+  const [autoExpectedLeadTimeDays, setAutoExpectedLeadTimeDays] = useState<number | undefined>();
   const [orderReference, setOrderReference] = useState("");
   const [notes, setNotes] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
@@ -125,9 +140,13 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   function editOrder(order: InventorySupplierOrder) {
     setEditingOrderId(order.id);
     setSelectedSupplierId(order.supplierId);
+    setSelectedMaterialId("");
+    setQuantity("");
     setOrderReference(order.orderReference);
     setOrderedOn(order.orderedOn);
     setExpectedOn(order.expectedOn ?? "");
+    setExpectedOnManuallyAdjusted(Boolean(order.expectedOn));
+    setAutoExpectedLeadTimeDays(undefined);
     setNotes(order.notes ?? "");
     setDraftLines(order.lines.map((line) => ({ ...line, draftId: line.id })));
     orderFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -159,6 +178,8 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
     setQuantity("");
     setOrderedOn(todayISO());
     setExpectedOn("");
+    setExpectedOnManuallyAdjusted(false);
+    setAutoExpectedLeadTimeDays(undefined);
     setOrderReference("");
     setNotes("");
     setDraftLines([]);
@@ -290,15 +311,15 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
           <CardContent className="space-y-4">
             {orderSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier before creating an order.</p> : <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { setSelectedSupplierId(value); setSelectedMaterialId(""); setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{orderSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}{supplier.active ? "" : " · Archived"}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { setSelectedSupplierId(value); setSelectedMaterialId(""); setQuantity(""); setExpectedOn(""); setExpectedOnManuallyAdjusted(false); setAutoExpectedLeadTimeDays(undefined); setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{orderSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}{supplier.active ? "" : " · Archived"}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label htmlFor="order-reference">Order reference</Label><Input id="order-reference" value={orderReference} onChange={(event) => setOrderReference(event.target.value)} placeholder="Optional" /></div>
-                <div className="space-y-1.5"><Label htmlFor="order-date">Order date</Label><Input id="order-date" type="date" value={orderedOn} onChange={(event) => setOrderedOn(event.target.value)} /></div>
-                <div className="space-y-1.5"><Label htmlFor="order-expected">Expected delivery</Label><Input id="order-expected" type="date" value={expectedOn} onChange={(event) => setExpectedOn(event.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="order-date">Order date</Label><Input id="order-date" type="date" value={orderedOn} onChange={(event) => { const nextDate = event.target.value; setOrderedOn(nextDate); if (!expectedOnManuallyAdjusted) setExpectedOn(expectedDeliveryDate(nextDate, autoExpectedLeadTimeDays)); }} /></div>
+                <div className="space-y-1.5"><Label htmlFor="order-expected">Expected delivery</Label><Input id="order-expected" type="date" value={expectedOn} onChange={(event) => { setExpectedOn(event.target.value); setExpectedOnManuallyAdjusted(true); }} /></div>
                 <div className="space-y-1.5"><Label htmlFor="order-notes">Notes</Label><Input id="order-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" /></div>
               </div>
 
               <div className="grid gap-3 rounded-xl border bg-surface/60 p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
-                <div className="space-y-1.5"><Label htmlFor="order-material">Material</Label><Select value={selectedMaterialId} onValueChange={setSelectedMaterialId} disabled={!selectedSupplierId}><SelectTrigger id="order-material" className="w-full"><SelectValue placeholder={selectedSupplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{supplierLinks.map((link) => <SelectItem key={link.materialId} value={link.materialId}>{link.materialName} · {link.unit} · {link.currency} {link.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="order-material">Material</Label><Select value={selectedMaterialId} onValueChange={(value) => { const material = materialById.get(value); const link = supplierLinks.find((item) => item.materialId === value); setSelectedMaterialId(value); setQuantity(material && Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? String(material.reorderQuantity) : ""); setAutoExpectedLeadTimeDays(link?.leadTimeDays); setExpectedOn(expectedDeliveryDate(orderedOn, link?.leadTimeDays)); setExpectedOnManuallyAdjusted(false); }} disabled={!selectedSupplierId}><SelectTrigger id="order-material" className="w-full"><SelectValue placeholder={selectedSupplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{supplierLinks.map((link) => <SelectItem key={link.materialId} value={link.materialId}>{link.materialName} · {link.unit} · {link.currency} {link.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label htmlFor="order-quantity">Quantity{selectedLink ? ` (${selectedLink.unit})` : ""}</Label><Input id="order-quantity" type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="0" /></div>
                 <Button onClick={addLine} disabled={!selectedSupplierId || !selectedMaterialId}><Plus className="size-4" />Add line</Button>
               </div>
