@@ -96,6 +96,18 @@ const ITEM_CATEGORIES = ["Main", "Add On"] as const;
 async function calculateSavedDailyUsage(log: DailyItemLog) {
   try {
     const event = await calculateAndPersistDailyInventoryUsage(log);
+    if (event) {
+      void fetch("/api/push/reorder-transition", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: log.date }),
+        keepalive: true,
+      }).then((response) => {
+        if (!response.ok) console.warn("Reorder push processing was not accepted", response.status);
+      }).catch((error) => {
+        console.warn("Reorder push processing could not be reached", error);
+      });
+    }
     if (event?.status === "needs-review") {
       toast.warning("Day saved, but inventory usage needs recipe or mapping review.");
     }

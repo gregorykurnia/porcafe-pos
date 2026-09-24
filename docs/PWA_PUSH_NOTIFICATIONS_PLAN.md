@@ -21,7 +21,7 @@ Web Push is supported by Home Screen web apps on iOS and iPadOS 16.4 and later. 
 - Inventory materials have `reorderThreshold`, `reorderQuantity`, and `lowStockAlertEnabled` fields.
 - The existing reorder status logic uses the threshold, alert setting, stock initialization, and whether an open supplier order exists.
 - The daily-close flow saves a daily item log and then calculates and persists inventory usage.
-- No existing service worker was found during planning.
+- `public/sw.js` is already registered by `SwRegister`; extend the existing worker with push handlers and avoid caching API responses.
 
 Recheck these findings against the current code before implementation.
 

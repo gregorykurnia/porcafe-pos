@@ -11,6 +11,7 @@ import { Recipes } from "@/components/inventory/recipes";
 import { UsageRecap } from "@/components/inventory/usage-recap";
 import { StockDashboard } from "@/components/inventory/stock-dashboard";
 import { Suppliers } from "@/components/inventory/suppliers";
+import { PushNotificationsSettings } from "@/components/push-notifications-settings";
 import {
   listInventoryAliasMappings,
   listInventoryMaterials,
@@ -89,6 +90,21 @@ export default function InventoryPage() {
     queueMicrotask(() => void refresh());
   }, [refresh]);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "suppliers") {
+      const frame = window.requestAnimationFrame(() => setActiveTab("suppliers"));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    return;
+  }, []);
+
+  useEffect(() => {
+    if (loading || activeTab !== "suppliers" || window.location.hash !== "#reorder-overview") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("reorder-overview")?.scrollIntoView({ block: "start" });
+    });
+  }, [activeTab, loading]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -105,6 +121,8 @@ export default function InventoryPage() {
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><BookOpen className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Recipe versions</p><p className="font-semibold tabular-nums">{recipes.length}</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><AlertTriangle className="size-5 text-warning" /><div><p className="text-xs text-muted-foreground">Stock balance</p><p className="font-semibold">Opening stock gated</p></div></CardContent></Card>
       </div>
+
+      <PushNotificationsSettings />
 
       {loading ? (
         <Card><CardContent className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading inventory foundation…</CardContent></Card>

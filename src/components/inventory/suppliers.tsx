@@ -36,6 +36,7 @@ import {
 } from "@/lib/data";
 import { normalizeInventoryName } from "@/lib/inventory";
 import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
+import { getInventoryReorderStatus, type InventoryReorderStatus } from "@/lib/reorder-status";
 import { SupplierOrders } from "@/components/inventory/supplier-orders";
 import { SupplierSchedules } from "@/components/inventory/supplier-schedules";
 import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierDeliverySchedule, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
@@ -67,7 +68,7 @@ const EMPTY_SUPPLIER_FORM: SupplierForm = {
   notes: "",
 };
 
-type ReorderStatus = "stock-high" | "to-order" | "on-way" | "not-configured" | "alerts-off" | "not-initialized";
+type ReorderStatus = InventoryReorderStatus;
 type ReorderOverviewFilter = "all" | ReorderStatus;
 type ReorderSortKey = "material" | "stock" | "threshold" | "gap" | "quantity" | "supplier" | "status";
 type ReorderSort = { key: ReorderSortKey; direction: "asc" | "desc" };
@@ -104,19 +105,6 @@ function SupplierPricingHead({
       </button>
     </TableHead>
   );
-}
-
-function getReorderStatus(
-  material: InventoryMaterial,
-  balance: InventoryBalance | undefined,
-  stockInitialized: boolean,
-  hasOpenOrder: boolean,
-): ReorderStatus {
-  if (!stockInitialized || balance?.currentQuantity === null || balance === undefined) return "not-initialized";
-  if (hasOpenOrder) return "on-way";
-  if (material.reorderThreshold === undefined) return "not-configured";
-  if (!material.lowStockAlertEnabled) return "alerts-off";
-  return balance.currentQuantity <= material.reorderThreshold ? "to-order" : "stock-high";
 }
 
 function reorderStatusLabel(status: ReorderStatus): string {
@@ -203,7 +191,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
       gapToAlert: material.reorderThreshold !== undefined && currentQuantity !== null && currentQuantity !== undefined
         ? currentQuantity - material.reorderThreshold
         : undefined,
-      status: getReorderStatus(material, balance, stockInitialized, openOrderMaterialIds.has(material.id)),
+      status: getInventoryReorderStatus(material, currentQuantity, stockInitialized, openOrderMaterialIds.has(material.id)),
       supplierName: material.preferredSupplierId ? supplierById.get(material.preferredSupplierId)?.name ?? "Archived supplier" : "No preferred supplier",
     };
   }), [balanceByMaterialId, materials, openOrderMaterialIds, stockInitialized, supplierById]);
@@ -242,7 +230,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
   }
 
   return (
-    <Card>
+    <Card id="reorder-overview" className="scroll-mt-6">
       <CardHeader>
         <CardTitle>Reorder overview</CardTitle>
         <CardDescription>Filter materials by stock status, then sort the list to see what needs attention.</CardDescription>
@@ -267,7 +255,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
             <TableCell className="tabular-nums">{material.reorderThreshold === undefined ? "—" : material.reorderThreshold.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
             <TableCell><ReorderGap gap={gapToAlert} thresholdConfigured={material.reorderThreshold !== undefined} unit={material.baseUnit} status={status} /></TableCell>
-            <TableCell className="tabular-nums">{material.reorderQuantity === undefined ? "—" : material.reorderQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
+            <TableCell className="tabular-nums">{Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? material.reorderQuantity!.toLocaleString("id-ID", { maximumFractionDigits: 2 }) : <>{status === "to-order" ? <span className="text-warning">Set a valid order quantity to enable push alerts.</span> : "—"}</>}</TableCell>
             <TableCell>{supplierName}</TableCell>
             <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
             <TableCell className="text-right">{status === "to-order" ? <Button asChild size="sm" variant="outline"><a href="#create-supplier-order" aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</a></Button> : "—"}</TableCell>
@@ -441,7 +429,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   }, [materialById, supplierById, supplierItems, supplierPricingSort]);
   const balances = useMemo(() => summarizeInventoryBalances(materials, movements, stockSetup), [materials, movements, stockSetup]);
   const openOrderMaterialIds = useMemo(() => new Set(orders.filter((order) => order.status === "ordered" || order.status === "partially_received").flatMap((order) => order.lines.map((line) => line.materialId))), [orders]);
-  const toOrderCount = useMemo(() => activeMaterials.filter((material) => getReorderStatus(material, balances.find((balance) => balance.materialId === material.id), Boolean(stockSetup?.initialized), openOrderMaterialIds.has(material.id)) === "to-order").length, [activeMaterials, balances, openOrderMaterialIds, stockSetup]);
+  const toOrderCount = useMemo(() => activeMaterials.filter((material) => getInventoryReorderStatus(material, balances.find((balance) => balance.materialId === material.id)?.currentQuantity, Boolean(stockSetup?.initialized), openOrderMaterialIds.has(material.id)) === "to-order").length, [activeMaterials, balances, openOrderMaterialIds, stockSetup]);
   const activeOrderCount = orders.filter((order) => order.status === "ordered" || order.status === "partially_received").length;
   const activeScheduleCount = schedules.filter((schedule) => schedule.active).length;
   const recentOrderCutoff = format(addDays(parseISO(today), -6), "yyyy-MM-dd");
