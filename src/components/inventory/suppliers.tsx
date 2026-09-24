@@ -143,6 +143,7 @@ type ReorderOverviewProps = {
   stockInitialized: boolean;
   stockLoading: boolean;
   openOrderMaterialIds: Set<string>;
+  onCreateOrder: (materialId: string) => void;
 };
 
 function ReorderOverviewHead({
@@ -177,7 +178,7 @@ function ReorderOverviewHead({
   );
 }
 
-function ReorderOverview({ materials, suppliers, balances, stockInitialized, stockLoading, openOrderMaterialIds }: ReorderOverviewProps) {
+function ReorderOverview({ materials, suppliers, balances, stockInitialized, stockLoading, openOrderMaterialIds, onCreateOrder }: ReorderOverviewProps) {
   const [statusFilter, setStatusFilter] = useState<ReorderOverviewFilter>("all");
   const [sort, setSort] = useState<ReorderSort>({ key: "status", direction: "asc" });
   const balanceByMaterialId = useMemo(() => new Map(balances.map((balance) => [balance.materialId, balance])), [balances]);
@@ -258,7 +259,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell className="tabular-nums">{Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? material.reorderQuantity!.toLocaleString("id-ID", { maximumFractionDigits: 2 }) : <>{status === "to-order" ? <span className="text-warning">Set a valid order quantity to enable push alerts.</span> : "—"}</>}</TableCell>
             <TableCell>{supplierName}</TableCell>
             <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
-            <TableCell className="text-right">{status === "to-order" ? <Button asChild size="sm" variant="outline"><a href="#create-supplier-order" aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</a></Button> : "—"}</TableCell>
+            <TableCell className="text-right">{status === "to-order" ? <Button type="button" size="sm" variant="outline" onClick={() => onCreateOrder(material.id)} aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</Button> : "—"}</TableCell>
           </TableRow>)}</TableBody></Table></div>}
         </>}
       </CardContent>
@@ -385,6 +386,8 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const [editingSupplierItemId, setEditingSupplierItemId] = useState<string | null>(null);
   const [supplierItemSaving, setSupplierItemSaving] = useState(false);
   const [supplierPricingSort, setSupplierPricingSort] = useState<SupplierPricingSort>(null);
+  const [orderPrefillRequest, setOrderPrefillRequest] = useState<{ materialId: string; requestId: number } | null>(null);
+  const orderPrefillRequestId = useRef(0);
   const [stockSetup, setStockSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
@@ -670,9 +673,9 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
       </div>
 
-      <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} />
+      <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} onCreateOrder={(materialId) => setOrderPrefillRequest({ materialId, requestId: ++orderPrefillRequestId.current })} />
 
-      <SupplierOrders materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+      <SupplierOrders key={orderPrefillRequest?.requestId ?? "new-order"} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} createOrderRequest={orderPrefillRequest} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 

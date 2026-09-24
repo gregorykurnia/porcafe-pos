@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Ban, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ type SupplierOrdersProps = {
   suppliers: InventorySupplier[];
   supplierItems: InventorySupplierItem[];
   orders: InventorySupplierOrder[];
+  createOrderRequest: { materialId: string; requestId: number } | null;
   onChanged: () => Promise<void>;
 };
 
@@ -58,19 +59,30 @@ function orderStatusVariant(status: InventorySupplierOrder["status"]): "default"
   return "destructive";
 }
 
-export function SupplierOrders({ materials, suppliers, supplierItems, orders, onChanged }: SupplierOrdersProps) {
+export function SupplierOrders({ materials, suppliers, supplierItems, orders, createOrderRequest, onChanged }: SupplierOrdersProps) {
   const orderFormRef = useRef<HTMLDivElement>(null);
+  const hasHandledCreateOrderRequest = useRef(false);
+  const createOrderMaterial = createOrderRequest
+    ? materials.find((material) => material.id === createOrderRequest.materialId && material.active)
+    : undefined;
+  const createOrderSupplier = createOrderMaterial?.preferredSupplierId
+    ? suppliers.find((supplier) => supplier.id === createOrderMaterial.preferredSupplierId && supplier.active)
+    : undefined;
+  const createOrderSupplierItem = createOrderSupplier
+    ? supplierItems.find((item) => item.supplierId === createOrderSupplier.id && item.materialId === createOrderMaterial?.id)
+    : undefined;
+  const initialOrderedOn = todayISO();
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active), [suppliers]);
   const materialById = useMemo(() => new Map(activeMaterials.map((material) => [material.id, material])), [activeMaterials]);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
-  const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [selectedMaterialId, setSelectedMaterialId] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [orderedOn, setOrderedOn] = useState(todayISO());
-  const [expectedOn, setExpectedOn] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState(createOrderSupplier?.id ?? "");
+  const [selectedMaterialId, setSelectedMaterialId] = useState(createOrderMaterial?.id ?? "");
+  const [quantity, setQuantity] = useState(createOrderMaterial && Number.isFinite(createOrderMaterial.reorderQuantity) && createOrderMaterial.reorderQuantity! > 0 ? String(createOrderMaterial.reorderQuantity) : "");
+  const [orderedOn, setOrderedOn] = useState(initialOrderedOn);
+  const [expectedOn, setExpectedOn] = useState(expectedDeliveryDate(initialOrderedOn, createOrderSupplierItem?.leadTimeDays));
   const [expectedOnManuallyAdjusted, setExpectedOnManuallyAdjusted] = useState(false);
-  const [autoExpectedLeadTimeDays, setAutoExpectedLeadTimeDays] = useState<number | undefined>();
+  const [autoExpectedLeadTimeDays, setAutoExpectedLeadTimeDays] = useState<number | undefined>(createOrderSupplierItem?.leadTimeDays);
   const [orderReference, setOrderReference] = useState("");
   const [notes, setNotes] = useState("");
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
@@ -91,6 +103,21 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
   const selectedLink = supplierLinks.find((item) => item.materialId === selectedMaterialId);
   const activeOrders = orders.filter((order) => order.status === "ordered" || order.status === "partially_received");
   const orderSuppliers = editingOrderId ? suppliers : activeSuppliers;
+
+  useEffect(() => {
+    if (!createOrderRequest || hasHandledCreateOrderRequest.current) return;
+    hasHandledCreateOrderRequest.current = true;
+    orderFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    if (createOrderMaterial && !createOrderSupplier) {
+      toast.warning(createOrderMaterial.preferredSupplierId
+        ? "This material’s preferred supplier is inactive. Choose an active supplier to finish the order."
+        : "No preferred supplier is set for this material. Choose a supplier to finish the order.");
+    } else if (createOrderMaterial && !createOrderSupplierItem) {
+      toast.warning("This material is not linked to its preferred supplier. Choose a supplier with this material linked.");
+    }
+  }, [createOrderMaterial, createOrderRequest, createOrderSupplier, createOrderSupplierItem]);
+
   const materialFilterOptions = useMemo(() => {
     const names = new Map<string, string>();
     for (const order of orders) for (const line of order.lines) names.set(line.materialId, line.materialName);
@@ -311,7 +338,7 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
           <CardContent className="space-y-4">
             {orderSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier before creating an order.</p> : <>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { setSelectedSupplierId(value); setSelectedMaterialId(""); setQuantity(""); setExpectedOn(""); setExpectedOnManuallyAdjusted(false); setAutoExpectedLeadTimeDays(undefined); setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{orderSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}{supplier.active ? "" : " · Archived"}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="order-supplier">Supplier</Label><Select value={selectedSupplierId} onValueChange={(value) => { const nextLink = supplierItems.find((item) => item.supplierId === value && item.materialId === selectedMaterialId); setSelectedSupplierId(value); if (selectedMaterialId && nextLink) { setAutoExpectedLeadTimeDays(nextLink.leadTimeDays); if (!expectedOnManuallyAdjusted) setExpectedOn(expectedDeliveryDate(orderedOn, nextLink.leadTimeDays)); } else { setSelectedMaterialId(""); setQuantity(""); setExpectedOn(""); setExpectedOnManuallyAdjusted(false); setAutoExpectedLeadTimeDays(undefined); } setDraftLines([]); }}><SelectTrigger id="order-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{orderSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}{supplier.active ? "" : " · Archived"}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label htmlFor="order-reference">Order reference</Label><Input id="order-reference" value={orderReference} onChange={(event) => setOrderReference(event.target.value)} placeholder="Optional" /></div>
                 <div className="space-y-1.5"><Label htmlFor="order-date">Order date</Label><Input id="order-date" type="date" value={orderedOn} onChange={(event) => { const nextDate = event.target.value; setOrderedOn(nextDate); if (!expectedOnManuallyAdjusted) setExpectedOn(expectedDeliveryDate(nextDate, autoExpectedLeadTimeDays)); }} /></div>
                 <div className="space-y-1.5"><Label htmlFor="order-expected">Expected delivery</Label><Input id="order-expected" type="date" value={expectedOn} onChange={(event) => { setExpectedOn(event.target.value); setExpectedOnManuallyAdjusted(true); }} /></div>
@@ -319,7 +346,7 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, on
               </div>
 
               <div className="grid gap-3 rounded-xl border bg-surface/60 p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
-                <div className="space-y-1.5"><Label htmlFor="order-material">Material</Label><Select value={selectedMaterialId} onValueChange={(value) => { const material = materialById.get(value); const link = supplierLinks.find((item) => item.materialId === value); setSelectedMaterialId(value); setQuantity(material && Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? String(material.reorderQuantity) : ""); setAutoExpectedLeadTimeDays(link?.leadTimeDays); setExpectedOn(expectedDeliveryDate(orderedOn, link?.leadTimeDays)); setExpectedOnManuallyAdjusted(false); }} disabled={!selectedSupplierId}><SelectTrigger id="order-material" className="w-full"><SelectValue placeholder={selectedSupplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{supplierLinks.map((link) => <SelectItem key={link.materialId} value={link.materialId}>{link.materialName} · {link.unit} · {link.currency} {link.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label htmlFor="order-material">Material</Label><Select value={selectedMaterialId} onValueChange={(value) => { const material = materialById.get(value); const link = supplierLinks.find((item) => item.materialId === value); setSelectedMaterialId(value); setQuantity(material && Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? String(material.reorderQuantity) : ""); setAutoExpectedLeadTimeDays(link?.leadTimeDays); setExpectedOn(expectedDeliveryDate(orderedOn, link?.leadTimeDays)); setExpectedOnManuallyAdjusted(false); }} disabled={!selectedSupplierId}><SelectTrigger id="order-material" className="w-full"><SelectValue placeholder={selectedSupplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{selectedMaterialId && !supplierLinks.some((link) => link.materialId === selectedMaterialId) && <SelectItem value={selectedMaterialId} disabled>{materialById.get(selectedMaterialId)?.name ?? "Selected material"} · not linked to this supplier</SelectItem>}{supplierLinks.map((link) => <SelectItem key={link.materialId} value={link.materialId}>{link.materialName} · {link.unit} · {link.currency} {link.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label htmlFor="order-quantity">Quantity{selectedLink ? ` (${selectedLink.unit})` : ""}</Label><Input id="order-quantity" type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="0" /></div>
                 <Button onClick={addLine} disabled={!selectedSupplierId || !selectedMaterialId}><Plus className="size-4" />Add line</Button>
               </div>
