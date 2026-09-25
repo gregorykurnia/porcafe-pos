@@ -35,13 +35,26 @@ export function shouldSendInitialReorderAlert(
     hasValidOrderQuantity;
 }
 
-export function getReorderNotificationMessage(material: InventoryMaterial): string | null {
+export function getReorderNotificationMessage(
+  material: InventoryMaterial,
+  currentQuantity: number | null | undefined,
+  supplierName?: string | null,
+): string | null {
   if (!Number.isFinite(material.reorderQuantity) ||
     (material.reorderQuantity ?? 0) <= 0 ||
+    !Number.isFinite(currentQuantity) ||
     !material.name.trim() ||
     !["g", "ml", "pcs"].includes(material.baseUnit)) return null;
-  const quantity = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(material.reorderQuantity!);
-  return `Order ${quantity} ${material.baseUnit} of ${material.name}.`;
+  const formatQuantity = (quantity: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(quantity);
+  const quantity = formatQuantity(material.reorderQuantity!);
+  const stock = formatQuantity(currentQuantity!);
+  const supplier = material.preferredSupplierId
+    ? supplierName?.trim() || "Archived supplier"
+    : null;
+  const orderCopy = supplier
+    ? `Order ${quantity} ${material.baseUnit} of ${material.name} from ${supplier}.`
+    : `Order ${quantity} ${material.baseUnit} of ${material.name}. Preferred supplier not set.`;
+  return `${orderCopy} Current stock: ${stock} ${material.baseUnit}.`;
 }
 
 export function isReorderReminderDue(input: {

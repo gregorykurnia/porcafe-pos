@@ -8,7 +8,7 @@ import {
   shouldSendInitialReorderAlert,
   type InventoryReorderStatus,
 } from "@/lib/reorder-status";
-import type { InventoryMaterial } from "@/lib/types";
+import type { InventoryMaterial, InventorySupplier } from "@/lib/types";
 import type { PushSubscription } from "web-push";
 
 const PUSH_SUBSCRIPTIONS = "pushSubscriptions";
@@ -36,6 +36,7 @@ type ReorderEpisode = {
 
 type InventoryState = {
   materials: InventoryMaterial[];
+  supplierNames: Map<string, string>;
   stockInitialized: boolean;
   balances: Map<string, number>;
   openOrderMaterialIds: Set<string>;
@@ -155,8 +156,9 @@ function nextDate(date: string): string {
 
 async function readInventoryState(): Promise<InventoryState> {
   const db = getAdminFirestore();
-  const [materialsSnapshot, movementsSnapshot, setupSnapshot, ordersSnapshot] = await Promise.all([
+  const [materialsSnapshot, suppliersSnapshot, movementsSnapshot, setupSnapshot, ordersSnapshot] = await Promise.all([
     db.collection("inventoryMaterials").get(),
+    db.collection("inventorySuppliers").get(),
     db.collection("inventoryMovements").get(),
     db.collection("inventoryStockSetup").doc("default").get(),
     db.collection("inventorySupplierOrders").get(),
@@ -165,6 +167,10 @@ async function readInventoryState(): Promise<InventoryState> {
     id: document.id,
     ...document.data(),
   })) as InventoryMaterial[];
+  const supplierNames = new Map(suppliersSnapshot.docs.map((document) => {
+    const supplier = { id: document.id, ...document.data() } as InventorySupplier;
+    return [supplier.id, supplier.name] as const;
+  }));
   const balances = new Map<string, number>();
   for (const movement of movementsSnapshot.docs) {
     const data = movement.data();
@@ -184,6 +190,7 @@ async function readInventoryState(): Promise<InventoryState> {
   }
   return {
     materials,
+    supplierNames,
     stockInitialized: setupSnapshot.get("initialized") === true,
     balances,
     openOrderMaterialIds,
@@ -200,12 +207,20 @@ function materialStatus(material: InventoryMaterial, state: InventoryState, quan
   );
 }
 
-function notificationMessage(material: InventoryMaterial): string | null {
-  return getReorderNotificationMessage(material);
+function notificationMessage(
+  material: InventoryMaterial,
+  currentQuantity: number | null | undefined,
+  supplierName?: string | null,
+): string | null {
+  return getReorderNotificationMessage(material, currentQuantity, supplierName);
 }
 
-function notificationPayload(material: InventoryMaterial): PushPayload | null {
-  const body = notificationMessage(material);
+function notificationPayload(
+  material: InventoryMaterial,
+  currentQuantity: number | null | undefined,
+  supplierName?: string | null,
+): PushPayload | null {
+  const body = notificationMessage(material, currentQuantity, supplierName);
   if (!body) return null;
   return {
     title: "Stock needs reordering",
@@ -268,12 +283,14 @@ async function activateEpisode(
     dailyTriggerKey?: string;
     beforeStatus: InventoryReorderStatus;
     afterStatus: InventoryReorderStatus;
+    currentQuantity: number;
+    supplierName?: string;
   },
 ): Promise<{ sendInitial: boolean; payload: PushPayload | null; episodeId: string | null }> {
   const db = getAdminFirestore();
   const ref = db.collection(PUSH_EPISODES).doc(material.id);
   const now = Date.now();
-  const payload = notificationPayload(material);
+  const payload = notificationPayload(material, options.currentQuantity, options.supplierName);
   return db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
     const current = snapshot.exists ? snapshot.data() as Partial<ReorderEpisode> & { lastInitialAlertKey?: string | null } : null;
@@ -384,6 +401,8 @@ export async function processDailyCloseReorderNotifications(date: string) {
       dailyTriggerKey: triggerKey,
       beforeStatus,
       afterStatus,
+      currentQuantity: currentBalance,
+      supplierName: material.preferredSupplierId ? state.supplierNames.get(material.preferredSupplierId) ?? "Archived supplier" : undefined,
     });
     if (!activation.sendInitial || !activation.payload) continue;
     try {
@@ -409,14 +428,18 @@ export async function processDailyCloseReorderNotifications(date: string) {
 
 async function readFreshMaterialStatus(materialId: string) {
   const db = getAdminFirestore();
-  const [materialSnapshot, setupSnapshot, movementsSnapshot, ordersSnapshot] = await Promise.all([
-    db.collection("inventoryMaterials").doc(materialId).get(),
+  const materialSnapshot = await db.collection("inventoryMaterials").doc(materialId).get();
+  if (!materialSnapshot.exists) return { material: null, status: "not-initialized" as const };
+  const material = { id: materialSnapshot.id, ...materialSnapshot.data() } as InventoryMaterial;
+  const supplierPromise = material.preferredSupplierId
+    ? db.collection("inventorySuppliers").doc(material.preferredSupplierId).get()
+    : Promise.resolve(null);
+  const [setupSnapshot, movementsSnapshot, ordersSnapshot, supplierSnapshot] = await Promise.all([
     db.collection("inventoryStockSetup").doc("default").get(),
     db.collection("inventoryMovements").where("materialId", "==", materialId).get(),
     db.collection("inventorySupplierOrders").get(),
+    supplierPromise,
   ]);
-  if (!materialSnapshot.exists) return { material: null, status: "not-initialized" as const };
-  const material = { id: materialSnapshot.id, ...materialSnapshot.data() } as InventoryMaterial;
   const initialized = setupSnapshot.get("initialized") === true;
   const quantity = movementsSnapshot.docs.reduce((total, movement) => {
     const value = movement.get("quantity");
@@ -429,6 +452,10 @@ async function readFreshMaterialStatus(materialId: string) {
   });
   return {
     material,
+    currentQuantity: initialized ? quantity : null,
+    supplierName: material.preferredSupplierId
+      ? typeof supplierSnapshot?.get("name") === "string" ? supplierSnapshot.get("name") as string : "Archived supplier"
+      : undefined,
     status: material.active !== true
       ? "not-configured" as const
       : getInventoryReorderStatus(material, initialized ? quantity : null, initialized, hasOpenOrder),
@@ -495,7 +522,7 @@ export async function runDueReorderReminders(now = new Date()) {
       await updateEpisodeAsInactive(material.id, now.getTime());
       continue;
     }
-    const payload = notificationPayload(fresh.material);
+    const payload = notificationPayload(fresh.material, fresh.currentQuantity, fresh.supplierName);
     if (!payload) {
       skippedQuantity += 1;
       console.warn("Skipped reorder reminder because the configured reorder quantity is missing or invalid", { materialId: material.id });

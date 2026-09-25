@@ -41,12 +41,29 @@ test("initial alerts only claim a new To Order transition with a fresh key and v
   assert.equal(shouldSendInitialReorderAlert("stock-high", "to-order", "2026-09-24:chicken:100", null, false), false);
 });
 
-test("notification copy uses the configured reorder quantity and skips invalid setup", () => {
-  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: 5 }), "Order 5 g of Chicken.");
-  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: undefined }), null);
-  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: 0 }), null);
-  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: Number.NaN }), null);
-  assert.equal(getReorderNotificationMessage({ ...material, baseUnit: "kg" as InventoryMaterial["baseUnit"] }), null);
+test("notification copy includes reorder quantity, preferred supplier, and current stock", () => {
+  assert.equal(
+    getReorderNotificationMessage({ ...material, preferredSupplierId: "supplier-1" }, 500, "Fresh Foods"),
+    "Order 1.000 g of Chicken from Fresh Foods. Current stock: 500 g.",
+  );
+  assert.equal(
+    getReorderNotificationMessage({ ...material, reorderQuantity: 5 }, 12.5),
+    "Order 5 g of Chicken. Preferred supplier not set. Current stock: 12,5 g.",
+  );
+  assert.equal(
+    getReorderNotificationMessage({ ...material, preferredSupplierId: "deleted-supplier" }, 500),
+    "Order 1.000 g of Chicken from Archived supplier. Current stock: 500 g.",
+  );
+});
+
+test("notification copy skips invalid quantity, stock, name, and unit setup", () => {
+  assert.equal(getReorderNotificationMessage(material, undefined), null);
+  assert.equal(getReorderNotificationMessage(material, Number.NaN), null);
+  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: undefined }, 500), null);
+  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: 0 }, 500), null);
+  assert.equal(getReorderNotificationMessage({ ...material, reorderQuantity: Number.NaN }, 500), null);
+  assert.equal(getReorderNotificationMessage({ ...material, name: " " }, 500), null);
+  assert.equal(getReorderNotificationMessage({ ...material, baseUnit: "kg" as InventoryMaterial["baseUnit"] }, 500), null);
 });
 
 test("reminder claims are due only after their start date and once per WIB date", () => {
