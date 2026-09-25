@@ -223,7 +223,7 @@ function notificationPayload(
   const body = notificationMessage(material, currentQuantity, supplierName);
   if (!body) return null;
   return {
-    title: "Stock needs reordering",
+    title: "Stock Needs Reordering:",
     body,
     url: INVENTORY_PATH,
     tag: `reorder-${material.id}`,
