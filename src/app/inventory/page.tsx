@@ -339,22 +339,22 @@ export default function InventoryPage() {
           <TabsTrigger value="suppliers" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Handshake className="hidden size-4 shrink-0 lg:block" /><span>Suppliers &amp; ordering</span></TabsTrigger>
         </TabsList>
 
-        <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className="mt-5">
+        <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} />)}
         </TabsContent>
-        <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className="mt-5">
+        <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("usage") && <UsageRecap />}
         </TabsContent>
-        <TabsContent value="import" forceMount={visitedTabs.has("import") ? true : undefined} className="mt-5">
+        <TabsContent value="import" forceMount={visitedTabs.has("import") ? true : undefined} className={activeTab === "import" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("import") && section("import", <ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
-        <TabsContent value="materials" forceMount={visitedTabs.has("materials") ? true : undefined} className="mt-5">
+        <TabsContent value="materials" forceMount={visitedTabs.has("materials") ? true : undefined} className={activeTab === "materials" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("materials") && section("materials", <Materials materials={materials} onChanged={refresh} />)}
         </TabsContent>
-        <TabsContent value="recipes" forceMount={visitedTabs.has("recipes") ? true : undefined} className="mt-5">
+        <TabsContent value="recipes" forceMount={visitedTabs.has("recipes") ? true : undefined} className={activeTab === "recipes" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
-        <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className="mt-5">
+        <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className={activeTab === "suppliers" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} onChanged={refresh} />)}
         </TabsContent>
       </Tabs>
