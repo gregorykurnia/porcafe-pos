@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle,
@@ -20,13 +20,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { todayISO, formatDisplay } from "@/lib/dates";
 import {
   createInventoryMovement,
+  getInventoryMovementTotals,
   getInventoryStockSetup,
   initializeInventoryOpeningBalances,
   listInventoryMovements,
   recordInventoryStockCount,
 } from "@/lib/data";
 import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
-import { filterCurrentStockBalances, summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
+import { filterCurrentStockBalances, summarizeInventoryBalancesFromTotals, type InventoryBalance } from "@/lib/inventory-ledger";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -37,6 +38,7 @@ import type {
 type StockDashboardProps = {
   materials: InventoryMaterial[];
   onChanged: () => Promise<void>;
+  scheduleRefreshKey: number;
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
@@ -75,10 +77,12 @@ function materialBalanceLabel(balance: InventoryBalance): string {
   return `${formatInventoryUsageQuantity(balance.currentQuantity)} ${balance.unit}`;
 }
 
-export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
+export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: StockDashboardProps) {
   const [setup, setSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [balanceTotals, setBalanceTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingDate, setOpeningDate] = useState(todayISO());
@@ -94,35 +98,55 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
   const [countDate, setCountDate] = useState(todayISO());
   const [countQuantity, setCountQuantity] = useState("");
   const [countReason, setCountReason] = useState("");
+  const refreshRequestRef = useRef(0);
+  const scheduleRefreshKeyRef = useRef(scheduleRefreshKey);
 
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
-  const balances = useMemo(() => summarizeInventoryBalances(materials, movements, setup), [materials, movements, setup]);
+  const activeMaterialIds = useMemo(() => activeMaterials.map((material) => material.id), [activeMaterials]);
+  const balances = useMemo(() => summarizeInventoryBalancesFromTotals(materials, balanceTotals, setup), [materials, balanceTotals, setup]);
   const currentStockBalances = useMemo(() => filterCurrentStockBalances(balances), [balances]);
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (blocking = false) => {
+    const requestId = ++refreshRequestRef.current;
+    if (blocking) setLoading(true);
+    else setRefreshing(true);
     setError(null);
     try {
-      const [nextSetup, nextMovements] = await Promise.all([
+      const [nextSetup, nextMovements, nextBalanceTotals] = await Promise.all([
         getInventoryStockSetup(),
-        listInventoryMovements(),
+        listInventoryMovements({ limit: 30 }),
+        getInventoryMovementTotals(activeMaterialIds),
       ]);
-      setSetup(nextSetup);
-      setMovements(nextMovements);
+      if (requestId === refreshRequestRef.current) {
+        setSetup(nextSetup);
+        setMovements(nextMovements);
+        setBalanceTotals(nextBalanceTotals);
+      }
     } catch (loadError) {
       console.error("Failed to load inventory stock", loadError);
-      setError(loadError instanceof Error ? loadError.message : "Could not load stock balances.");
+      if (requestId === refreshRequestRef.current) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load stock balances.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === refreshRequestRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+  }, [activeMaterialIds]);
 
   useEffect(() => {
-    queueMicrotask(() => void refresh());
+    queueMicrotask(() => void refresh(true));
   }, [refresh]);
+
+  useEffect(() => {
+    if (scheduleRefreshKeyRef.current === scheduleRefreshKey) return;
+    scheduleRefreshKeyRef.current = scheduleRefreshKey;
+    void refresh();
+  }, [refresh, scheduleRefreshKey]);
 
   async function initializeOpeningStock() {
     if (activeMaterials.length === 0) {
@@ -174,7 +198,7 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
         : movementDirection === "add" ? quantity : -quantity;
     setSaving(true);
     try {
-      await createInventoryMovement({
+      const id = await createInventoryMovement({
         materialId: material.id,
         materialName: material.name,
         unit: material.baseUnit,
@@ -184,11 +208,29 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
         reason: movementReason,
         notes: movementNotes,
       });
+      const createdAt = Date.now();
+      const balanceBefore = balanceTotals[material.id] ?? 0;
+      const movement: InventoryMovement = {
+        id,
+        materialId: material.id,
+        materialName: material.name,
+        unit: material.baseUnit,
+        quantity: signedQuantity,
+        movementType,
+        occurredOn: movementDate,
+        reason: movementReason.trim(),
+        sourceRef: `manual:${id}`,
+        notes: movementNotes.trim() || undefined,
+        balanceBefore,
+        balanceAfter: balanceBefore + signedQuantity,
+        createdAt,
+      };
+      setMovements((current) => [movement, ...current.filter((item) => item.id !== id)].slice(0, 30));
+      setBalanceTotals((current) => ({ ...current, [material.id]: (current[material.id] ?? 0) + signedQuantity }));
       setMovementQuantity("");
       setMovementReason("");
       setMovementNotes("");
       toast.success("Movement recorded");
-      await refresh();
     } catch (saveError) {
       console.error("Failed to save inventory movement", saveError);
       toast.error(saveError instanceof Error ? saveError.message : "Failed to record movement.");
@@ -214,7 +256,7 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
     }
     setSaving(true);
     try {
-      await recordInventoryStockCount({
+      const id = await recordInventoryStockCount({
         materialId: material.id,
         materialName: material.name,
         unit: material.baseUnit,
@@ -222,10 +264,29 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
         occurredOn: countDate,
         reason: countReason,
       });
+      const balanceBefore = balanceTotals[material.id] ?? 0;
+      const quantity = observedQuantity - balanceBefore;
+      const createdAt = Date.now();
+      const movement: InventoryMovement = {
+        id,
+        materialId: material.id,
+        materialName: material.name,
+        unit: material.baseUnit,
+        quantity,
+        movementType: "stock_count",
+        occurredOn: countDate,
+        reason: countReason.trim(),
+        sourceRef: `stock-count:${countDate}:${id}`,
+        observedQuantity,
+        balanceBefore,
+        balanceAfter: observedQuantity,
+        createdAt,
+      };
+      setMovements((current) => [movement, ...current.filter((item) => item.id !== id)].slice(0, 30));
+      setBalanceTotals((current) => ({ ...current, [material.id]: observedQuantity }));
       setCountQuantity("");
       setCountReason("");
       toast.success("Stock count recorded");
-      await refresh();
     } catch (saveError) {
       console.error("Failed to save stock count", saveError);
       toast.error(saveError instanceof Error ? saveError.message : "Failed to record stock count.");
@@ -303,7 +364,7 @@ export function StockDashboard({ materials, onChanged }: StockDashboardProps) {
           </div>
 
           <Card>
-            <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Movement audit trail</CardTitle><CardDescription>Append-only stock history, including recipe consumption and automatic reversals when a daily log changes.</CardDescription></div><Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}><RefreshCw className={loading ? "size-3.5 animate-spin" : "size-3.5"} />Refresh</Button></div></CardHeader>
+            <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Movement audit trail</CardTitle><CardDescription>Append-only stock history, including recipe consumption and automatic reversals when a daily log changes.</CardDescription></div><Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />Refresh</Button></div></CardHeader>
             <CardContent>{movements.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No movements recorded yet.</p> : <Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader><TableBody>{movements.slice(0, 30).map((movement) => <TableRow key={movement.id}><TableCell className="text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span><span className="block font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</span></TableCell></TableRow>)}</TableBody></Table>}</CardContent>
           </Card>
         </>

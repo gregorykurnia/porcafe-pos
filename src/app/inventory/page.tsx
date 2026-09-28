@@ -116,6 +116,7 @@ export default function InventoryPage() {
   const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
   const [loadingTabs, setLoadingTabs] = useState<Set<DataTab>>(() => new Set());
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
 
   const materialsLoadedRef = useRef(false);
   const foundationLoadedRef = useRef(false);
@@ -143,10 +144,7 @@ export default function InventoryPage() {
       try {
         if (tab === "stock") {
           const shouldLoadMaterials = force || !materialsLoadedRef.current;
-          const [materialsResult] = await Promise.all([
-            shouldLoadMaterials ? listInventoryMaterials() : Promise.resolve(null),
-            scheduleRunRef.current,
-          ]);
+          const materialsResult = shouldLoadMaterials ? await listInventoryMaterials() : null;
           if (materialsResult) {
             setMaterials(materialsResult);
             materialsLoadedRef.current = true;
@@ -221,6 +219,9 @@ export default function InventoryPage() {
 
   useEffect(() => {
     scheduleRunRef.current = runDueInventorySupplierDeliverySchedules(todayISO())
+      .then((result) => {
+        if (result.schedulesRun > 0) setScheduleRefreshKey((current) => current + 1);
+      })
       .then(() => undefined)
       .catch((loadError) => {
         console.error("Could not process due supplier deliveries", loadError);
@@ -296,7 +297,7 @@ export default function InventoryPage() {
         </TabsList>
 
         <TabsContent value="stock" className="mt-5">
-          {section("stock", <StockDashboard materials={materials} onChanged={refresh} />)}
+          {section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} />)}
         </TabsContent>
         <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>
         <TabsContent value="import" className="mt-5">

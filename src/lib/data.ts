@@ -8,7 +8,10 @@ import {
   writeBatch,
   getDoc,
   getDocs,
+  getAggregateFromServer,
+  sum,
   query,
+  limit as limitQuery,
   orderBy,
   where,
   runTransaction,
@@ -1055,8 +1058,13 @@ export async function listInventoryMovements(options?: {
   materialId?: string;
   startDate?: string;
   endDate?: string;
+  limit?: number;
 }): Promise<InventoryMovement[]> {
-  const snap = await getDocs(query(inventoryMovementsCol, orderBy("createdAt", "desc")));
+  const constraints: QueryConstraint[] = [];
+  if (options?.materialId) constraints.push(where("materialId", "==", options.materialId));
+  constraints.push(orderBy("createdAt", "desc"));
+  if (options?.limit !== undefined) constraints.push(limitQuery(options.limit));
+  const snap = await getDocs(query(inventoryMovementsCol, ...constraints));
   return snap.docs
     .map((d) => mapInventoryMovement(d.id, d.data()))
     .filter((movement) => {
@@ -1065,6 +1073,20 @@ export async function listInventoryMovements(options?: {
       if (options?.endDate && movement.occurredOn > options.endDate) return false;
       return true;
     });
+}
+
+export async function getInventoryMovementTotals(materialIds: string[]): Promise<Record<string, number>> {
+  const uniqueMaterialIds = [...new Set(materialIds)];
+  const totals = await Promise.all(uniqueMaterialIds.map(async (materialId) => {
+    return [materialId, await getInventoryMovementTotal(materialId)] as const;
+  }));
+  return Object.fromEntries(totals);
+}
+
+async function getInventoryMovementTotal(materialId: string): Promise<number> {
+  const movementQuery = query(inventoryMovementsCol, where("materialId", "==", materialId));
+  const result = await getAggregateFromServer(movementQuery, { quantity: sum("quantity") });
+  return result.data().quantity ?? 0;
 }
 
 export async function getInventoryConsumptionEvent(date: string): Promise<InventoryConsumptionEvent | null> {
@@ -1156,12 +1178,6 @@ export type InventoryMovementInput = {
   notes?: string;
 };
 
-function sumInventoryMaterialMovements(movements: InventoryMovement[], materialId: string): number {
-  return movements
-    .filter((movement) => movement.materialId === materialId)
-    .reduce((total, movement) => total + movement.quantity, 0);
-}
-
 export async function createInventoryMovement(input: InventoryMovementInput): Promise<string> {
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) throw new Error("Initialize opening stock before recording manual movements.");
@@ -1170,8 +1186,7 @@ export async function createInventoryMovement(input: InventoryMovementInput): Pr
   if (!input.reason.trim()) throw new Error("Add a reason for this movement.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid movement date.");
 
-  const movements = await listInventoryMovements({ materialId: input.materialId });
-  const balanceBefore = sumInventoryMaterialMovements(movements, input.materialId);
+  const balanceBefore = await getInventoryMovementTotal(input.materialId);
   const ref = doc(inventoryMovementsCol);
   await setDoc(
     ref,
@@ -1209,8 +1224,7 @@ export async function recordInventoryStockCount(input: InventoryStockCountInput)
   if (!input.reason.trim()) throw new Error("Add a reason for this stock count.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid count date.");
 
-  const movements = await listInventoryMovements({ materialId: input.materialId });
-  const balanceBefore = sumInventoryMaterialMovements(movements, input.materialId);
+  const balanceBefore = await getInventoryMovementTotal(input.materialId);
   const quantity = input.observedQuantity - balanceBefore;
   const ref = doc(inventoryMovementsCol);
   await setDoc(

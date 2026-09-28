@@ -54,11 +54,27 @@ export function summarizeInventoryBalances(
   movements: InventoryMovement[],
   setup: InventoryStockSetup | null
 ): InventoryBalance[] {
+  const totals = new Map<string, number>();
+  for (const movement of movements) {
+    totals.set(movement.materialId, (totals.get(movement.materialId) ?? 0) + movement.quantity);
+  }
+  return summarizeInventoryBalancesFromTotals(
+    materials,
+    Object.fromEntries(totals),
+    setup
+  );
+}
+
+export function summarizeInventoryBalancesFromTotals(
+  materials: InventoryMaterial[],
+  movementTotals: Readonly<Record<string, number>>,
+  setup: InventoryStockSetup | null
+): InventoryBalance[] {
   const initialized = Boolean(setup?.initialized);
   return materials
     .filter((material) => material.active)
     .map((material) => {
-      const movementQuantity = sumInventoryMovements(movements, material.id);
+      const movementQuantity = movementTotals[material.id] ?? 0;
       const currentQuantity = initialized ? movementQuantity : null;
       return {
         materialId: material.id,
