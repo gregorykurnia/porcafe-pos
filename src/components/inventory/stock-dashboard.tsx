@@ -42,6 +42,40 @@ type StockDashboardProps = {
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
+const STOCK_CACHE_KEY = "porcafe.inventory.stock-ledger.v1";
+
+type StockLedgerCache = {
+  version: 1;
+  setup: InventoryStockSetup | null;
+  movements: InventoryMovement[];
+  balanceTotals: Record<string, number>;
+};
+
+function readStockLedgerCache(): StockLedgerCache | null {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(STOCK_CACHE_KEY) ?? "null");
+    if (!value || typeof value !== "object") return null;
+    const cache = value as Partial<StockLedgerCache>;
+    if (
+      cache.version !== 1 ||
+      !(cache.setup === null || (cache.setup && typeof cache.setup === "object")) ||
+      !Array.isArray(cache.movements) ||
+      !cache.balanceTotals ||
+      typeof cache.balanceTotals !== "object"
+    ) return null;
+    return cache as StockLedgerCache;
+  } catch {
+    return null;
+  }
+}
+
+function writeStockLedgerCache(cache: StockLedgerCache) {
+  try {
+    window.localStorage.setItem(STOCK_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Storage can be unavailable or full; the live Firestore data still works.
+  }
+}
 
 const MANUAL_MOVEMENT_TYPES: Array<{ value: ManualMovementType; label: string }> = [
   { value: "receiving", label: "Receive stock" },
@@ -83,6 +117,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const [balanceTotals, setBalanceTotals] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openingDate, setOpeningDate] = useState(todayISO());
@@ -124,6 +159,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
         setSetup(nextSetup);
         setMovements(nextMovements);
         setBalanceTotals(nextBalanceTotals);
+        setHasSnapshot(true);
       }
     } catch (loadError) {
       console.error("Failed to load inventory stock", loadError);
@@ -139,8 +175,24 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   }, [activeMaterialIds]);
 
   useEffect(() => {
-    queueMicrotask(() => void refresh(true));
+    const cached = readStockLedgerCache();
+    const frame = window.requestAnimationFrame(() => {
+      if (cached) {
+        setSetup(cached.setup);
+        setMovements(cached.movements);
+        setBalanceTotals(cached.balanceTotals);
+        setHasSnapshot(true);
+        setLoading(false);
+      }
+      void refresh(!cached);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!hasSnapshot) return;
+    writeStockLedgerCache({ version: 1, setup, movements, balanceTotals });
+  }, [balanceTotals, hasSnapshot, movements, setup]);
 
   useEffect(() => {
     if (scheduleRefreshKeyRef.current === scheduleRefreshKey) return;
@@ -241,12 +293,12 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
 
   async function saveStockCount() {
     const material = activeMaterials.find((candidate) => candidate.id === selectedCountMaterialId);
-    const quantity = Number(countQuantity);
+    const observedQuantity = Number(countQuantity);
     if (!material) {
       toast.error("Choose a material.");
       return;
     }
-    if (!Number.isFinite(quantity) || quantity < 0) {
+    if (!Number.isFinite(observedQuantity) || observedQuantity < 0) {
       toast.error("Enter a stock count of zero or greater.");
       return;
     }
@@ -260,7 +312,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
         materialId: material.id,
         materialName: material.name,
         unit: material.baseUnit,
-        observedQuantity: quantity,
+        observedQuantity,
         occurredOn: countDate,
         reason: countReason,
       });
@@ -295,16 +347,18 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
     }
   }
 
-  if (loading) {
+  if (loading && !hasSnapshot) {
     return <Card><CardContent className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><RefreshCw className="size-4 animate-spin" />Loading stock ledger…</CardContent></Card>;
   }
 
-  if (error) {
+  if (error && !hasSnapshot) {
     return <Card className="border-danger/20 bg-danger/5"><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">Could not load stock ledger</p><p className="mt-1 text-sm text-muted-foreground">{error}</p></div><Button variant="outline" onClick={() => void refresh()}>Retry</Button></CardContent></Card>;
   }
 
   return (
     <div className="space-y-5">
+      {error && hasSnapshot && <Card className="border-warning/25 bg-warning/5"><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium">Showing saved stock data</p><p className="mt-1 text-sm text-muted-foreground">The live refresh failed: {error}</p></div><Button variant="outline" onClick={() => void refresh()} disabled={refreshing}>Retry</Button></CardContent></Card>}
+      {refreshing && <p className="text-xs text-muted-foreground">Updating stock from the server…</p>}
       {!setup?.initialized ? (
         <Card className="border-warning/25 bg-warning/5">
           <CardHeader>

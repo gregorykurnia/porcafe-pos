@@ -36,6 +36,36 @@ import type {
 
 type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes" | "suppliers";
 type DataTab = Exclude<InventoryTab, "usage">;
+const INVENTORY_MATERIALS_CACHE_KEY = "porcafe.inventory.materials.v1";
+
+function readCachedMaterials(): InventoryMaterial[] | null {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(INVENTORY_MATERIALS_CACHE_KEY) ?? "null");
+    if (!Array.isArray(value)) return null;
+    if (!value.every((material) =>
+      material &&
+      typeof material.id === "string" &&
+      typeof material.name === "string" &&
+      typeof material.baseUnit === "string" &&
+      typeof material.active === "boolean"
+    )) return null;
+    return value as InventoryMaterial[];
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedMaterials(materials: InventoryMaterial[]) {
+  try {
+    window.localStorage.setItem(INVENTORY_MATERIALS_CACHE_KEY, JSON.stringify(materials));
+  } catch {
+    // Storage can be unavailable or full; the live Firestore data still works.
+  }
+}
+
+function isInventoryTab(value: string | null): value is InventoryTab {
+  return value === "stock" || value === "usage" || value === "import" || value === "materials" || value === "recipes" || value === "suppliers";
+}
 
 function preloadInventoryTab(tab: DataTab) {
   switch (tab) {
@@ -103,7 +133,8 @@ const Suppliers = dynamic(
 );
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<InventoryTab>("usage");
+  const [activeTab, setActiveTab] = useState<InventoryTab>("stock");
+  const [tabPreferencesLoaded, setTabPreferencesLoaded] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
   const [aliases, setAliases] = useState<InventoryAliasMapping[]>([]);
@@ -114,13 +145,15 @@ export default function InventoryPage() {
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
   const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
-  const [loadingTabs, setLoadingTabs] = useState<Set<DataTab>>(() => new Set());
+  const [visitedTabs, setVisitedTabs] = useState<Set<InventoryTab>>(() => new Set(["stock"]));
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
 
   const materialsLoadedRef = useRef(false);
   const foundationLoadedRef = useRef(false);
   const suppliersLoadedRef = useRef(false);
+  const cachedMaterialsLoadedRef = useRef(false);
+  const cachedDataRefreshStartedRef = useRef(false);
   const scheduleRunRef = useRef<Promise<void>>(Promise.resolve());
   const inFlightTabsRef = useRef<Partial<Record<DataTab, Promise<void>>>>({});
 
@@ -134,7 +167,6 @@ export default function InventoryPage() {
     }
 
     const task = (async () => {
-      setLoadingTabs((current) => new Set(current).add(tab));
       setTabErrors((current) => {
         const next = { ...current };
         delete next[tab];
@@ -148,11 +180,14 @@ export default function InventoryPage() {
           if (materialsResult) {
             setMaterials(materialsResult);
             materialsLoadedRef.current = true;
+            writeCachedMaterials(materialsResult);
           }
         } else if (tab === "materials") {
           if (force || !materialsLoadedRef.current) {
-            setMaterials(await listInventoryMaterials());
+            const loadedMaterials = await listInventoryMaterials();
+            setMaterials(loadedMaterials);
             materialsLoadedRef.current = true;
+            writeCachedMaterials(loadedMaterials);
           }
         } else if (tab === "import" || tab === "recipes") {
           if (force || !foundationLoadedRef.current) {
@@ -169,6 +204,7 @@ export default function InventoryPage() {
             setRecipes(loadedRecipes);
             setRecipeLines(loadedLines);
             materialsLoadedRef.current = true;
+            writeCachedMaterials(loadedMaterials);
             foundationLoadedRef.current = true;
           }
         } else {
@@ -184,6 +220,7 @@ export default function InventoryPage() {
             if (loadedMaterials) {
               setMaterials(loadedMaterials);
               materialsLoadedRef.current = true;
+              writeCachedMaterials(loadedMaterials);
             }
             setSuppliers(loadedSuppliers);
             setSupplierItems(loadedSupplierItems);
@@ -200,12 +237,6 @@ export default function InventoryPage() {
           ...current,
           [tab]: loadError instanceof Error ? loadError.message : "Could not load this inventory section.",
         }));
-      } finally {
-        setLoadingTabs((current) => {
-          const next = new Set(current);
-          next.delete(tab);
-          return next;
-        });
       }
     })();
 
@@ -229,20 +260,32 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("tab") === "suppliers") {
-      const frame = window.requestAnimationFrame(() => {
-        preloadInventoryTab("suppliers");
-        setActiveTab("suppliers");
-      });
-      return () => window.cancelAnimationFrame(frame);
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const initialTab: InventoryTab = isInventoryTab(requestedTab) ? requestedTab : "stock";
+    const cachedMaterials = readCachedMaterials();
+    setActiveTab(initialTab);
+    setVisitedTabs(new Set([initialTab]));
+    if (cachedMaterials) {
+      setMaterials(cachedMaterials);
+      materialsLoadedRef.current = true;
+      cachedMaterialsLoadedRef.current = true;
+      setLoadedTabs((current) => new Set(current).add("stock").add("materials"));
     }
+    if (initialTab !== "usage") preloadInventoryTab(initialTab);
+    setTabPreferencesLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "usage" && !loadedTabs.has(activeTab)) {
+    if (!tabPreferencesLoaded || !cachedMaterialsLoadedRef.current || cachedDataRefreshStartedRef.current) return;
+    cachedDataRefreshStartedRef.current = true;
+    if (activeTab !== "usage") void refresh(activeTab, true);
+  }, [activeTab, refresh, tabPreferencesLoaded]);
+
+  useEffect(() => {
+    if (tabPreferencesLoaded && activeTab !== "usage" && !loadedTabs.has(activeTab)) {
       void refresh(activeTab, false);
     }
-  }, [activeTab, loadedTabs, refresh]);
+  }, [activeTab, loadedTabs, refresh, tabPreferencesLoaded]);
 
   useEffect(() => {
     if (!loadedTabs.has("suppliers") || activeTab !== "suppliers" || window.location.hash !== "#reorder-overview") return;
@@ -257,14 +300,14 @@ export default function InventoryPage() {
       preloadInventoryTab(nextTab);
       void refresh(nextTab, false);
     }
+    setVisitedTabs((current) => new Set(current).add(nextTab));
     setActiveTab(nextTab);
   }, [refresh]);
 
   const section = (tab: DataTab, children: React.ReactNode) => {
-    if (loadingTabs.has(tab)) return <InventoryTabLoading />;
+    if (loadedTabs.has(tab)) return children;
     if (tabErrors[tab]) return <InventoryTabError message={tabErrors[tab]!} onRetry={() => void refresh(tab)} />;
-    if (!loadedTabs.has(tab)) return <InventoryTabLoading />;
-    return children;
+    return <InventoryTabLoading />;
   };
 
   return (
@@ -296,21 +339,23 @@ export default function InventoryPage() {
           <TabsTrigger value="suppliers" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Handshake className="hidden size-4 shrink-0 lg:block" /><span>Suppliers &amp; ordering</span></TabsTrigger>
         </TabsList>
 
-        <TabsContent value="stock" className="mt-5">
-          {section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} />)}
+        <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className="mt-5">
+          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} />)}
         </TabsContent>
-        <TabsContent value="usage" className="mt-5"><UsageRecap /></TabsContent>
-        <TabsContent value="import" className="mt-5">
-          {section("import", <ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
+        <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className="mt-5">
+          {visitedTabs.has("usage") && <UsageRecap />}
         </TabsContent>
-        <TabsContent value="materials" className="mt-5">
-          {section("materials", <Materials materials={materials} onChanged={refresh} />)}
+        <TabsContent value="import" forceMount={visitedTabs.has("import") ? true : undefined} className="mt-5">
+          {visitedTabs.has("import") && section("import", <ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
-        <TabsContent value="recipes" className="mt-5">
-          {section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
+        <TabsContent value="materials" forceMount={visitedTabs.has("materials") ? true : undefined} className="mt-5">
+          {visitedTabs.has("materials") && section("materials", <Materials materials={materials} onChanged={refresh} />)}
         </TabsContent>
-        <TabsContent value="suppliers" className="mt-5">
-          {section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} onChanged={refresh} />)}
+        <TabsContent value="recipes" forceMount={visitedTabs.has("recipes") ? true : undefined} className="mt-5">
+          {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
+        </TabsContent>
+        <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className="mt-5">
+          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} onChanged={refresh} />)}
         </TabsContent>
       </Tabs>
     </div>
