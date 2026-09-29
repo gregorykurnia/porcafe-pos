@@ -133,6 +133,8 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const [countDate, setCountDate] = useState(todayISO());
   const [countQuantity, setCountQuantity] = useState("");
   const [countReason, setCountReason] = useState("");
+  const initialReceivingPrefillRef = useRef(false);
+  const movementQuantityAutoFilledRef = useRef(false);
   const refreshRequestRef = useRef(0);
   const scheduleRefreshKeyRef = useRef(scheduleRefreshKey);
 
@@ -143,6 +145,24 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
+
+  const fillReceivingDefaults = useCallback((materialId: string) => {
+    const material = activeMaterials.find((candidate) => candidate.id === materialId);
+    const orderQuantity = material?.reorderQuantity;
+    const defaultQuantity = orderQuantity !== undefined && Number.isFinite(orderQuantity) && orderQuantity > 0
+      ? String(orderQuantity)
+      : "";
+    movementQuantityAutoFilledRef.current = Boolean(defaultQuantity);
+    setMovementQuantity(defaultQuantity);
+    setMovementReason("Stock In");
+  }, [activeMaterials]);
+
+  useEffect(() => {
+    if (initialReceivingPrefillRef.current || movementType !== "receiving" || !selectedMovementMaterialId) return;
+    if (!activeMaterials.some((material) => material.id === selectedMovementMaterialId)) return;
+    initialReceivingPrefillRef.current = true;
+    fillReceivingDefaults(selectedMovementMaterialId);
+  }, [activeMaterials, fillReceivingDefaults, movementType, selectedMovementMaterialId]);
 
   const refresh = useCallback(async (blocking = false) => {
     const requestId = ++refreshRequestRef.current;
@@ -279,6 +299,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
       };
       setMovements((current) => [movement, ...current.filter((item) => item.id !== id)].slice(0, 30));
       setBalanceTotals((current) => ({ ...current, [material.id]: (current[material.id] ?? 0) + signedQuantity }));
+      movementQuantityAutoFilledRef.current = false;
       setMovementQuantity("");
       setMovementReason("");
       setMovementNotes("");
@@ -398,8 +419,63 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><PackagePlus className="size-4" />Record movement</CardTitle><CardDescription>Use signed stock changes for receipts, waste, adjustments, and corrections. Every entry needs a reason.</CardDescription></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Movement type</Label><Select value={movementType} onValueChange={(value) => setMovementType(value as typeof movementType)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{MANUAL_MOVEMENT_TYPES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><Label>Material</Label><Select value={selectedMovementMaterialId} onValueChange={setMovementMaterialId}><SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent></Select></div></div>
-                <div className="grid gap-3 sm:grid-cols-3"><div className="space-y-1.5"><Label>Date</Label><Input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div><div className="space-y-1.5"><Label>Quantity</Label><Input type="number" min="0" step="0.01" value={movementQuantity} onChange={(event) => setMovementQuantity(event.target.value)} placeholder="0" /></div>{movementType !== "receiving" && movementType !== "waste_spoilage" ? <div className="space-y-1.5"><Label>Direction</Label><Select value={movementDirection} onValueChange={(value) => setMovementDirection(value as typeof movementDirection)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="add">Add stock</SelectItem><SelectItem value="remove">Remove stock</SelectItem></SelectContent></Select></div> : <div className="flex items-end text-xs text-muted-foreground">{movementType === "receiving" ? "Adds stock" : "Removes stock"}</div>}</div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Movement type</Label>
+                    <Select value={movementType} onValueChange={(value) => {
+                      const nextType = value as ManualMovementType;
+                      setMovementType(nextType);
+                      if (nextType === "receiving") {
+                        fillReceivingDefaults(selectedMovementMaterialId);
+                      } else {
+                        if (movementQuantityAutoFilledRef.current) setMovementQuantity("");
+                        movementQuantityAutoFilledRef.current = false;
+                        if (movementReason === "Stock In") setMovementReason("");
+                      }
+                    }}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{MANUAL_MOVEMENT_TYPES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Material</Label>
+                    <Select value={selectedMovementMaterialId} onValueChange={(value) => {
+                      setMovementMaterialId(value);
+                      if (movementType === "receiving") fillReceivingDefaults(value);
+                    }}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                      <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div>
+                  <div className="space-y-1.5">
+                    <Label>Quantity</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={movementQuantity}
+                      onChange={(event) => {
+                        movementQuantityAutoFilledRef.current = false;
+                        setMovementQuantity(event.target.value);
+                      }}
+                      placeholder={movementType === "receiving" ? "Order quantity if set" : "0"}
+                    />
+                  </div>
+                  {movementType !== "receiving" && movementType !== "waste_spoilage" ? (
+                    <div className="space-y-1.5">
+                      <Label>Direction</Label>
+                      <Select value={movementDirection} onValueChange={(value) => setMovementDirection(value as typeof movementDirection)}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="add">Add stock</SelectItem><SelectItem value="remove">Remove stock</SelectItem></SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="flex items-end text-xs text-muted-foreground">{movementType === "receiving" ? "Adds stock" : "Removes stock"}</div>
+                  )}
+                </div>
                 <div className="space-y-1.5"><Label>Reason</Label><Input value={movementReason} onChange={(event) => setMovementReason(event.target.value)} placeholder="e.g. Supplier delivery #123" /></div>
                 <div className="space-y-1.5"><Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={movementNotes} onChange={(event) => setMovementNotes(event.target.value)} placeholder="Additional context" /></div>
                 <Button onClick={() => void saveMovement()} disabled={saving || activeMaterials.length === 0}><PackagePlus className="size-4" />{saving ? "Saving…" : "Record movement"}</Button>
