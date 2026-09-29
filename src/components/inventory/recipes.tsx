@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Plus, Save, Trash2 } from "lucide-react";
+import { Check, Copy, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,33 @@ function newRecipe(menuItems: MenuItem[], recipes: InventoryRecipeVersion[]): In
 
 function recipeBadge(status: InventoryRecipeVersion["status"]) {
   return <Badge variant={status === "active" ? "default" : status === "needs-review" ? "destructive" : "secondary"}>{recipeStatusLabel(status)}</Badge>;
+}
+
+function recipeLineApprovalIssue(
+  line: InventoryRecipeLine,
+  materials: InventoryMaterial[],
+  recipes: InventoryRecipeVersion[]
+): string | null {
+  if (!line.ingredientId || !line.ingredientName.trim()) return "Choose an ingredient or component first.";
+  if (line.quantity === null || !Number.isFinite(line.quantity) || line.quantity <= 0) {
+    return "Enter a positive quantity before approving this line.";
+  }
+  if (!line.unit) return "Choose a unit before approving this line.";
+
+  if (line.ingredientType === "material") {
+    const material = materials.find((candidate) => candidate.id === line.ingredientId);
+    if (!material) return "This material no longer exists. Choose another mapping.";
+    if (material.reviewStatus !== "approved" || !material.active) {
+      return `${material.name} must be approved and active before this mapping can be used.`;
+    }
+    if (material.baseUnit !== line.unit) {
+      return `${material.name} is stored in ${material.baseUnit}; change the recipe line to that unit.`;
+    }
+  } else if (!recipes.some((recipe) => recipe.targetType === "prepared_component" && recipe.targetId === line.ingredientId)) {
+    return `${line.ingredientName} needs a prepared-component recipe before this mapping can be approved.`;
+  }
+
+  return null;
 }
 
 export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged }: RecipesProps) {
@@ -170,7 +197,26 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   }
 
   function updateLine(lineId: string, patch: Partial<InventoryRecipeLine>) {
-    setDraftLines((current) => current.map((line) => line.id === lineId ? { ...line, ...patch } : line));
+    setDraftLines((current) => current.map((line) => {
+      if (line.id !== lineId) return line;
+      const mappingChanged = (["ingredientType", "ingredientId", "quantity", "unit"] as const)
+        .some((key) => key in patch && patch[key] !== line[key]);
+      return {
+        ...line,
+        ...patch,
+        ...(mappingChanged ? { reviewStatus: "needs-review" as const } : {}),
+      };
+    }));
+  }
+
+  function approveLine(line: InventoryRecipeLine) {
+    const issue = recipeLineApprovalIssue(line, materials, recipes);
+    if (issue) {
+      toast.error(issue);
+      return;
+    }
+    updateLine(line.id, { reviewStatus: "approved" });
+    toast.success(`${line.ingredientName} approved. Save recipe to keep this change.`);
   }
 
   function removeLine(lineId: string) {
@@ -266,8 +312,102 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
 
               {draftRecipe.targetType === "prepared_component" && <div className="rounded-xl border border-border/70 bg-surface/50 p-3"><div className="grid gap-3 sm:grid-cols-3"><div className="space-y-1.5"><Label>Component basis</Label><Select value={draftRecipe.basis} onValueChange={(value) => updateRecipe({ basis: value as RecipeBasis, yieldQuantity: value === "batch" ? draftRecipe.yieldQuantity : null, yieldUnit: value === "batch" ? draftRecipe.yieldUnit : null })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="per_portion">Per portion</SelectItem><SelectItem value="batch">Batch with yield</SelectItem></SelectContent></Select></div>{draftRecipe.basis === "batch" && <><div className="space-y-1.5"><Label>Yield quantity</Label><Input type="number" min="0" step="0.01" value={draftRecipe.yieldQuantity ?? ""} onChange={(event) => updateRecipe({ yieldQuantity: event.target.value ? Number(event.target.value) : null })} /></div><div className="space-y-1.5"><Label>Yield unit</Label><Select value={draftRecipe.yieldUnit ?? ""} onValueChange={(value) => updateRecipe({ yieldUnit: value as InventoryUnit })}><SelectTrigger className="w-full"><SelectValue placeholder="Choose unit" /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></>}</div>{draftRecipe.basis === "per_portion" && <p className="mt-2 text-xs text-muted-foreground">This records the reviewed one-portion basis without inventing a batch yield.</p>}</div>}
 
-              <div className="flex items-end justify-between gap-3"><div><h3 className="font-semibold">Recipe lines</h3><p className="text-sm text-muted-foreground">Every line needs a mapped material/component, positive quantity, and normalized unit.</p></div><Button size="sm" variant="outline" onClick={addLine}><Plus className="size-4" />Add line</Button></div>
-              <div className="overflow-hidden rounded-xl border"><Table><TableHeader><TableRow><TableHead>Ingredient / component</TableHead><TableHead className="w-28">Quantity</TableHead><TableHead className="w-40">Unit</TableHead><TableHead>Source</TableHead><TableHead className="w-12" /></TableRow></TableHeader><TableBody>{draftLines.map((line) => <TableRow key={line.id}><TableCell className="p-1"><Select value={`${line.ingredientType}:${line.ingredientId}`} onValueChange={(value) => { const [type, id] = value.split(":"); const option = ingredientOptions.find((candidate) => candidate.type === type && candidate.id === id); const material = type === "material" ? materials.find((candidate) => candidate.id === id) : null; updateLine(line.id, { ingredientType: type as "material" | "component", ingredientId: id, ingredientName: option?.name ?? line.ingredientName, unit: material?.baseUnit ?? line.unit ?? "g" }); }}><SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{ingredientOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.name} <span className="text-xs text-muted-foreground">· {option.type}</span></SelectItem>)}</SelectContent></Select></TableCell><TableCell className="p-1"><Input type="number" min="0" step="0.01" value={line.quantity ?? ""} onChange={(event) => updateLine(line.id, { quantity: event.target.value ? Number(event.target.value) : null })} className="h-8 text-right" /></TableCell><TableCell className="p-1"><Select value={line.unit ?? ""} onValueChange={(value) => updateLine(line.id, { unit: value as InventoryUnit })}><SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.value}</SelectItem>)}</SelectContent></Select></TableCell><TableCell className="text-xs text-muted-foreground">{line.sourceRef ?? "Manual"}{line.note && <span className="block">{line.note}</span>}</TableCell><TableCell className="p-1"><Button size="icon-sm" variant="ghost" onClick={() => removeLine(line.id)} aria-label={`Remove ${line.ingredientName}`}><Trash2 className="size-4 text-muted-foreground" /></Button></TableCell></TableRow>)}{draftLines.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">No lines yet.</TableCell></TableRow>}</TableBody></Table></div>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold">Recipe lines</h3>
+                  <p className="text-sm text-muted-foreground">Review each mapping, quantity, and unit, then approve the line before saving.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={addLine}><Plus className="size-4" />Add line</Button>
+              </div>
+              <div className="overflow-x-auto rounded-xl border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ingredient / component</TableHead>
+                      <TableHead className="w-28">Quantity</TableHead>
+                      <TableHead className="w-40">Unit</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Review</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {draftLines.map((line) => {
+                      const approvalIssue = recipeLineApprovalIssue(line, materials, recipes);
+                      const approved = line.reviewStatus === "approved" && !approvalIssue;
+                      return (
+                        <TableRow key={line.id}>
+                          <TableCell className="p-1">
+                            <Select
+                              value={`${line.ingredientType}:${line.ingredientId}`}
+                              onValueChange={(value) => {
+                                const [type, id] = value.split(":");
+                                const option = ingredientOptions.find((candidate) => candidate.type === type && candidate.id === id);
+                                const material = type === "material" ? materials.find((candidate) => candidate.id === id) : null;
+                                updateLine(line.id, {
+                                  ingredientType: type as "material" | "component",
+                                  ingredientId: id,
+                                  ingredientName: option?.name ?? line.ingredientName,
+                                  unit: material?.baseUnit ?? line.unit ?? "g",
+                                });
+                              }}
+                            >
+                              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {ingredientOptions.map((option) => (
+                                  <SelectItem key={option.key} value={option.key}>
+                                    {option.name} <span className="text-xs text-muted-foreground">· {option.type}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="p-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={line.quantity ?? ""}
+                              onChange={(event) => updateLine(line.id, { quantity: event.target.value ? Number(event.target.value) : null })}
+                              className="h-8 text-right"
+                            />
+                          </TableCell>
+                          <TableCell className="p-1">
+                            <Select value={line.unit ?? ""} onValueChange={(value) => updateLine(line.id, { unit: value as InventoryUnit })}>
+                              <SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger>
+                              <SelectContent>
+                                {INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.value}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {line.sourceRef ?? "Manual"}
+                            {line.note && <span className="block">{line.note}</span>}
+                          </TableCell>
+                          <TableCell>
+                            {approved ? (
+                              <Badge variant="default">Approved</Badge>
+                            ) : (
+                              <div className="space-y-1">
+                                <Button size="sm" variant="outline" onClick={() => approveLine(line)}>
+                                  <Check className="size-3.5" />Approve
+                                </Button>
+                                {approvalIssue && <p className="max-w-48 text-xs text-muted-foreground">{approvalIssue}</p>}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="p-1">
+                            <Button size="icon-sm" variant="ghost" onClick={() => removeLine(line.id)} aria-label={`Remove ${line.ingredientName}`}>
+                              <Trash2 className="size-4 text-muted-foreground" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {draftLines.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No lines yet.</TableCell></TableRow>}
+                  </TableBody>
+                </Table>
+              </div>
 
               <div className="flex flex-col gap-3 rounded-xl border border-info/20 bg-info/5 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Active versions require an effective date. Prepared components only require a yield when marked as batch-based.</p><div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" onClick={duplicateAsNewVersion} disabled={!draftRecipe.id}><Copy className="size-4" />New version</Button><Button onClick={saveRecipe} disabled={saving}><Save className="size-4" />{saving ? "Saving…" : "Save recipe"}</Button></div></div>
             </div>
