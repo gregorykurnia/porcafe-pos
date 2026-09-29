@@ -1,4 +1,6 @@
 import {
+  getDailyItemLog,
+  getInventoryUsageEvent,
   listInventoryMaterials,
   listInventoryRecipeLines,
   listInventoryRecipeVersions,
@@ -13,6 +15,7 @@ import type {
   InventoryRecipeLine,
   InventoryRecipeVersion,
   InventoryUsageEvent,
+  InventoryUsageExclusion,
   InventoryUsageIssue,
   InventoryUsageLine,
   InventoryUnit,
@@ -385,6 +388,7 @@ export type InventoryUsageCalculationInput = {
   materials: InventoryMaterial[];
   recipes: InventoryRecipeVersion[];
   recipeLines: InventoryRecipeLine[];
+  excludedMenuItemIds?: string[];
   goLiveDate?: string;
   calculatedAt?: number;
 };
@@ -395,6 +399,7 @@ export function calculateDailyInventoryUsage({
   materials,
   recipes,
   recipeLines,
+  excludedMenuItemIds = [],
   goLiveDate = INVENTORY_USAGE_GO_LIVE_DATE,
   calculatedAt = Date.now(),
 }: InventoryUsageCalculationInput): InventoryUsageEvent {
@@ -409,6 +414,7 @@ export function calculateDailyInventoryUsage({
       totalPortions: 0,
       lines: [],
       issues: [],
+      excludedItems: [],
       recipeIds: [],
       goLiveDate,
       calculatedAt,
@@ -417,6 +423,13 @@ export function calculateDailyInventoryUsage({
 
   const allIssues: InventoryUsageIssue[] = [];
   const allLines: InventoryUsageLine[] = [];
+  const excludedItems: InventoryUsageExclusion[] = [];
+  const excludedMenuItems = new Set(
+    excludedMenuItemIds.filter((menuItemId) => {
+      const quantity = log.quantities[menuItemId];
+      return Number.isFinite(quantity) && quantity > 0;
+    })
+  );
   const recipeIds = new Set<string>();
   let totalPortions = 0;
 
@@ -430,6 +443,17 @@ export function calculateDailyInventoryUsage({
       continue;
     }
     totalPortions += portionQuantity;
+
+    if (excludedMenuItems.has(menuItemId)) {
+      const menuItem = menuItems.find((candidate) => candidate.id === menuItemId);
+      excludedItems.push({
+        menuItemId,
+        menuItemName: menuItem?.name ?? menuItemId,
+        portionQuantity,
+        reason: "recipe-unavailable",
+      });
+      continue;
+    }
 
     const menuItem = menuItems.find((candidate) => candidate.id === menuItemId);
     if (!menuItem) {
@@ -486,10 +510,15 @@ export function calculateDailyInventoryUsage({
     sourceDailyLogId: log.id,
     sourceRevision: log.updatedAt,
     sourceStatus: log.status,
-    status: uniqueIssues.length > 0 ? "needs-review" : "calculated",
+    status: uniqueIssues.length > 0
+      ? "needs-review"
+      : excludedItems.length > 0
+        ? "calculated-with-exclusions"
+        : "calculated",
     totalPortions,
     lines: allLines,
     issues: uniqueIssues,
+    excludedItems,
     recipeIds: [...recipeIds],
     goLiveDate,
     calculatedAt,
@@ -498,28 +527,53 @@ export function calculateDailyInventoryUsage({
 
 export async function calculateAndPersistDailyInventoryUsage(
   log: DailyItemLog,
-  options?: { goLiveDate?: string; calculatedAt?: number }
+  options?: { goLiveDate?: string; calculatedAt?: number; excludedMenuItemIds?: string[] }
 ): Promise<InventoryUsageEvent | null> {
   const goLiveDate = options?.goLiveDate ?? INVENTORY_USAGE_GO_LIVE_DATE;
   if (!isInventoryUsageEnabledForDate(log.date, goLiveDate)) return null;
 
-  const [menuItems, materials, recipes, recipeLines] = await Promise.all([
+  const [menuItems, materials, recipes, recipeLines, previousEvent] = await Promise.all([
     listMenuItems(),
     listInventoryMaterials(),
     listInventoryRecipeVersions(),
     listInventoryRecipeLines(),
+    getInventoryUsageEvent(log.date),
   ]);
+  const excludedMenuItemIds = options?.excludedMenuItemIds ?? previousEvent?.excludedItems?.map((item) => item.menuItemId) ?? [];
   const event = calculateDailyInventoryUsage({
     log,
     menuItems,
     materials,
     recipes,
     recipeLines,
+    excludedMenuItemIds,
     goLiveDate,
     calculatedAt: options?.calculatedAt,
   });
   await upsertInventoryUsageEvent(event);
   await syncInventoryConsumption(event);
+  return event;
+}
+
+export async function setInventoryUsageItemExcluded(
+  sourceDate: string,
+  menuItemId: string,
+  excluded: boolean
+): Promise<InventoryUsageEvent> {
+  const [log, currentEvent] = await Promise.all([
+    getDailyItemLog(sourceDate),
+    getInventoryUsageEvent(sourceDate),
+  ]);
+  if (!log) throw new Error(`No saved daily close was found for ${sourceDate}.`);
+
+  const excludedIds = new Set(currentEvent?.excludedItems?.map((item) => item.menuItemId) ?? []);
+  if (excluded) excludedIds.add(menuItemId);
+  else excludedIds.delete(menuItemId);
+
+  const event = await calculateAndPersistDailyInventoryUsage(log, {
+    excludedMenuItemIds: [...excludedIds],
+  });
+  if (!event) throw new Error(`Inventory usage calculation is not enabled for ${sourceDate}.`);
   return event;
 }
 
@@ -536,7 +590,7 @@ export function summarizeInventoryUsage(events: InventoryUsageEvent[]) {
     { materialId: string; materialName: string; quantity: number; unit: InventoryUnit }
   >();
   for (const event of events) {
-    if (event.status !== "calculated") continue;
+    if (event.status !== "calculated" && event.status !== "calculated-with-exclusions") continue;
     for (const line of event.lines) {
       const key = `${line.materialId}:${line.unit}`;
       const existing = byMaterial.get(key) ?? {

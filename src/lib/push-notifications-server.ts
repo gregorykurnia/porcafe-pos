@@ -378,7 +378,8 @@ export async function processDailyCloseReorderNotifications(date: string) {
     return { processed: 0, sent: 0, skipped: "push-not-configured" };
   }
 
-  const quantities = consumption.status === "calculated" && consumption.materialQuantities && typeof consumption.materialQuantities === "object"
+  const consumptionCalculated = consumption.status === "calculated" || consumption.status === "calculated-with-exclusions";
+  const quantities = consumptionCalculated && consumption.materialQuantities && typeof consumption.materialQuantities === "object"
     ? consumption.materialQuantities as Record<string, unknown>
     : {};
   const triggerMaterials = Object.entries(quantities)

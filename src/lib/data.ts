@@ -1273,7 +1273,12 @@ function inventoryUsageFingerprint(event: InventoryUsageEvent): string {
       recipeId: issue.recipeId,
       sourceRef: issue.sourceRef,
     })),
+    excludedItems: event.excludedItems ?? [],
   });
+}
+
+function inventoryUsageIsCalculated(status: InventoryUsageEvent["status"]): boolean {
+  return status === "calculated" || status === "calculated-with-exclusions";
 }
 
 function inventoryConsumptionApplicationId(sourceDate: string): string {
@@ -1302,7 +1307,7 @@ export async function applyInventoryConsumptionEvent(
     const movementIds: string[] = [];
     const now = Date.now();
 
-    if (existing?.status === "calculated") {
+    if (existing && inventoryUsageIsCalculated(existing.status)) {
       for (const [materialId, quantity] of Object.entries(existing.materialQuantities)) {
         if (!Number.isFinite(quantity) || quantity <= 0) continue;
         const detail = existing.materialDetails?.[materialId] ?? materialDetails[materialId];
@@ -1328,7 +1333,7 @@ export async function applyInventoryConsumptionEvent(
       }
     }
 
-    if (event.status === "calculated") {
+    if (inventoryUsageIsCalculated(event.status)) {
       for (const [materialId, quantity] of Object.entries(materialQuantities)) {
         if (!Number.isFinite(quantity) || quantity <= 0) continue;
         const detail = materialDetails[materialId];
@@ -1362,8 +1367,8 @@ export async function applyInventoryConsumptionEvent(
       sourceStatus: event.sourceStatus,
       status: event.status,
       usageFingerprint: fingerprint,
-      materialQuantities: event.status === "calculated" ? materialQuantities : {},
-      materialDetails: event.status === "calculated" ? materialDetails : {},
+      materialQuantities: inventoryUsageIsCalculated(event.status) ? materialQuantities : {},
+      materialDetails: inventoryUsageIsCalculated(event.status) ? materialDetails : {},
       movementIds,
       replacedSourceRevision: existing?.sourceRevision ?? null,
       createdAt: existing?.createdAt ?? now,

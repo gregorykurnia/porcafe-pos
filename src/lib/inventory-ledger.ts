@@ -89,7 +89,7 @@ export function summarizeInventoryBalancesFromTotals(
 }
 
 export function aggregateUsageMaterials(event: InventoryUsageEvent): InventoryConsumptionMaterial[] {
-  if (event.status !== "calculated") return [];
+  if (event.status !== "calculated" && event.status !== "calculated-with-exclusions") return [];
   const byMaterial = new Map<string, InventoryConsumptionMaterial>();
   for (const line of event.lines) {
     const existing = byMaterial.get(line.materialId) ?? {

@@ -245,7 +245,7 @@ export type InventoryRecipeLine = {
 
 // ---------- Inventory usage calculation ----------
 
-export type InventoryUsageStatus = "calculated" | "needs-review" | "no-sales";
+export type InventoryUsageStatus = "calculated" | "calculated-with-exclusions" | "needs-review" | "no-sales";
 
 export type InventoryUsageIssueCode =
   | "missing-menu-item"
@@ -264,6 +264,13 @@ export type InventoryUsageIssue = {
   menuItemName?: string;
   recipeId?: string;
   sourceRef?: string | null;
+};
+
+export type InventoryUsageExclusion = {
+  menuItemId: string;
+  menuItemName: string;
+  portionQuantity: number;
+  reason: "recipe-unavailable";
 };
 
 // A usage line is already expressed in the material's base unit. The path and
@@ -293,6 +300,7 @@ export type InventoryUsageEvent = {
   totalPortions: number;
   lines: InventoryUsageLine[];
   issues: InventoryUsageIssue[];
+  excludedItems?: InventoryUsageExclusion[];
   recipeIds: string[];
   goLiveDate: string;
   calculatedAt: number;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calculator, ChevronDown, ChevronRight, CircleCheck, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import {
   formatInventoryUsageQuantity,
   INVENTORY_USAGE_GO_LIVE_DATE,
   listInventoryUsageRecap,
+  setInventoryUsageItemExcluded,
   summarizeInventoryUsage,
 } from "@/lib/inventory-usage";
 import type { InventoryUsageEvent } from "@/lib/types";
@@ -20,6 +22,7 @@ import type { InventoryUsageEvent } from "@/lib/types";
 function statusBadge(event: InventoryUsageEvent) {
   if (event.status === "needs-review") return <Badge variant="destructive">Needs review</Badge>;
   if (event.status === "no-sales") return <Badge variant="outline">No sales</Badge>;
+  if (event.status === "calculated-with-exclusions") return <Badge variant="secondary">Calculated with exclusions</Badge>;
   return <Badge variant="default">Calculated</Badge>;
 }
 
@@ -34,6 +37,7 @@ export function UsageRecap() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [updatingExclusionFor, setUpdatingExclusionFor] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!from || !to || from > to) {
@@ -68,7 +72,51 @@ export function UsageRecap() {
   const materialSummary = useMemo(() => summarizeInventoryUsage(events), [events]);
   const totalPortions = events.reduce((total, event) => total + event.totalPortions, 0);
   const reviewEvents = events.filter((event) => event.status === "needs-review").length;
+  const exclusionEvents = events.filter((event) => event.status === "calculated-with-exclusions").length;
   const issueCount = events.reduce((total, event) => total + event.issues.length, 0);
+  const selectedExclusions = selectedEvent?.excludedItems ?? [];
+  const excludableMenuItems = useMemo(() => {
+    if (!selectedEvent) return [];
+    const alreadyExcluded = new Set((selectedEvent.excludedItems ?? []).map((item) => item.menuItemId));
+    const menuItems = new Map<string, string>();
+    for (const issue of selectedEvent.issues) {
+      if (
+        issue.menuItemId &&
+        (issue.code === "missing-recipe" || issue.code === "recipe-not-ready") &&
+        !alreadyExcluded.has(issue.menuItemId)
+      ) {
+        menuItems.set(issue.menuItemId, issue.menuItemName ?? issue.menuItemId);
+      }
+    }
+    return [...menuItems.entries()].map(([id, name]) => ({ id, name }));
+  }, [selectedEvent]);
+
+  async function updateMenuItemExclusion(menuItemId: string, menuItemName: string, excluded: boolean) {
+    if (!selectedEvent) return;
+    setUpdatingExclusionFor(menuItemId);
+    try {
+      const updatedEvent = await setInventoryUsageItemExcluded(selectedEvent.sourceDate, menuItemId, excluded);
+      setEvents((current) => current.map((event) => event.sourceDate === updatedEvent.sourceDate ? updatedEvent : event));
+      void fetch("/api/push/reorder-transition", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: updatedEvent.sourceDate }),
+        keepalive: true,
+      }).then((response) => {
+        if (!response.ok) console.warn("Reorder push processing was not accepted", response.status);
+      }).catch((pushError) => {
+        console.warn("Reorder push processing could not be reached", pushError);
+      });
+      toast.success(excluded
+        ? `${menuItemName} excluded from this day's material usage.`
+        : `${menuItemName} included in this day's calculation.`);
+    } catch (updateError) {
+      console.error("Failed to update inventory usage exclusion", updateError);
+      toast.error(updateError instanceof Error ? updateError.message : "Could not update this usage exclusion.");
+    } finally {
+      setUpdatingExclusionFor(null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -78,7 +126,7 @@ export function UsageRecap() {
           <div>
             <p className="font-medium">Usage calculation and ledger source</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Approved calculations also create idempotent recipe-consumption movements; legacy item sales are never read or backfilled.
+              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Calculated days create recipe-consumption movements for known recipe lines; explicitly excluded items stay visible and are not deducted. Legacy item sales are never read or backfilled.
             </p>
           </div>
         </CardContent>
@@ -104,7 +152,7 @@ export function UsageRecap() {
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Usage events</p><p className="mt-1 text-xl font-semibold tabular-nums">{events.length}</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Recorded portions</p><p className="mt-1 text-xl font-semibold tabular-nums">{formatInventoryUsageQuantity(totalPortions)}</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Material totals</p><p className="mt-1 text-xl font-semibold tabular-nums">{materialSummary.length}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Review issues</p><p className="mt-1 text-xl font-semibold tabular-nums">{issueCount}{reviewEvents > 0 && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} days)</span>}</p></CardContent></Card>
+            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Review issues</p><p className="mt-1 text-xl font-semibold tabular-nums">{issueCount}{(reviewEvents > 0 || exclusionEvents > 0) && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} review · {exclusionEvents} with exclusions)</span>}</p></CardContent></Card>
           </div>
 
           {loading ? (
@@ -140,7 +188,7 @@ export function UsageRecap() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Material totals</CardTitle><CardDescription>Aggregated from calculated usage events in the selected range. Open Stock to see the resulting ledger balance.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Material totals</CardTitle><CardDescription>Aggregated from calculated usage events in the selected range. Days with exclusions include only known recipe usage; excluded items are not deducted. Open Stock to see the resulting ledger balance.</CardDescription></CardHeader>
         <CardContent>
           {materialSummary.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No calculated material lines yet.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Calculated usage</TableHead></TableRow></TableHeader><TableBody>{materialSummary.map((material) => <TableRow key={`${material.materialId}:${material.unit}`}><TableCell className="font-medium">{material.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(material.quantity)} {material.unit}</TableCell></TableRow>)}</TableBody></Table>}
         </CardContent>
@@ -152,8 +200,71 @@ export function UsageRecap() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle>Calculation detail · {formatDisplay(selectedEvent.sourceDate)}</CardTitle><CardDescription>Source revision {selectedEvent.sourceRevision} · Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}</CardDescription></div>{statusBadge(selectedEvent)}</div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {selectedEvent.issues.length > 0 && <div className="rounded-xl border border-warning/25 bg-warning/10 p-4"><div className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" /><div><p className="font-medium text-warning">Review before trusting this day&apos;s material usage</p><ul className="mt-2 space-y-1 text-sm text-muted-foreground">{selectedEvent.issues.map((issue, index) => <li key={`${issue.code}-${issue.recipeId ?? ""}-${index}`}>{issue.message}{issue.sourceRef && <span className="ml-1 font-mono text-xs">({issue.sourceRef})</span>}</li>)}</ul></div></div></div>}
-            <div className="overflow-hidden rounded-xl border"><Table><TableHeader><TableRow><TableHead>Menu item</TableHead><TableHead className="text-right">Portions</TableHead><TableHead>Material</TableHead><TableHead className="text-right">Usage</TableHead><TableHead>Recipe path</TableHead></TableRow></TableHeader><TableBody>{selectedEvent.lines.map((line) => <TableRow key={line.id}><TableCell className="font-medium">{line.menuItemName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.portionQuantity)}</TableCell><TableCell>{line.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.quantity)} {line.unit}</TableCell><TableCell className="max-w-72 whitespace-normal text-xs text-muted-foreground">{line.recipePath.join(" → ")}</TableCell></TableRow>)}{selectedEvent.lines.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground"><CircleCheck className="mx-auto mb-2 size-5 text-success" />No material lines were produced.</TableCell></TableRow>}</TableBody></Table></div>
+            {selectedEvent.issues.length > 0 && (
+              <div className="rounded-xl border border-warning/25 bg-warning/10 p-4">
+                <div className="flex gap-2">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <div className="w-full space-y-3">
+                    <div>
+                      <p className="font-medium text-warning">Review before trusting this day&apos;s material usage</p>
+                      <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                        {selectedEvent.issues.map((issue, index) => (
+                          <li key={`${issue.code}-${issue.recipeId ?? ""}-${index}`}>
+                            {issue.message}
+                            {issue.sourceRef && <span className="ml-1 font-mono text-xs">({issue.sourceRef})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    {excludableMenuItems.length > 0 && (
+                      <div className="rounded-lg border border-warning/20 bg-background/70 p-3">
+                        <p className="text-sm font-medium">Recipe not ready yet?</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Exclude an item for this day to calculate the rest. Its sold portions stay recorded, but its material usage will not be deducted from stock.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {excludableMenuItems.map((item) => (
+                            <Button
+                              key={item.id}
+                              size="sm"
+                              variant="outline"
+                              disabled={updatingExclusionFor !== null}
+                              onClick={() => void updateMenuItemExclusion(item.id, item.name, true)}
+                            >
+                              {updatingExclusionFor === item.id ? "Updating…" : `Exclude ${item.name} for this day`}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {selectedExclusions.length > 0 && (
+              <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
+                <p className="font-medium">Excluded from this day&apos;s material usage</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Sales remain recorded. No recipe-based stock usage was calculated or deducted for these items.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {selectedExclusions.map((item) => (
+                    <li key={item.menuItemId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span>{item.menuItemName} · {formatInventoryUsageQuantity(item.portionQuantity)} portions</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={updatingExclusionFor !== null}
+                        onClick={() => void updateMenuItemExclusion(item.menuItemId, item.menuItemName, false)}
+                      >
+                        {updatingExclusionFor === item.menuItemId ? "Updating…" : "Include in calculation"}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="overflow-hidden rounded-xl border"><Table><TableHeader><TableRow><TableHead>Menu item</TableHead><TableHead className="text-right">Portions</TableHead><TableHead>Material</TableHead><TableHead className="text-right">Usage</TableHead><TableHead>Recipe path</TableHead></TableRow></TableHeader><TableBody>{selectedEvent.lines.map((line) => <TableRow key={line.id}><TableCell className="font-medium">{line.menuItemName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.portionQuantity)}</TableCell><TableCell>{line.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.quantity)} {line.unit}</TableCell><TableCell className="max-w-72 whitespace-normal text-xs text-muted-foreground">{line.recipePath.join(" → ")}</TableCell></TableRow>)}{selectedEvent.lines.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground"><CircleCheck className="mx-auto mb-2 size-5 text-success" />{selectedExclusions.length > 0 ? "No material lines for included items; excluded sales have no stock deduction." : "No material lines were produced."}</TableCell></TableRow>}</TableBody></Table></div>
           </CardContent>
         </Card>
       )}
