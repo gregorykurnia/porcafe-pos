@@ -1062,17 +1062,21 @@ export async function listInventoryMovements(options?: {
 }): Promise<InventoryMovement[]> {
   const constraints: QueryConstraint[] = [];
   if (options?.materialId) constraints.push(where("materialId", "==", options.materialId));
-  constraints.push(orderBy("createdAt", "desc"));
-  if (options?.limit !== undefined) constraints.push(limitQuery(options.limit));
   const snap = await getDocs(query(inventoryMovementsCol, ...constraints));
-  return snap.docs
+  const movements = snap.docs
     .map((d) => mapInventoryMovement(d.id, d.data()))
     .filter((movement) => {
       if (options?.materialId && movement.materialId !== options.materialId) return false;
       if (options?.startDate && movement.occurredOn < options.startDate) return false;
       if (options?.endDate && movement.occurredOn > options.endDate) return false;
       return true;
+    })
+    .sort((a, b) => {
+      const dateOrder = (b.occurredOn ?? "").localeCompare(a.occurredOn ?? "");
+      if (dateOrder !== 0) return dateOrder;
+      return (b.createdAt ?? 0) - (a.createdAt ?? 0) || b.id.localeCompare(a.id);
     });
+  return options?.limit === undefined ? movements : movements.slice(0, Math.max(0, options.limit));
 }
 
 export async function getInventoryMovementTotals(materialIds: string[]): Promise<Record<string, number>> {

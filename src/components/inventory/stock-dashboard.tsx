@@ -42,10 +42,10 @@ type StockDashboardProps = {
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
-const STOCK_CACHE_KEY = "porcafe.inventory.stock-ledger.v1";
+const STOCK_CACHE_KEY = "porcafe.inventory.stock-ledger.v2";
 
 type StockLedgerCache = {
-  version: 1;
+  version: 2;
   setup: InventoryStockSetup | null;
   movements: InventoryMovement[];
   balanceTotals: Record<string, number>;
@@ -57,7 +57,7 @@ function readStockLedgerCache(): StockLedgerCache | null {
     if (!value || typeof value !== "object") return null;
     const cache = value as Partial<StockLedgerCache>;
     if (
-      cache.version !== 1 ||
+      cache.version !== 2 ||
       !(cache.setup === null || (cache.setup && typeof cache.setup === "object")) ||
       !Array.isArray(cache.movements) ||
       !cache.balanceTotals ||
@@ -111,6 +111,14 @@ function materialBalanceLabel(balance: InventoryBalance): string {
   return `${formatInventoryUsageQuantity(balance.currentQuantity)} ${balance.unit}`;
 }
 
+function sortMovementsByDate(movements: InventoryMovement[]): InventoryMovement[] {
+  return [...movements].sort((a, b) => {
+    const dateOrder = (b.occurredOn ?? "").localeCompare(a.occurredOn ?? "");
+    if (dateOrder !== 0) return dateOrder;
+    return (b.createdAt ?? 0) - (a.createdAt ?? 0) || b.id.localeCompare(a.id);
+  });
+}
+
 export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: StockDashboardProps) {
   const [setup, setSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
@@ -133,6 +141,10 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const [countDate, setCountDate] = useState(todayISO());
   const [countQuantity, setCountQuantity] = useState("");
   const [countReason, setCountReason] = useState("");
+  const [auditMovementType, setAuditMovementType] = useState<"all" | InventoryMovementType>("all");
+  const [auditMaterialId, setAuditMaterialId] = useState("all");
+  const [auditFrom, setAuditFrom] = useState("");
+  const [auditTo, setAuditTo] = useState("");
   const initialReceivingPrefillRef = useRef(false);
   const movementQuantityAutoFilledRef = useRef(false);
   const refreshRequestRef = useRef(0);
@@ -145,6 +157,18 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
+  const auditMaterials = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const movement of movements) names.set(movement.materialId, movement.materialName);
+    return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [movements]);
+  const filteredMovements = useMemo(() => movements.filter((movement) => {
+    if (auditMovementType !== "all" && movement.movementType !== auditMovementType) return false;
+    if (auditMaterialId !== "all" && movement.materialId !== auditMaterialId) return false;
+    if (auditFrom && movement.occurredOn < auditFrom) return false;
+    if (auditTo && movement.occurredOn > auditTo) return false;
+    return true;
+  }), [auditFrom, auditMaterialId, auditMovementType, auditTo, movements]);
 
   const fillReceivingDefaults = useCallback((materialId: string) => {
     const material = activeMaterials.find((candidate) => candidate.id === materialId);
@@ -172,7 +196,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
     try {
       const [nextSetup, nextMovements, nextBalanceTotals] = await Promise.all([
         getInventoryStockSetup(),
-        listInventoryMovements({ limit: 30 }),
+        listInventoryMovements(),
         getInventoryMovementTotals(activeMaterialIds),
       ]);
       if (requestId === refreshRequestRef.current) {
@@ -211,7 +235,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
 
   useEffect(() => {
     if (!hasSnapshot) return;
-    writeStockLedgerCache({ version: 1, setup, movements, balanceTotals });
+    writeStockLedgerCache({ version: 2, setup, movements, balanceTotals });
   }, [balanceTotals, hasSnapshot, movements, setup]);
 
   useEffect(() => {
@@ -297,7 +321,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
         balanceAfter: balanceBefore + signedQuantity,
         createdAt,
       };
-      setMovements((current) => [movement, ...current.filter((item) => item.id !== id)].slice(0, 30));
+      setMovements((current) => sortMovementsByDate([movement, ...current.filter((item) => item.id !== id)]));
       setBalanceTotals((current) => ({ ...current, [material.id]: (current[material.id] ?? 0) + signedQuantity }));
       movementQuantityAutoFilledRef.current = false;
       setMovementQuantity("");
@@ -355,7 +379,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
         balanceAfter: observedQuantity,
         createdAt,
       };
-      setMovements((current) => [movement, ...current.filter((item) => item.id !== id)].slice(0, 30));
+      setMovements((current) => sortMovementsByDate([movement, ...current.filter((item) => item.id !== id)]));
       setBalanceTotals((current) => ({ ...current, [material.id]: observedQuantity }));
       setCountQuantity("");
       setCountReason("");
@@ -494,8 +518,57 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
           </div>
 
           <Card>
-            <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Movement audit trail</CardTitle><CardDescription>Append-only stock history, including recipe consumption and automatic reversals when a daily log changes.</CardDescription></div><Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />Refresh</Button></div></CardHeader>
-            <CardContent>{movements.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No movements recorded yet.</p> : <Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader><TableBody>{movements.slice(0, 30).map((movement) => <TableRow key={movement.id}><TableCell className="text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span><span className="block font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</span></TableCell></TableRow>)}</TableBody></Table>}</CardContent>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Movement audit trail</CardTitle>
+                  <CardDescription>Full stock history, including manual entries, recipe consumption, and automatic reversals. Showing {filteredMovements.length} of {movements.length} movements.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />Refresh</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="space-y-1.5">
+                  <Label>Movement type</Label>
+                  <Select value={auditMovementType} onValueChange={(value) => setAuditMovementType(value as "all" | InventoryMovementType)}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      {Object.entries(MOVEMENT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Material</Label>
+                  <Select value={auditMaterialId} onValueChange={setAuditMaterialId}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All materials</SelectItem>
+                      {auditMaterials.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5"><Label htmlFor="movement-audit-from">From date</Label><Input id="movement-audit-from" type="date" value={auditFrom} onChange={(event) => setAuditFrom(event.target.value)} /></div>
+                <div className="space-y-1.5"><Label htmlFor="movement-audit-to">To date</Label><Input id="movement-audit-to" type="date" value={auditTo} onChange={(event) => setAuditTo(event.target.value)} /></div>
+                <div className="flex items-end"><Button variant="ghost" className="w-full" disabled={auditMovementType === "all" && auditMaterialId === "all" && !auditFrom && !auditTo} onClick={() => {
+                  setAuditMovementType("all");
+                  setAuditMaterialId("all");
+                  setAuditFrom("");
+                  setAuditTo("");
+                }}>Clear filters</Button></div>
+              </div>
+              {filteredMovements.length === 0 ? (
+                <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{movements.length === 0 ? "No movements recorded yet." : "No movements match these filters."}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader>
+                    <TableBody>{filteredMovements.map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`whitespace-nowrap text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span><span className="block font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</span></TableCell></TableRow>)}</TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
           </Card>
         </>
       )}
