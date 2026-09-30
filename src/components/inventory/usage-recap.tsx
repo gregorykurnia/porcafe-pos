@@ -10,7 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDisplay, todayISO } from "@/lib/dates";
+import { getDailyItemLog } from "@/lib/data";
 import {
+  calculateAndPersistDailyInventoryUsage,
   formatInventoryUsageQuantity,
   INVENTORY_USAGE_GO_LIVE_DATE,
   listInventoryUsageRecap,
@@ -38,6 +40,7 @@ export function UsageRecap() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingExclusionFor, setUpdatingExclusionFor] = useState<string | null>(null);
+  const [recalculatingDate, setRecalculatingDate] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!from || !to || from > to) {
@@ -75,7 +78,7 @@ export function UsageRecap() {
   const exclusionEvents = events.filter((event) => event.status === "calculated-with-exclusions").length;
   const issueCount = events.reduce((total, event) => total + event.issues.length, 0);
   const selectedExclusions = selectedEvent?.excludedItems ?? [];
-  const excludableMenuItems = useMemo(() => {
+  const excludableMenuItems = (() => {
     if (!selectedEvent) return [];
     const alreadyExcluded = new Set((selectedEvent.excludedItems ?? []).map((item) => item.menuItemId));
     const menuItems = new Map<string, string>();
@@ -89,7 +92,7 @@ export function UsageRecap() {
       }
     }
     return [...menuItems.entries()].map(([id, name]) => ({ id, name }));
-  }, [selectedEvent]);
+  })();
 
   async function updateMenuItemExclusion(menuItemId: string, menuItemName: string, excluded: boolean) {
     if (!selectedEvent) return;
@@ -118,6 +121,38 @@ export function UsageRecap() {
     }
   }
 
+  async function recalculateSelectedDay() {
+    if (!selectedEvent || recalculatingDate) return;
+    const sourceDate = selectedEvent.sourceDate;
+    setRecalculatingDate(sourceDate);
+    try {
+      const log = await getDailyItemLog(sourceDate);
+      if (!log) throw new Error(`No saved daily close was found for ${sourceDate}.`);
+      const updatedEvent = await calculateAndPersistDailyInventoryUsage(log);
+      if (!updatedEvent) throw new Error(`Inventory usage calculation is not enabled for ${sourceDate}.`);
+
+      setEvents((current) => current.map((event) => event.sourceDate === sourceDate ? updatedEvent : event));
+      void fetch("/api/push/reorder-transition", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ date: sourceDate }),
+        keepalive: true,
+      }).then((response) => {
+        if (!response.ok) console.warn("Reorder push processing was not accepted", response.status);
+      }).catch((pushError) => {
+        console.warn("Reorder push processing could not be reached", pushError);
+      });
+      toast.success(updatedEvent.status === "needs-review"
+        ? "Day recalculated. Recipe review is still needed."
+        : "Day recalculated using the current menu and recipes.");
+    } catch (recalculateError) {
+      console.error("Failed to recalculate inventory usage", recalculateError);
+      toast.error(recalculateError instanceof Error ? recalculateError.message : "Could not recalculate this day.");
+    } finally {
+      setRecalculatingDate(null);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <Card className="border-info/20 bg-info/5">
@@ -143,7 +178,7 @@ export function UsageRecap() {
               <div className="space-y-1.5"><Label htmlFor="usage-from">From</Label><Input id="usage-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="usage-to">To</Label><Input id="usage-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></div>
             </div>
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading}><RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />{loading ? "Loading…" : "Refresh"}</Button>
+            <Button variant="outline" onClick={() => void refresh()} disabled={loading || recalculatingDate !== null}><RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />{loading ? "Loading…" : "Refresh"}</Button>
           </div>
 
           {error && <div className="rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm text-danger">{error}</div>}
@@ -197,7 +232,19 @@ export function UsageRecap() {
       {selectedEvent && (
         <Card>
           <CardHeader>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle>Calculation detail · {formatDisplay(selectedEvent.sourceDate)}</CardTitle><CardDescription>Source revision {selectedEvent.sourceRevision} · Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}</CardDescription></div>{statusBadge(selectedEvent)}</div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle>Calculation detail · {formatDisplay(selectedEvent.sourceDate)}</CardTitle>
+                <CardDescription>Source revision {selectedEvent.sourceRevision} · Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}. Recalculate after changing menu items or recipes to refresh this saved result.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {statusBadge(selectedEvent)}
+                <Button variant="outline" size="sm" onClick={() => void recalculateSelectedDay()} disabled={recalculatingDate !== null || updatingExclusionFor !== null}>
+                  <RefreshCw className={recalculatingDate === selectedEvent.sourceDate ? "size-3.5 animate-spin" : "size-3.5"} />
+                  {recalculatingDate === selectedEvent.sourceDate ? "Recalculating…" : "Recalculate day"}
+                </Button>
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {selectedEvent.issues.length > 0 && (
@@ -228,7 +275,7 @@ export function UsageRecap() {
                               key={item.id}
                               size="sm"
                               variant="outline"
-                              disabled={updatingExclusionFor !== null}
+                              disabled={updatingExclusionFor !== null || recalculatingDate !== null}
                               onClick={() => void updateMenuItemExclusion(item.id, item.name, true)}
                             >
                               {updatingExclusionFor === item.id ? "Updating…" : `Exclude ${item.name} for this day`}
@@ -254,7 +301,7 @@ export function UsageRecap() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={updatingExclusionFor !== null}
+                        disabled={updatingExclusionFor !== null || recalculatingDate !== null}
                         onClick={() => void updateMenuItemExclusion(item.menuItemId, item.menuItemName, false)}
                       >
                         {updatingExclusionFor === item.menuItemId ? "Updating…" : "Include in calculation"}
