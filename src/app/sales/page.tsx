@@ -884,7 +884,7 @@ export default function SalesPage() {
                   width={40}
                 />
                 <Tooltip formatter={(v) => idr(Number(v))} />
-                <Line type="monotone" dataKey="total" stroke="var(--warm-accent)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--warm-accent)" }} />
+                <Line type="monotone" dataKey="total" stroke="var(--primary-brand)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--primary-brand)" }} />
               </LineChart>
             </ResponsiveContainer>
           )}
