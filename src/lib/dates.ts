@@ -14,6 +14,10 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+export function addDaysISO(dateISO: string, days: number): string {
+  return toISODate(addDays(parseISO(dateISO), days));
+}
+
 export function weekKey(dateISO: string): string {
   return toISODate(startOfWeek(parseISO(dateISO), { weekStartsOn: 1 }));
 }
@@ -41,6 +45,10 @@ export function formatMonthDisplay(monthISO: string): string {
 
 export function formatDateTime(timestamp: number): string {
   return format(new Date(timestamp), "EEEE, d MMM yyyy, HH:mm");
+}
+
+export function formatTimeOfDay(timestamp: number): string {
+  return format(new Date(timestamp), "HH:mm");
 }
 
 export function idr(n: number): string {

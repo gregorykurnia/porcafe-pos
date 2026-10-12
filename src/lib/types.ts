@@ -8,6 +8,8 @@ export type SalesEntry = {
   total: number;
   note?: string;
   createdAt: number;
+  /** Optional, added with optimistic concurrency. Older records fall back to createdAt. */
+  updatedAt?: number;
 };
 
 export type MenuItem = {

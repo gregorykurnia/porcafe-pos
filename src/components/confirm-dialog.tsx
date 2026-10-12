@@ -62,7 +62,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       <Dialog open={open} onOpenChange={(next) => { if (!next) settle(false); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>{options.title}</DialogTitle>
+            <DialogTitle className="pr-8">{options.title}</DialogTitle>
             <DialogDescription>{options.body}</DialogDescription>
           </DialogHeader>
           {options.details}

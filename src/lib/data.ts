@@ -20,6 +20,7 @@ import {
 import { addDays, addMonths, addWeeks, format, isValid, parseISO } from "date-fns";
 import { db } from "./firebase";
 import { formatDisplay } from "./dates";
+import { ConflictError, isStale, recordVersion } from "./concurrency";
 import type {
   SalesEntry,
   MenuItem,
@@ -92,33 +93,70 @@ export async function listSalesEntries(): Promise<SalesEntry[]> {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<SalesEntry, "id">) }));
 }
 
-type SalesEntryInput = Omit<SalesEntry, "id" | "total" | "createdAt"> & { id?: string };
+type SalesEntryInput = {
+  id?: string;
+  date: string;
+  bca: number;
+  cash: number;
+  soundbox: number;
+  other: number;
+  /** undefined keeps the stored note. null or "" clears it. */
+  note?: string | null;
+  /**
+   * The version the caller loaded (see recordVersion). null means the caller
+   * expects no record for this date yet. undefined skips the check.
+   */
+  expectedUpdatedAt?: number | null;
+};
 
-async function writeSalesEntry(entry: SalesEntryInput, id: string, isNew: boolean) {
-  const { id: _inputId, ...rest } = entry;
-  const total = entry.bca + entry.cash + entry.soundbox + entry.other;
-  await setDoc(
-    doc(db, "salesEntries", id),
-    omitUndefined({ ...rest, total, ...(isNew ? { createdAt: Date.now() } : {}) }),
-    { merge: true }
-  );
+// The check and the write share one transaction, so a day saved on another
+// device between load and save is refused instead of overwritten.
+async function writeSalesEntry(entry: SalesEntryInput, id: string) {
+  const { date, bca, cash, soundbox, other, note, expectedUpdatedAt } = entry;
+  const total = bca + cash + soundbox + other;
+  const ref = doc(db, "salesEntries", id);
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const exists = snapshot.exists();
+
+    if (expectedUpdatedAt !== undefined) {
+      const actual = exists ? recordVersion(snapshot.data() as Omit<SalesEntry, "id">) : null;
+      if (isStale(expectedUpdatedAt, actual)) throw new ConflictError();
+    }
+
+    const now = Date.now();
+    transaction.set(
+      ref,
+      omitUndefined({
+        date,
+        bca,
+        cash,
+        soundbox,
+        other,
+        total,
+        note: note === undefined ? undefined : note || deleteField(),
+        updatedAt: now,
+        ...(exists ? {} : { createdAt: now }),
+      }),
+      { merge: true }
+    );
+  });
   return id;
 }
 
-export async function upsertSalesEntry(
-  entry: SalesEntryInput
-) {
+export async function upsertSalesEntry(entry: SalesEntryInput) {
   if (entry.id) {
     const sameDateEntries = await listSalesEntriesByDate(entry.date);
     const conflictingEntry = sameDateEntries.find((candidate) => candidate.id !== entry.id);
     if (conflictingEntry) {
       throw new Error(`A sales entry already exists for ${formatDisplay(entry.date)}. Edit that entry instead.`);
     }
-    return writeSalesEntry(entry, entry.id, false);
+    return writeSalesEntry(entry, entry.id);
   }
 
   const existing = await listSalesEntriesByDate(entry.date);
-  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`, existing.length === 0);
+  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`);
 }
 
 export async function deleteSalesEntry(id: string) {
@@ -144,7 +182,7 @@ export async function upsertSalesEntryByDate(
   entry: SalesEntryInput
 ) {
   const existing = await listSalesEntriesByDate(entry.date);
-  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`, existing.length === 0);
+  return writeSalesEntry(entry, existing[0]?.id ?? `sales-${entry.date}`);
 }
 
 // ---------- Monthly Adjustments (bank reconciliation "selisih") ----------

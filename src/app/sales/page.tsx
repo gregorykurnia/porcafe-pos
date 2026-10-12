@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/confirm-dialog";
+import { ChangeDiff } from "@/components/change-diff";
+import { MoneyInput } from "@/components/fields/money-input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -17,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import {
   listSalesEntries,
+  getSalesEntryByDate,
   upsertSalesEntry,
   deleteSalesEntry,
   listMonthlyAdjustments,
@@ -36,8 +39,23 @@ import {
   formatWeekDisplay,
   formatMonthDisplay,
   formatDateTime,
+  addDaysISO,
+  formatTimeOfDay,
 } from "@/lib/dates";
 import { downloadCSV } from "@/lib/csv";
+import { ConflictError, recordVersion } from "@/lib/concurrency";
+import {
+  EMPTY_SALES_AMOUNTS,
+  EMPTY_SALES_FORM,
+  isSalesFormDirty,
+  parseSalesForm,
+  salesAmountsFromEntry,
+  salesChangeRows,
+  salesFormFromEntry,
+  salesTotal,
+  type SalesAmounts,
+  type SalesFormValues,
+} from "@/lib/sales-entry";
 import {
   ResponsiveContainer,
   LineChart,
@@ -128,7 +146,8 @@ function EditableRow({
         cash: draft.cash !== undefined ? parseFloat(draft.cash) || 0 : entry.cash,
         soundbox: draft.soundbox !== undefined ? parseFloat(draft.soundbox) || 0 : entry.soundbox,
         other: draft.other !== undefined ? parseFloat(draft.other) || 0 : entry.other,
-        note: (draft.note !== undefined ? draft.note : entry.note) || undefined,
+        note: (draft.note !== undefined ? draft.note : entry.note) || null,
+        expectedUpdatedAt: recordVersion(entry),
       });
       setDraft({});
       setSaveStatus("saved");
@@ -264,37 +283,6 @@ function SelisihEditor({
   );
 }
 
-function MoneyInput({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm font-medium text-muted-foreground">Rp</span>
-        <Input
-          id={id}
-          type="number"
-          inputMode="decimal"
-          min="0"
-          placeholder="0"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="h-11 pl-10 text-right tabular-nums sm:h-10"
-        />
-      </div>
-    </div>
-  );
-}
-
 function RevenueSummary({
   label,
   value,
@@ -411,12 +399,16 @@ export default function SalesPage() {
   const [period, setPeriod] = useState<Period>("day");
 
   const [date, setDate] = useState(todayISO());
-  const [bca, setBca] = useState("");
-  const [cash, setCash] = useState("");
-  const [soundbox, setSoundbox] = useState("");
-  const [other, setOther] = useState("");
-  const [note, setNote] = useState("");
+  const [form, setForm] = useState<SalesFormValues>(EMPTY_SALES_FORM);
+  // Amounts as last loaded or saved for `date`. The form is compared against these.
+  const [savedAmounts, setSavedAmounts] = useState<SalesAmounts>(EMPTY_SALES_AMOUNTS);
+  const [loadedEntry, setLoadedEntry] = useState<SalesEntry | null>(null);
+  const [entryLoading, setEntryLoading] = useState(false);
+  const [entryLoadFailed, setEntryLoadFailed] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
+  const entryRequestRef = useRef(0);
+  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [monthFilter, setMonthFilter] = useState<string>("all");
@@ -449,48 +441,148 @@ export default function SalesPage() {
   }
 
   useEffect(() => {
-    void Promise.resolve().then(() => refresh(false));
-    // refresh is intentionally called once on mount; later refreshes are event-driven.
+    void Promise.resolve().then(() => {
+      refresh(false);
+      void loadEntry(todayISO());
+    });
+    // Runs once on mount; later refreshes and loads are event-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const total =
-    (parseFloat(bca) || 0) + (parseFloat(cash) || 0) + (parseFloat(soundbox) || 0) + (parseFloat(other) || 0);
+  const parsedForm = parseSalesForm(form);
+  const total = parsedForm ? salesTotal(parsedForm) : 0;
+  const isDirty = isSalesFormDirty(form, savedAmounts);
+  const formLocked = entryLoading || entryLoadFailed;
 
-  async function handleSave() {
-    if (!date) {
-      toast.error("Pick a date");
-      return;
-    }
-    setSaving(true);
+  function setFormField(field: keyof SalesFormValues, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  // Loads the saved revenue for one date into the form. A response for a date
+  // the user has already moved away from is ignored.
+  async function loadEntry(target: string) {
+    const requestId = ++entryRequestRef.current;
+    setEntryLoading(true);
+    setEntryLoadFailed(false);
     try {
-      await upsertSalesEntry({
-        date,
-        bca: parseFloat(bca) || 0,
-        cash: parseFloat(cash) || 0,
-        soundbox: parseFloat(soundbox) || 0,
-        other: parseFloat(other) || 0,
-        note: note || undefined,
-      });
-      toast.success("Entry saved");
-      setSavedMessage("Saved just now");
-      resetForm();
-      refresh();
+      const found = await getSalesEntryByDate(target);
+      if (requestId !== entryRequestRef.current) return;
+      setLoadedEntry(found);
+      setForm(salesFormFromEntry(found));
+      setSavedAmounts(salesAmountsFromEntry(found));
+      setConflict(false);
     } catch (err) {
-      console.error("Failed to save entry:", err);
-      toast.error(err instanceof Error ? `Failed to save entry: ${err.message}` : "Failed to save entry");
+      if (requestId !== entryRequestRef.current) return;
+      console.error("Failed to load revenue entry:", err);
+      setLoadedEntry(null);
+      setForm(EMPTY_SALES_FORM);
+      setSavedAmounts(EMPTY_SALES_AMOUNTS);
+      setEntryLoadFailed(true);
+      toast.error("Could not load the saved entry for this date");
     } finally {
-      setSaving(false);
+      if (requestId === entryRequestRef.current) setEntryLoading(false);
     }
   }
 
-  function resetForm() {
-    setDate(todayISO());
-    setBca("");
-    setCash("");
-    setSoundbox("");
-    setOther("");
-    setNote("");
+  // Debounced, so typing a date does not read Firestore on every keystroke.
+  // Inputs stay locked until the load finishes, so nothing typed is overwritten.
+  function scheduleEntryLoad(target: string) {
+    entryRequestRef.current += 1;
+    setEntryLoading(true);
+    clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = setTimeout(() => void loadEntry(target), 250);
+  }
+
+  // Moving to another day with unsaved amounts asks first, so nothing is lost silently.
+  async function changeDate(next: string) {
+    if (next === date) return;
+    if (isDirty) {
+      const ok = await confirm({
+        title: "Discard unsaved amounts?",
+        body: `The amounts you entered for ${formatDisplay(date)} have not been saved.`,
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    setDate(next);
+    scheduleEntryLoad(next);
+  }
+
+  async function reloadLatest() {
+    if (isDirty) {
+      const ok = await confirm({
+        title: "Load the latest saved entry?",
+        body: "The amounts on this screen will be replaced.",
+        confirmLabel: "Load latest",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    void loadEntry(date);
+  }
+
+  async function handleSave() {
+    const amounts = parseSalesForm(form);
+    if (!amounts) {
+      toast.error("Check the payment amounts. Use digits, for example 1.500.000 or 1,5jt.");
+      return;
+    }
+
+    if (loadedEntry) {
+      if (!isDirty) {
+        toast("No changes to save");
+        return;
+      }
+      const ok = await confirm({
+        title: `Update revenue for ${formatDisplay(date)}?`,
+        body: "Review the values that will change.",
+        confirmLabel: "Update entry",
+        details: (
+          <ChangeDiff
+            currentLabel="Saved"
+            nextLabel="New"
+            rows={salesChangeRows(savedAmounts, amounts).map((row) => ({
+              label: row.label,
+              current: row.current,
+              next: row.next,
+              format: row.kind === "amount" ? (value) => idr(Number(value)) : undefined,
+            }))}
+          />
+        ),
+      });
+      if (!ok) return;
+    }
+
+    setSaving(true);
+    try {
+      await upsertSalesEntry({
+        id: loadedEntry?.id,
+        date,
+        bca: amounts.bca,
+        cash: amounts.cash,
+        soundbox: amounts.soundbox,
+        other: amounts.other,
+        note: amounts.note || null,
+        expectedUpdatedAt: loadedEntry ? recordVersion(loadedEntry) : null,
+      });
+      toast.success(loadedEntry ? "Entry updated" : "Entry saved");
+      setSavedMessage("Saved just now");
+      refresh();
+      // Keep the date and reload what was saved, so the next save is checked against it.
+      await loadEntry(date);
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        setConflict(true);
+        toast.error(err.message);
+      } else {
+        console.error("Failed to save entry:", err);
+        toast.error(err instanceof Error ? `Failed to save entry: ${err.message}` : "Failed to save entry");
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function removeEntry(id: string) {
@@ -647,35 +739,57 @@ export default function SalesPage() {
           <div className="space-y-3">
             <div className="space-y-1.5 sm:max-w-xs">
               <Label htmlFor="date">Date <span className="font-normal text-muted-foreground">({formatDisplay(date)})</span></Label>
-              <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value || todayISO())} className="h-11 bg-surface sm:h-10" />
+              <Input id="date" type="date" value={date} onChange={(e) => void changeDate(e.target.value || todayISO())} className="h-11 bg-surface sm:h-10" />
             </div>
           </div>
+          {conflict && (
+            <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
+              <span>This day was changed on another device — reload to see the latest.</span>
+              <Button size="sm" variant="outline" onClick={reloadLatest}>Load latest</Button>
+            </div>
+          )}
+          {entryLoadFailed && (
+            <div role="alert" className="rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
+              Could not load the saved entry for this date. Pick the date again to retry.
+            </div>
+          )}
+          {entryLoading && (
+            <p aria-live="polite" className="text-sm text-muted-foreground">Loading the saved entry…</p>
+          )}
+          {loadedEntry && !entryLoading && (
+            <p className="rounded-lg bg-accent px-3 py-2 text-sm text-primary">
+              Editing saved entry for {formatDayDisplay(date)} · saved {formatTimeOfDay(recordVersion(loadedEntry))}
+            </p>
+          )}
           <div className="space-y-2">
             <div>
               <p className="text-sm font-semibold text-foreground">Payment methods</p>
               <p className="text-xs text-muted-foreground">Enter the amount recorded for each method.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MoneyInput id="bca" label="BCA" value={bca} onChange={setBca} />
-              <MoneyInput id="cash" label="Cash" value={cash} onChange={setCash} />
-              <MoneyInput id="soundbox" label="Soundbox" value={soundbox} onChange={setSoundbox} />
-              <MoneyInput id="other" label="Other" value={other} onChange={setOther} />
+              <MoneyInput id="bca" label="BCA" value={form.bca} onChange={(v) => setFormField("bca", v)} disabled={formLocked} />
+              <MoneyInput id="cash" label="Cash" value={form.cash} onChange={(v) => setFormField("cash", v)} disabled={formLocked} />
+              <MoneyInput id="soundbox" label="Soundbox" value={form.soundbox} onChange={(v) => setFormField("soundbox", v)} disabled={formLocked} />
+              <MoneyInput id="other" label="Other" value={form.other} onChange={(v) => setFormField("other", v)} disabled={formLocked} />
             </div>
           </div>
           <div className="space-y-1.5 sm:max-w-xl">
               <Label htmlFor="note">Note (optional)</Label>
-              <Input id="note" className="h-11 sm:h-10" placeholder="e.g. rain, event day" value={note} onChange={(e) => setNote(e.target.value)} />
+              <Input id="note" className="h-11 sm:h-10" placeholder="e.g. rain, event day" value={form.note} disabled={formLocked} onChange={(e) => setFormField("note", e.target.value)} />
           </div>
           <div className="flex items-center justify-between rounded-xl border border-warm-accent bg-warm-accent/60 px-4 py-4">
             <div>
               <p className="text-sm font-semibold text-primary">Recorded sales total</p>
               <p className="mt-0.5 text-xs text-primary/65">Before any monthly reconciliation adjustment</p>
             </div>
-            <span className="text-xl font-bold text-primary tabular-nums">{idr(total)}</span>
+            <span className="text-xl font-bold text-primary tabular-nums">{parsedForm ? idr(total) : "—"}</span>
           </div>
-          <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={saving} className="min-h-11 bg-primary px-5 hover:bg-primary-hover sm:min-h-10">
-              {saving ? "Saving…" : "Save entry"}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" onClick={() => void changeDate(addDaysISO(date, 1))} className="min-h-11 sm:min-h-10">
+              Next day →
+            </Button>
+            <Button onClick={handleSave} disabled={saving || formLocked} className="min-h-11 bg-primary px-5 hover:bg-primary-hover sm:min-h-10">
+              {saving ? "Saving…" : loadedEntry ? "Update entry" : "Save entry"}
             </Button>
           </div>
         </CardContent>
