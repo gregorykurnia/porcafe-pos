@@ -24,6 +24,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   listMenuItems,
   upsertMenuItem,
@@ -527,6 +528,7 @@ function TicketScanDialog({
   const [existingOther, setExistingOther] = useState(0);
   const [existingItemSaleCount, setExistingItemSaleCount] = useState(0);
   const [step, setStep] = useState<"items" | "revenue">("items");
+  const confirm = useConfirm();
   const [itemsSaved, setItemsSaved] = useState(false);
 
   function reset() {
@@ -629,10 +631,13 @@ function TicketScanDialog({
         return false;
       });
 
-      if (staleLegacyRows.length > 0 && !window.confirm(
-        `This rescan will replace ${staleLegacyRows.length} legacy item row${staleLegacyRows.length === 1 ? "" : "s"} that no longer matches the reviewed sheet. Continue?`
-      )) {
-        return;
+      if (staleLegacyRows.length > 0) {
+        const ok = await confirm({
+          title: "Replace legacy item rows?",
+          body: `This rescan will replace ${staleLegacyRows.length} legacy item row${staleLegacyRows.length === 1 ? "" : "s"} that no longer matches the reviewed sheet.`,
+          confirmLabel: "Replace and continue",
+        });
+        if (!ok) return;
       }
 
       // The daily log is the canonical scanner output. Saving by date makes a
@@ -892,6 +897,7 @@ function TicketScanDialog({
 }
 
 export default function ItemsPage() {
+  const confirm = useConfirm();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [sales, setSales] = useState<ItemSale[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
@@ -1148,8 +1154,14 @@ export default function ItemsPage() {
       return;
     }
 
-    if (status === "no_sales" && dailyTotal > 0 && !window.confirm("Mark this day as no sales? Entered quantities will be cleared.")) {
-      return;
+    if (status === "no_sales" && dailyTotal > 0) {
+      const ok = await confirm({
+        title: "Mark this day as no sales?",
+        body: "Entered quantities will be cleared.",
+        confirmLabel: "Mark no sales",
+        tone: "danger",
+      });
+      if (!ok) return;
     }
 
     const nextQuantities = { ...(dailyLog?.quantities ?? {}) };
@@ -1252,9 +1264,12 @@ export default function ItemsPage() {
       toast.success("Nothing to migrate — all legacy dates already have daily logs");
       return;
     }
-    if (!window.confirm(`Copy ${datesToMigrate} legacy date${datesToMigrate === 1 ? "" : "s"} into Daily close? Existing legacy rows will be kept.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Copy ${datesToMigrate} legacy date${datesToMigrate === 1 ? "" : "s"} into Daily close?`,
+      body: "Existing legacy rows will be kept.",
+      confirmLabel: "Copy dates",
+    });
+    if (!ok) return;
 
     setMigrationApplying(true);
     try {
@@ -1340,7 +1355,14 @@ export default function ItemsPage() {
 
   async function removeSale(id: string) {
     const sale = sales.find((candidate) => candidate.id === id);
-    if (!sale || !window.confirm(`Delete ${sale.itemName} (${sale.qty}) from ${formatDisplay(sale.date)}? This cannot be undone.`)) return;
+    if (!sale) return;
+    const ok = await confirm({
+      title: `Delete ${sale.itemName} (${sale.qty})?`,
+      body: `From ${formatDisplay(sale.date)}. This cannot be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteItemSale(id);
       toast.success("Item sale deleted");

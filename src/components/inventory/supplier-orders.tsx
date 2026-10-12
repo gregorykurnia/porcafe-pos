@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Ban, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ function orderStatusVariant(status: InventorySupplierOrder["status"]): "default"
 }
 
 export function SupplierOrders({ materials, suppliers, supplierItems, orders, createOrderRequest, onChanged }: SupplierOrdersProps) {
+  const confirm = useConfirm();
   const orderFormRef = useRef<HTMLDivElement>(null);
   const hasHandledCreateOrderRequest = useRef(false);
   const createOrderMaterial = createOrderRequest
@@ -180,7 +182,14 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
   }
 
   async function cancelOrder(order: InventorySupplierOrder) {
-    if (!window.confirm(`Cancel ${order.orderReference}? Any quantities already received will remain in stock.`)) return;
+    const ok = await confirm({
+      title: `Cancel ${order.orderReference}?`,
+      body: "Any quantities already received will remain in stock.",
+      confirmLabel: "Cancel order",
+      cancelLabel: "Keep order",
+      tone: "danger",
+    });
+    if (!ok) return;
     setSaving(true);
     try {
       await cancelInventorySupplierOrder(order.id);

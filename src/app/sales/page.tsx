@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -401,6 +402,7 @@ function DuplicateDateReviewDialog({
 }
 
 export default function SalesPage() {
+  const confirm = useConfirm();
   const [entries, setEntries] = useState<SalesEntry[]>([]);
   const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -493,7 +495,14 @@ export default function SalesPage() {
 
   async function removeEntry(id: string) {
     const entry = entries.find((candidate) => candidate.id === id);
-    if (!entry || !window.confirm(`Delete the revenue entry for ${formatDisplay(entry.date)}? This cannot be undone.`)) return;
+    if (!entry) return;
+    const ok = await confirm({
+      title: "Delete revenue entry?",
+      body: `The revenue entry for ${formatDisplay(entry.date)} will be removed. This cannot be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!ok) return;
     try {
       await deleteSalesEntry(id);
       toast.success("Entry deleted");
