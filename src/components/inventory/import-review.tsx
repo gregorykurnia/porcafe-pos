@@ -498,7 +498,7 @@ export function ImportReview({
       <Card>
         <CardHeader>
           <CardTitle>2. Confirm material aliases</CardTitle>
-          <CardDescription>New canonical materials are staged with stable IDs and can be edited in Materials before use.</CardDescription>
+          <CardDescription>New materials are listed here and can be edited in Materials before use.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -556,7 +556,7 @@ export function ImportReview({
       <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface/50 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="font-medium">{unresolvedRows + sourceNeedsReview === 0 ? "All importable rows are ready for a draft recipe import." : `${unresolvedRows + sourceNeedsReview} row${unresolvedRows + sourceNeedsReview === 1 ? "" : "s"} still need review.`}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Saving mappings is safe to do first. Creating recipes writes only foundation records, never stock movements.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Saving mappings is safe to do first. Creating draft recipes never changes stock.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Button variant="outline" onClick={saveMappings} disabled={saving !== null}><Save className="size-4" />{saving === "mappings" ? "Saving…" : "Save mappings"}</Button>

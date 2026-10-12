@@ -182,7 +182,7 @@ export function UsageRecap() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="font-semibold">Calculation detail · {formatDisplay(selectedEvent.sourceDate)}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Source revision {selectedEvent.sourceRevision} · Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}. Recalculate after changing menu items or recipes to refresh this saved result.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}. Recalculate after changing menu items or recipes to refresh this saved result.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {statusBadge(selectedEvent)}
@@ -278,9 +278,9 @@ export function UsageRecap() {
         <CardContent className="flex gap-3 p-4">
           <Calculator className="mt-0.5 size-5 shrink-0 text-info" />
           <div>
-            <p className="font-medium">Usage calculation and ledger source</p>
+            <p className="font-medium">How usage is calculated</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Calculated days create recipe-consumption movements for known recipe lines; explicitly excluded items stay visible and are not deducted. Legacy item sales are never read or backfilled.
+              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Days you calculate record recipe usage for known recipe lines. Excluded items stay visible and are not deducted.
             </p>
           </div>
         </CardContent>

@@ -53,3 +53,17 @@ How we use Porcafe POS on the phone and the counter tablet. Keep this to one pag
 - **Materials, Recipes, Suppliers, Import:** stock setup. Change these rarely, and check them after a menu change.
 - **Notifications:** turn alerts on or off for this phone.
 - **Data maintenance:** check legacy sales, duplicate dates, and preferred suppliers. Nothing here changes data unless you confirm a copy or a duplicate fix.
+
+## Words we use
+
+One meaning for each word, in the app and in this guide.
+
+- **Daily close:** the screen where a day's portions and payments are recorded and completed.
+- **Portions:** how many of each menu item sold on the day.
+- **Payments:** the day's cash, card, and QRIS totals.
+- **Soundbox:** the QRIS payment terminal (Nobu).
+- **Sheet:** the paper daily ticket sheet you scan.
+- **Selisih:** the bank reconciliation adjustment for a month. It counts once the month is over.
+- **To order:** materials at or below their alert level.
+- **On order:** supplier orders that have not been received yet.
+- **Stock count:** what is on the shelf, recorded under Stock.

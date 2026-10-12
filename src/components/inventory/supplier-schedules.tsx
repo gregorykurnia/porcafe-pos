@@ -146,7 +146,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
   return (
     <div className="space-y-5">
       <Card className="border-primary/15 bg-primary/5">
-        <CardContent className="flex items-start justify-between gap-3 p-4"><div className="flex gap-3"><CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" /><div><p className="font-medium">Recurring supplier deliveries</p><p className="mt-1 text-sm text-muted-foreground">Deliveries become due at their configured local time. A hosted scheduler can call the protected inventory schedule endpoint; Inventory refresh also checks for due deliveries.</p></div></div><Button variant="outline" onClick={() => void runDueNow()} disabled={running}><RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />{running ? "Checking…" : "Run due now"}</Button></CardContent>
+        <CardContent className="flex items-start justify-between gap-3 p-4"><div className="flex gap-3"><CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" /><div><p className="font-medium">Recurring supplier deliveries</p><p className="mt-1 text-sm text-muted-foreground">Deliveries are created when they fall due. Opening Stock checks for due deliveries too.</p></div></div><Button variant="outline" onClick={() => void runDueNow()} disabled={running}><RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />{running ? "Checking…" : "Run due now"}</Button></CardContent>
       </Card>
 
       <Card>

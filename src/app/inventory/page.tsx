@@ -3,7 +3,7 @@
 import { PageHeader } from "@/components/page-header";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Boxes, Handshake, Loader2, Scale, Truck } from "lucide-react";
+import { BookOpen, Handshake, Loader2, Scale, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -280,9 +280,8 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={<><Boxes className="size-4" />Inventory foundation</>}
         title="Stock"
-        description={"Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning."}
+        description="Stock on hand, movements, and what the menu used. Negative stock is flagged for review."
         actions={<PushAlertsChip />}
       />
 

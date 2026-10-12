@@ -134,8 +134,8 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
         <CardContent className="flex gap-3 p-4">
           <Check className="mt-0.5 size-5 shrink-0 text-warning" />
           <div>
-            <p className="font-medium">Material foundation</p>
-            <p className="mt-1 text-sm text-muted-foreground">Materials define names, base units, and review status. Initialize opening stock in the Stock tab before recording manual movements or relying on numeric balances.</p>
+            <p className="font-medium">Materials</p>
+            <p className="mt-1 text-sm text-muted-foreground">Each material has a name, a base unit, and a review status. Set opening stock in the Stock tab before you record movements or rely on balances.</p>
           </div>
         </CardContent>
       </Card>
