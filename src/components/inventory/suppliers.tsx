@@ -4,19 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import {
-  Archive,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Bell,
-  CalendarClock,
-  CircleAlert,
-  ClipboardList,
-  Link2,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Truck,
+  Archive, ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, CircleAlert, ClipboardList, Link2, Pencil, Plus, RotateCcw, Truck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +31,8 @@ import { ReorderSettings } from "@/components/inventory/reorder-settings";
 import { SupplierSchedules } from "@/components/inventory/supplier-schedules";
 import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierDeliverySchedule, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
 
+export type SuppliersView = "to-order" | "orders" | "setup";
+
 type SuppliersProps = {
   materials: InventoryMaterial[];
   suppliers: InventorySupplier[];
@@ -52,6 +42,9 @@ type SuppliersProps = {
   receiveRequest?: { orderId: string; requestId: number } | null;
   /** A new order for a material, requested from the Stock tab. */
   orderRequest?: { materialId: string; requestId: number } | null;
+  /** Which part of the screen to show: the reorder list, the orders, or the setup. */
+  view: SuppliersView;
+  onViewChange: (view: SuppliersView) => void;
   onChanged: () => Promise<void>;
 };
 
@@ -272,7 +265,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
   );
 }
 
-export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, receiveRequest, orderRequest, onChanged }: SuppliersProps) {
+export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, receiveRequest, orderRequest, view, onViewChange, onChanged }: SuppliersProps) {
   const confirm = useConfirm();
   const supplierFormRef = useRef<HTMLDivElement>(null);
   const supplierItemFormRef = useRef<HTMLDivElement>(null);
@@ -608,31 +601,30 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
 
   return (
     <div className="space-y-5">
+      {view === "to-order" && (
+        <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Orders on the way</p><p className="text-xl font-semibold tabular-nums">{activeOrderCount}</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CalendarClock className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Scheduled stock-ins</p><p className="text-xl font-semibold tabular-nums">{activeScheduleCount}</p></div></CardContent></Card>
         <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><ClipboardList className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Orders in the last 7 days</p><p className="text-xl font-semibold tabular-nums">{recentOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Bell className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">In-app alerts</p><p className="font-semibold">{stockLoading ? "Loading…" : "Enabled per material"}</p></div></CardContent></Card>
       </div>
 
-      <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} onCreateOrder={(materialId) => setOrderPrefillRequest({ materialId, requestId: ++orderPrefillRequestId.current })} />
+      <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} onCreateOrder={(materialId) => { setOrderPrefillRequest({ materialId, requestId: ++orderPrefillRequestId.current }); onViewChange("orders"); }} />
 
+        </>
+      )}
+      {view === "orders" && (
+        <>
       <SupplierOrders key={orderPrefillRequest?.requestId ?? "new-order"} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} createOrderRequest={orderPrefillRequest} receiveRequest={receiveRequest} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
+        </>
+      )}
+      {view === "setup" && (
+        <>
       <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <SupplierSchedules materials={materials} suppliers={suppliers} supplierItems={supplierItems} schedules={schedules} onChanged={async () => { await onChanged(); await refreshStock(); }} />
-
-      <Card className="border-primary/15 bg-primary/5">
-        <CardContent className="flex gap-3 p-4">
-          <Truck className="mt-0.5 size-5 shrink-0 text-primary" />
-          <div>
-            <p className="font-medium">Supplier foundation</p>
-            <p className="mt-1 text-sm text-muted-foreground">Add suppliers and link them to inventory materials before setting reorder thresholds or creating supplier orders.</p>
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader><CardTitle>Supplier master</CardTitle><CardDescription>{suppliers.length} supplier{suppliers.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
@@ -741,7 +733,8 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
           {filteredSupplierMovements.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No supplier stock movements match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Supplier / reference</TableHead><TableHead>Reason and notes</TableHead><TableHead>Created by</TableHead><TableHead>Source record</TableHead></TableRow></TableHeader><TableBody>{filteredSupplierMovements.map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}<span className="block text-xs text-muted-foreground">{movement.unit}</span></TableCell><TableCell className="whitespace-nowrap text-right font-medium tabular-nums text-success">+{movement.quantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })} {movement.unit}</TableCell><TableCell className="max-w-56 whitespace-normal">{movement.notes || (movement.sourceRef.startsWith("supplier-order:") ? "Supplier order receipt" : "Recurring supplier delivery")}</TableCell><TableCell className="max-w-64 whitespace-normal">{movement.reason}{movement.sourceRef.startsWith("supplier-delivery-schedule:") && movement.notes && <span className="block text-xs text-muted-foreground">{movement.notes}</span>}</TableCell><TableCell><Badge variant={movement.createdByType === "schedule" ? "secondary" : "outline"}>{movement.createdByLabel ?? (movement.createdByType === "schedule" ? "Automated schedule" : "User / legacy record")}</Badge></TableCell><TableCell className="max-w-64 whitespace-normal font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</TableCell></TableRow>)}</TableBody></Table></div>}
         </CardContent>
       </Card>
-
+        </>
+      )}
     </div>
   );
 }

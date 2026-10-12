@@ -35,6 +35,14 @@ import type {
 } from "@/lib/types";
 
 type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes" | "suppliers";
+// Views inside the Suppliers tab. The URL tabs "to-order" and "orders" open the matching view.
+type SuppliersView = "to-order" | "orders" | "setup";
+
+function suppliersViewFromTab(tab: string | null): SuppliersView | null {
+  if (tab === "to-order" || tab === "suppliers") return "to-order";
+  if (tab === "orders") return "orders";
+  return null;
+}
 type DataTab = Exclude<InventoryTab, "usage">;
 const INVENTORY_MATERIALS_CACHE_KEY = "porcafe.inventory.materials.v1";
 
@@ -145,6 +153,7 @@ export default function InventoryPage() {
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
   const [receiveRequest, setReceiveRequest] = useState<{ orderId: string; requestId: number } | null>(null);
+  const [suppliersView, setSuppliersView] = useState<SuppliersView>("to-order");
   const [orderRequest, setOrderRequest] = useState<{ materialId: string; requestId: number } | null>(null);
   const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
   const [visitedTabs, setVisitedTabs] = useState<Set<InventoryTab>>(() => new Set(["stock"]));
@@ -266,7 +275,9 @@ export default function InventoryPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const requestedTab = params.get("tab");
-    const initialTab: InventoryTab = isInventoryTab(requestedTab) ? requestedTab : "stock";
+    const initialTab: InventoryTab = requestedTab === "to-order" || requestedTab === "orders" ? "suppliers" : isInventoryTab(requestedTab) ? requestedTab : "stock";
+    const requestedSuppliersView = suppliersViewFromTab(requestedTab);
+    if (requestedSuppliersView) setSuppliersView(requestedSuppliersView);
     const requestedReceiveOrderId = params.get("receive");
     const cachedMaterials = readCachedMaterials();
     setActiveTab(initialTab);
@@ -295,11 +306,11 @@ export default function InventoryPage() {
   }, [activeTab, loadedTabs, refresh, tabPreferencesLoaded]);
 
   useEffect(() => {
-    if (!loadedTabs.has("suppliers") || activeTab !== "suppliers" || window.location.hash !== "#reorder-overview") return;
+    if (!loadedTabs.has("suppliers") || activeTab !== "suppliers" || suppliersView !== "to-order" || window.location.hash !== "#reorder-overview") return;
     window.requestAnimationFrame(() => {
       document.getElementById("reorder-overview")?.scrollIntoView({ block: "start" });
     });
-  }, [activeTab, loadedTabs]);
+  }, [activeTab, loadedTabs, suppliersView]);
 
   const handleTabChange = useCallback((value: string) => {
     const nextTab = value as InventoryTab;
@@ -315,13 +326,15 @@ export default function InventoryPage() {
   // "Order" on a material in the Stock tab opens a new order for it on the Suppliers tab.
   const openOrderFor = useCallback((materialId: string) => {
     handleTabChange("suppliers");
+    setSuppliersView("orders");
     setOrderRequest({ materialId, requestId: Date.now() });
   }, [handleTabChange]);
 
   const openReceiveAgainst = useCallback((orderId: string) => {
     handleTabChange("suppliers");
+    setSuppliersView("orders");
     setReceiveRequest({ orderId, requestId: Date.now() });
-    window.history.replaceState(null, "", `/inventory?tab=suppliers&receive=${encodeURIComponent(orderId)}`);
+    window.history.replaceState(null, "", `/inventory?tab=orders&receive=${encodeURIComponent(orderId)}`);
   }, [handleTabChange]);
 
   const section = (tab: DataTab, children: React.ReactNode) => {
@@ -375,7 +388,18 @@ export default function InventoryPage() {
           {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
         <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className={activeTab === "suppliers" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
+          {visitedTabs.has("suppliers") && (
+            <div className="space-y-5">
+              <div role="group" aria-label="Suppliers and ordering view" className="flex flex-wrap gap-2">
+                {([["to-order", "To order"], ["orders", "Orders"], ["setup", "Supplier setup"]] as const).map(([view, label]) => (
+                  <Button key={view} type="button" size="sm" variant={suppliersView === view ? "default" : "outline"} aria-pressed={suppliersView === view} onClick={() => setSuppliersView(view)} className="min-h-11 sm:min-h-8">
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              {section("suppliers", <Suppliers view={suppliersView} onViewChange={setSuppliersView} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>

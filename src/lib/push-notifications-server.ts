@@ -13,7 +13,7 @@ import type { PushSubscription } from "web-push";
 
 const PUSH_SUBSCRIPTIONS = "pushSubscriptions";
 const PUSH_EPISODES = "pushNotificationEpisodes";
-const INVENTORY_PATH = "/inventory?tab=suppliers#reorder-overview";
+const INVENTORY_PATH = "/inventory?tab=to-order";
 
 type StoredSubscription = PushSubscription & {
   active: boolean;
