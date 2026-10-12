@@ -121,13 +121,13 @@ export function getAttentionItems(input: {
 
 const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-function previousMonthOf(monthISO: string): string {
+export function previousMonthOf(monthISO: string): string {
   const [year, month] = monthISO.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 2, 1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function daysInMonth(monthISO: string): number {
+export function daysInMonth(monthISO: string): number {
   const [year, month] = monthISO.split("-").map(Number);
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }

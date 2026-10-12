@@ -75,29 +75,17 @@ import {
   formatTimeOfDay,
   isISODate,
 } from "@/lib/dates";
-import { isValid as isValidDate } from "date-fns";
 
 import { downloadCSV } from "@/lib/csv";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
-import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
+import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
-import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
 import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from "@/lib/inventory-usage";
 
 type Period = "day" | "week" | "month";
-type ItemsView = "daily" | "performance" | "catalog" | "history";
+type ItemsView = "daily" | "catalog" | "history";
 
-const ITEMS_VIEWS: ItemsView[] = ["daily", "performance", "catalog", "history"];
+const ITEMS_VIEWS: ItemsView[] = ["daily", "catalog", "history"];
 
 function isItemsView(value: string): boolean {
   return ITEMS_VIEWS.some((view) => view === value);
@@ -158,34 +146,6 @@ async function calculateSavedDailyUsage(log: DailyItemLog) {
     return null;
   }
 }
-
-function formatQuantity(value: number): string {
-  return value.toLocaleString("id-ID", { maximumFractionDigits: 1 });
-}
-
-const ITEM_WEEKDAY_METRICS: WeekdayMetricOption[] = [
-  {
-    key: "average",
-    label: "Average Main portions",
-    valueLabel: "Average / selling day",
-    getValue: (row) => row.average,
-    formatValue: formatQuantity,
-  },
-  {
-    key: "total",
-    label: "Total Main portions",
-    valueLabel: "Total recorded",
-    getValue: (row) => row.total,
-    formatValue: formatQuantity,
-  },
-  {
-    key: "records",
-    label: "Item rows",
-    valueLabel: "Rows",
-    getValue: (row) => row.recordCount,
-    formatValue: formatQuantity,
-  },
-];
 
 const DAILY_PAYMENT_METHODS = [
   { key: "cash", label: "Cash", icon: Banknote },
@@ -607,23 +567,11 @@ function ItemsWorkspace() {
   // Saved-at time of unsaved quantities restored from this browser session, if any.
   const [draftNotice, setDraftNotice] = useState<number | null>(null);
   const [dailySaving, setDailySaving] = useState(false);
-  const [period, setPeriod] = useState<Period>("day");
-  const [itemFilter, setItemFilter] = useState<string>("all");
-  const [weekdayFrom, setWeekdayFrom] = useState("");
-  const [weekdayTo, setWeekdayTo] = useState("");
-  const [weekdayMetric, setWeekdayMetric] = useState("average");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("all");
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("active");
   const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
   const [saleSort, setSaleSort] = useState<Sort<"date" | "item" | "category" | "qty">>(null);
-
-  // Main-portions navigator
-  const [mainPeriod, setMainPeriod] = useState<Period>("day");
-  const [mainCursor, setMainCursor] = useState(todayISO());
-  const [itemDetailItemId, setItemDetailItemId] = useState("all");
-  const [itemDetailFrom, setItemDetailFrom] = useState(`${monthKey(todayISO())}-01`);
-  const [itemDetailTo, setItemDetailTo] = useState(todayISO());
 
   // Recent item sales filter
   const [recentFilter, setRecentFilter] = useState<"all" | Period>("all");
@@ -1177,74 +1125,6 @@ function ItemsWorkspace() {
     }
   }
 
-  const performanceSummary = useMemo(() => {
-    const itemTotals = new Map<string, { name: string; qty: number }>();
-    const mainDayTotals = new Map<string, number>();
-    let mainTotalQty = 0;
-    for (const sale of performanceSales) {
-      const item = itemTotals.get(sale.itemId) ?? { name: sale.itemName, qty: 0 };
-      item.qty += sale.qty;
-      itemTotals.set(sale.itemId, item);
-      if ((categoryByItemId.get(sale.itemId) ?? sale.category) === "Main") {
-        mainTotalQty += sale.qty;
-        mainDayTotals.set(sale.date, (mainDayTotals.get(sale.date) ?? 0) + sale.qty);
-      }
-    }
-
-    const totalQty = performanceSales.reduce((total, sale) => total + sale.qty, 0);
-    const loggedDays = new Set([
-      ...dailyLogs.map((log) => log.date),
-      ...sales.map((sale) => sale.date),
-    ]).size;
-    const topItem = [...itemTotals.values()].sort((a, b) => b.qty - a.qty)[0] ?? null;
-    const bestMainDay = [...mainDayTotals.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
-
-    return {
-      totalQty,
-      mainTotalQty,
-      loggedDays,
-      averageMainQty: loggedDays ? mainTotalQty / loggedDays : 0,
-      topItem,
-      bestMainDay,
-    };
-  }, [categoryByItemId, dailyLogs, performanceSales, sales]);
-
-  const itemDetailRows = useMemo(() => {
-    if (itemDetailItemId === "all" || !itemDetailFrom || !itemDetailTo || itemDetailFrom > itemDetailTo) return [];
-
-    const start = parseISO(itemDetailFrom);
-    const end = parseISO(itemDetailTo);
-    if (!isValidDate(start) || !isValidDate(end)) return [];
-
-    const salesByDate = new Map<string, number>();
-    for (const sale of performanceSales) {
-      if (sale.itemId !== itemDetailItemId) continue;
-      salesByDate.set(sale.date, (salesByDate.get(sale.date) ?? 0) + sale.qty);
-    }
-    const logsByDate = new Map(dailyLogs.map((log) => [log.date, log]));
-
-    return eachDayOfInterval({ start, end }).map((day) => {
-      const date = toISODate(day);
-      const log = logsByDate.get(date);
-      const qty = salesByDate.get(date) ?? 0;
-      const status = !log ? (qty > 0 ? "Sold" : "Not logged") : log.status === "no_sales" ? "No sales" : qty > 0 ? "Sold" : "0 sold";
-      return { date, label: formatDisplay(date), qty, status };
-    });
-  }, [dailyLogs, itemDetailFrom, itemDetailItemId, itemDetailTo, performanceSales]);
-
-  const itemDetailSummary = useMemo(() => {
-    const totalQty = itemDetailRows.reduce((total, row) => total + row.qty, 0);
-    const loggedDays = itemDetailRows.filter((row) => row.status !== "Not logged").length;
-    return {
-      totalQty,
-      loggedDays,
-      averageQty: loggedDays ? totalQty / loggedDays : 0,
-      salesDays: itemDetailRows.filter((row) => row.qty > 0).length,
-      noSalesDays: itemDetailRows.filter((row) => row.status === "No sales").length,
-      unloggedDays: itemDetailRows.filter((row) => row.status === "Not logged").length,
-    };
-  }, [itemDetailRows]);
-
   async function removeSale(id: string) {
     const sale = sales.find((candidate) => candidate.id === id);
     if (!sale) return;
@@ -1263,126 +1143,6 @@ function ItemsWorkspace() {
       console.error("Failed to delete item sale:", err);
       toast.error(err instanceof Error ? err.message : "Could not delete item sale");
     }
-  }
-
-  // ---- Recap ----
-  const filteredSales = useMemo(
-    () => (itemFilter === "all" ? performanceSales : performanceSales.filter((s) => s.itemId === itemFilter)),
-    [itemFilter, performanceSales]
-  );
-
-  const weekdaySales = useMemo(
-    () => filteredSales.filter((sale) => (categoryByItemId.get(sale.itemId) ?? sale.category) === "Main"),
-    [categoryByItemId, filteredSales]
-  );
-
-  const defaultWeekdayFrom = useMemo(() => {
-    const dates = weekdaySales.map((sale) => sale.date).filter(Boolean).sort();
-    return dates[0] ?? todayISO();
-  }, [weekdaySales]);
-  const defaultWeekdayTo = useMemo(() => {
-    const dates = weekdaySales.map((sale) => sale.date).filter(Boolean).sort();
-    return dates[dates.length - 1] ?? todayISO();
-  }, [weekdaySales]);
-  const selectedWeekdayFrom = weekdayFrom || defaultWeekdayFrom;
-  const selectedWeekdayTo = weekdayTo || defaultWeekdayTo;
-  const weekdaySummary = useMemo(
-    () => analyzeWeekdayPattern(weekdaySales, {
-      from: selectedWeekdayFrom,
-      to: selectedWeekdayTo,
-      getDate: (sale) => sale.date,
-      getValue: (sale) => sale.qty,
-      occurrenceMode: "observed",
-    }),
-    [selectedWeekdayFrom, selectedWeekdayTo, weekdaySales]
-  );
-
-  const weekdayTopItems = useMemo(() => {
-    const totalsByWeekday = new Map<number, Map<string, { name: string; qty: number }>>();
-    for (const sale of weekdaySales) {
-      if (sale.date < selectedWeekdayFrom || sale.date > selectedWeekdayTo) continue;
-      const index = weekdayIndex(sale.date);
-      if (index === null) continue;
-      const itemTotals = totalsByWeekday.get(index) ?? new Map<string, { name: string; qty: number }>();
-      const current = itemTotals.get(sale.itemId) ?? { name: sale.itemName, qty: 0 };
-      current.qty += sale.qty;
-      itemTotals.set(sale.itemId, current);
-      totalsByWeekday.set(index, itemTotals);
-    }
-
-    return weekdaySummary.rows.map((row) => {
-      const top = [...(totalsByWeekday.get(row.index)?.values() ?? [])]
-        .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name))[0] ?? null;
-      return { weekday: row.label, top };
-    });
-  }, [selectedWeekdayFrom, selectedWeekdayTo, weekdaySales, weekdaySummary.rows]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; qty: number }>();
-    for (const s of filteredSales) {
-      const key = period === "day" ? s.date : period === "week" ? weekKey(s.date) : monthKey(s.date);
-      const label =
-        period === "day" ? formatDisplay(s.date) : period === "week" ? formatWeekDisplay(key) : formatMonthDisplay(key);
-      const cur = map.get(key) ?? { key, label, qty: 0 };
-      cur.qty += s.qty;
-      map.set(key, cur);
-    }
-    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-  }, [filteredSales, period]);
-
-  const chartData = grouped.slice(-20).map((g) => ({
-    label: period === "day" ? formatDayDisplay(g.key) : period === "week" ? formatWeekDisplay(g.key).replace("Week of ", "") : g.label,
-    qty: g.qty,
-  }));
-
-  const performanceTakeaway = chartData.length < 2
-    ? chartData.length === 1
-      ? `One period is available at ${chartData[0].qty.toLocaleString()} portions.`
-      : "No item sales are available for this view."
-    : chartData[chartData.length - 1].qty >= chartData[chartData.length - 2].qty
-      ? `The latest period is at or above the previous period at ${chartData[chartData.length - 1].qty.toLocaleString()} portions.`
-      : `The latest period is below the previous period at ${chartData[chartData.length - 1].qty.toLocaleString()} portions.`;
-
-  const topSellers = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const s of performanceSales) map.set(s.itemName, (map.get(s.itemName) ?? 0) + s.qty);
-    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
-  }, [performanceSales]);
-
-  const topSellersTakeaway = topSellers.length > 0
-    ? `${topSellers[0][0]} leads with ${topSellers[0][1].toLocaleString()} portions.`
-    : "No item sales are available yet.";
-
-  const mainSales = useMemo(
-    () => performanceSales.filter((s) => (categoryByItemId.get(s.itemId) ?? s.category) === "Main"),
-    [categoryByItemId, performanceSales]
-  );
-
-  const mainPeriodSummary = useMemo(() => {
-    const key =
-      mainPeriod === "day" ? mainCursor : mainPeriod === "week" ? weekKey(mainCursor) : monthKey(mainCursor);
-    const label =
-      mainPeriod === "day"
-        ? formatDisplay(mainCursor)
-        : mainPeriod === "week"
-          ? formatWeekDisplay(key)
-          : formatMonthDisplay(key);
-    const total = mainSales
-      .filter(
-        (s) =>
-          (mainPeriod === "day" ? s.date : mainPeriod === "week" ? weekKey(s.date) : monthKey(s.date)) === key
-      )
-      .reduce((a, s) => a + s.qty, 0);
-    return { label, total };
-  }, [mainSales, mainPeriod, mainCursor]);
-
-  function navigateMainPeriod(dir: 1 | -1) {
-    setMainCursor((c) => {
-      const d = parseISO(c);
-      if (mainPeriod === "day") return toISODate(dir === 1 ? addDays(d, 1) : subDays(d, 1));
-      if (mainPeriod === "week") return toISODate(dir === 1 ? addWeeks(d, 1) : subWeeks(d, 1));
-      return toISODate(dir === 1 ? addMonths(d, 1) : subMonths(d, 1));
-    });
   }
 
   function navigateRecent(dir: 1 | -1) {
@@ -1484,13 +1244,6 @@ function ItemsWorkspace() {
     return dir === "asc" ? sorted : sorted.reverse();
   }, [recentFilteredSales, saleSort, categoryByItemId]);
 
-  function exportCSV() {
-    downloadCSV(
-      `porcafe-items-${period}-${todayISO()}.csv`,
-      grouped.map((g) => ({ period: g.label, qty: g.qty }))
-    );
-  }
-
   function exportHistoryCSV() {
     downloadCSV(
       `porcafe-item-history-${todayISO()}.csv`,
@@ -1500,16 +1253,6 @@ function ItemsWorkspace() {
         category: categoryByItemId.get(sale.itemId) ?? sale.category,
         qty: sale.qty,
       }))
-    );
-  }
-
-  function exportItemDetailCSV() {
-    const item = menuItems.find((menuItem) => menuItem.id === itemDetailItemId);
-    if (!item || itemDetailRows.length === 0) return;
-    const filename = item.name.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    downloadCSV(
-      `porcafe-${filename || "item"}-${itemDetailFrom}-to-${itemDetailTo}.csv`,
-      itemDetailRows.map((row) => ({ date: row.date, item: item.name, qty: row.qty, status: row.status }))
     );
   }
 
@@ -1523,14 +1266,14 @@ function ItemsWorkspace() {
           <p className="mt-1 text-sm text-muted-foreground">
           {activeView === "daily"
               ? "Record portions and confirm revenue for one operating day."
-              : "Manage the menu and review item performance."}
+              : "Manage the menu and review recorded item sales."}
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
         <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary />
         {activeView === "daily" && (
           <Button asChild variant="outline" className="flex-1 sm:flex-none">
-            <Link href="/sales">
+            <Link href="/reports?tab=revenue">
               <ExternalLink className="size-4" /> Open revenue
             </Link>
           </Button>
@@ -1600,7 +1343,6 @@ function ItemsWorkspace() {
       >
         <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[32rem]">
           <TabsTrigger id="items-tab-daily" aria-controls="items-panel-daily" value="daily" className="rounded-lg px-3">Daily close</TabsTrigger>
-          <TabsTrigger id="items-tab-performance" aria-controls="items-panel-performance" value="performance" className="rounded-lg px-3">Performance</TabsTrigger>
           <TabsTrigger id="items-tab-catalog" aria-controls="items-panel-catalog" value="catalog" className="rounded-lg px-3">Catalog</TabsTrigger>
           <TabsTrigger id="items-tab-history" aria-controls="items-panel-history" value="history" className="rounded-lg px-3">History</TabsTrigger>
         </TabsList>
@@ -1857,7 +1599,7 @@ function ItemsWorkspace() {
                 </div>
               </div>
               <Button asChild variant="outline" className="w-full border-primary/20 bg-surface text-primary hover:bg-surface-elevated">
-                <Link href="/sales">
+                <Link href="/reports?tab=revenue">
                   Open revenue <ExternalLink className="size-4" />
                 </Link>
               </Button>
@@ -1908,413 +1650,6 @@ function ItemsWorkspace() {
             </div>
           </div>
         )}
-      </div>
-      )}
-
-      {activeView === "performance" && (
-      <div id="items-panel-performance" role="tabpanel" aria-labelledby="items-tab-performance" tabIndex={0} className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card size="sm">
-          <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total portions</p>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">
-              {loading ? "…" : performanceSummary.totalQty.toLocaleString()}
-            </p>
-            <p className="text-xs text-muted-foreground">Across tracked item history</p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Logged days</p>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">
-              {loading ? "…" : performanceSummary.loggedDays.toLocaleString()}
-            </p>
-            <p className="text-xs text-muted-foreground">Includes explicit no-sales days</p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Average Main portions per day</p>
-            <p className="text-2xl font-semibold tracking-tight text-foreground">
-              {loading ? "…" : performanceSummary.averageMainQty.toFixed(1)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {loading
-                ? "Loading…"
-                : performanceSummary.bestMainDay
-                  ? `Best Main day: ${formatDisplay(performanceSummary.bestMainDay[0])} · ${performanceSummary.bestMainDay[1].toLocaleString()}`
-                  : "Main portions per logged day"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent className="min-w-0 space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Top item</p>
-            <p className="truncate text-lg font-semibold tracking-tight text-foreground">
-              {loading ? "…" : performanceSummary.topItem?.name ?? "No data yet"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {loading ? "Loading…" : performanceSummary.topItem ? `${performanceSummary.topItem.qty.toLocaleString()} portions` : "Start logging to see rankings"}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle>Item detail</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">See one item&apos;s quantity across a date or date range.</p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={exportItemDetailCSV}
-            disabled={itemDetailItemId === "all" || itemDetailRows.length === 0}
-          >
-            <Download className="size-3.5" /> CSV
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 items-start gap-3 md:grid-cols-[minmax(0,1fr)_10rem_10rem]">
-            <div className="col-span-2 min-w-0 space-y-1 md:col-span-1">
-              <Label htmlFor="item-detail-item" className="text-xs text-muted-foreground">Item</Label>
-              <Select value={itemDetailItemId} onValueChange={setItemDetailItemId}>
-                <SelectTrigger id="item-detail-item" className="w-full">
-                  <SelectValue placeholder="Select an item" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Select an item</SelectItem>
-                  {menuItems.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}{item.active === false ? " (Archived)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <Label htmlFor="item-detail-from" className="text-xs text-muted-foreground">From</Label>
-              <Input
-                id="item-detail-from"
-                aria-label={`Item detail start date: ${formatDisplay(itemDetailFrom)}`}
-                type="date"
-                value={itemDetailFrom}
-                onChange={(event) => setItemDetailFrom(event.target.value)}
-              />
-              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailFrom)}</p>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <Label htmlFor="item-detail-to" className="text-xs text-muted-foreground">To</Label>
-              <Input
-                id="item-detail-to"
-                aria-label={`Item detail end date: ${formatDisplay(itemDetailTo)}`}
-                type="date"
-                value={itemDetailTo}
-                onChange={(event) => setItemDetailTo(event.target.value)}
-              />
-              <p className="text-xs leading-4 text-muted-foreground">{formatDayDisplay(itemDetailTo)}</p>
-            </div>
-          </div>
-
-          {itemDetailItemId === "all" ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-              Select an item to see its quantity breakdown.
-            </div>
-          ) : itemDetailFrom > itemDetailTo ? (
-            <div className="rounded-xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger">
-              The start date must be on or before the end date.
-            </div>
-          ) : loading ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground" aria-live="polite">
-              Loading item detail…
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <div className="rounded-xl bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Total sold</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.totalQty.toLocaleString()}</p>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Average / logged day</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.averageQty.toFixed(1)}</p>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Sales days</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.salesDays}</p>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">No-sales days</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.noSalesDays}</p>
-                </div>
-                <div className="rounded-xl bg-muted p-3">
-                  <p className="text-xs text-muted-foreground">Unlogged days</p>
-                  <p className="mt-1 text-xl font-semibold text-foreground">{itemDetailSummary.unloggedDays}</p>
-                </div>
-              </div>
-
-              <ResponsiveContainer width="100%" height={190}>
-                <BarChart data={itemDetailRows.map((row) => ({ label: formatDayDisplay(row.date), qty: row.qty }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
-                  <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
-                      fontSize: 12,
-                    }}
-                    cursor={{ fill: "rgba(0,0,0,0.03)" }}
-                  />
-                  <Bar dataKey="qty" fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={32} />
-                </BarChart>
-              </ResponsiveContainer>
-
-              <div
-                className="max-h-72 overflow-y-auto rounded-xl border"
-                role="region"
-                tabIndex={0}
-                aria-label="Item detail table"
-              >
-                <Table className="min-w-[28rem]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {itemDetailRows.map((row) => (
-                      <TableRow key={row.date}>
-                        <TableCell>{row.label}</TableCell>
-                        <TableCell className="text-right font-medium">{row.qty.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Badge variant={row.status === "Sold" ? "default" : row.status === "Not logged" ? "outline" : "secondary"}>
-                            {row.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <p className="border-t border-border pt-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Takeaway:</span> {itemDetailSummary.totalQty.toLocaleString()} portions across {itemDetailSummary.loggedDays} logged days, including {itemDetailSummary.noSalesDays} no-sales days.
-              </p>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Main portions navigator + Top sellers */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Soup className="size-4" />
-              </span>
-              <CardTitle>Portions sold (Main)</CardTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tabs
-                value={mainPeriod}
-                onValueChange={(v) => {
-                  setMainPeriod(v as Period);
-                  setMainCursor(todayISO());
-                }}
-              >
-                <TabsList>
-                  <TabsTrigger value="day">Day</TabsTrigger>
-                  <TabsTrigger value="week">Week</TabsTrigger>
-                  <TabsTrigger value="month">Month</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {mainCursor !== todayISO() && (
-                <Button variant="outline" size="sm" onClick={() => setMainCursor(todayISO())}>
-                  Today
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-1 flex-col justify-center">
-            <div className="flex items-center justify-between gap-3">
-              <Button variant="outline" size="icon-lg" onClick={() => navigateMainPeriod(-1)} aria-label="Previous main portions period">
-                <ChevronLeft className="size-4" />
-              </Button>
-              <div className="text-center">
-                <p className="text-sm text-muted-foreground">{mainPeriodSummary.label}</p>
-                <p className="text-5xl font-semibold tracking-tight text-foreground">
-                  {loading ? "…" : mainPeriodSummary.total}{" "}
-                  <span className="text-base font-normal text-muted-foreground">portions</span>
-                </p>
-              </div>
-              <Button variant="outline" size="icon-lg" onClick={() => navigateMainPeriod(1)} aria-label="Next main portions period">
-                <ChevronRight className="size-4" />
-              </Button>
-            </div>
-            {mainSales.length === 0 && !loading && (
-              <p className="mt-4 text-center text-sm text-muted-foreground">No Main-category sales logged yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2.5">
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                <Trophy className="size-4" />
-              </span>
-              <CardTitle>Top sellers (all time)</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <p className="py-4 text-center text-sm text-muted-foreground" aria-live="polite">Loading top sellers…</p>
-            ) : topSellers.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">No data yet</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={Math.max(160, topSellers.length * 32)}>
-                <BarChart data={topSellers.map(([name, qty]) => ({ name, qty }))} layout="vertical" margin={{ left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" horizontal={false} />
-                  <XAxis type="number" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis dataKey="name" type="category" fontSize={12} tickLine={false} axisLine={false} width={110} />
-                  <Tooltip contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
-                      fontSize: 12,
-                    }}
-                    cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                  <Bar dataKey="qty" fill="var(--primary-hover)" radius={[0, 6, 6, 0]} maxBarSize={22} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-            {!loading && <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {topSellersTakeaway}</p>}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recap */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-          <CardTitle>Recap</CardTitle>
-          <div className="flex items-center gap-2">
-            <Select value={itemFilter} onValueChange={setItemFilter}>
-              <SelectTrigger size="sm" className="w-[140px]">
-                <SelectValue placeholder="All items" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All items</SelectItem>
-                {menuItems.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm" onClick={exportCSV}>
-              <Download className="size-3.5" /> CSV
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
-            <TabsList>
-              <TabsTrigger value="day">By day</TabsTrigger>
-              <TabsTrigger value="week">By week</TabsTrigger>
-              <TabsTrigger value="month">By month</TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          {chartData.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-              {loading ? "Loading…" : "No item sales logged yet"}
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
-                <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
-                <Tooltip contentStyle={{
-                      borderRadius: 12,
-                      border: "1px solid var(--border)",
-                      boxShadow: "0 8px 24px -12px rgba(0,0,0,0.18)",
-                      fontSize: 12,
-                    }}
-                    cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                <Bar dataKey="qty" fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={40} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-          {!loading && <p className="border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {performanceTakeaway}</p>}
-        </CardContent>
-      </Card>
-
-      <WeekdayPatternAnalysis
-        id="items-weekday-pattern"
-        title="Main portions sold by weekday"
-        description="Compare recorded Main portions across weekdays to spot recurring patterns in the selected range."
-        rangeDescription="Uses the existing canonical Main-item performance stream. Add Ons and no-sale days are excluded; the data has item rows, not customer transaction IDs."
-        from={selectedWeekdayFrom}
-        to={selectedWeekdayTo}
-        onFromChange={setWeekdayFrom}
-        onToChange={setWeekdayTo}
-        summary={weekdaySummary}
-        metrics={ITEM_WEEKDAY_METRICS}
-        activeMetric={weekdayMetric}
-        onMetricChange={setWeekdayMetric}
-        loading={loading}
-        error={loadError}
-        emptyLabel="No Main portions fall in this range. Try widening the dates or log a daily close."
-        totalLabel="Main portions in range"
-        formatTotal={formatQuantity}
-        formatAverage={formatQuantity}
-        recordLabel="Main item rows"
-        averageBasis="observed"
-        occurrenceLabel="Selling days"
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Main item by weekday</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">The leading Main item for each weekday in the same range and item filter.</p>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className="rounded-xl border border-border p-5 text-center text-sm text-muted-foreground" aria-live="polite">Loading top items…</p>
-          ) : loadError ? (
-            <p className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center text-sm text-muted-foreground">Top-item analysis is unavailable while the data connection is being restored.</p>
-          ) : weekdaySummary.recordCount === 0 ? (
-            <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">No item sales are available for this range.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border" role="region" tabIndex={0} aria-label="Top item by weekday table">
-              <Table className="min-w-[28rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Weekday</TableHead>
-                    <TableHead>Top item</TableHead>
-                    <TableHead className="text-right">Portions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {weekdayTopItems.map(({ weekday, top }) => (
-                    <TableRow key={weekday}>
-                      <TableCell className="font-medium">{weekday}</TableCell>
-                      <TableCell>{top?.name ?? <span className="text-muted-foreground">No recorded item sales</span>}</TableCell>
-                      <TableCell className="text-right tabular-nums">{top ? formatQuantity(top.qty) : "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
       </div>
       )}
 

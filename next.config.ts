@@ -13,6 +13,19 @@ const nextConfig: NextConfig = {
       static: 30,
     },
   },
+  async redirects() {
+    return [
+      // Revenue is reported in Reports now. The old entry page is retired.
+      { source: "/sales", destination: "/reports?tab=revenue", permanent: false },
+      // Item performance moved to Reports. Other Daily close views keep their URLs.
+      {
+        source: "/items",
+        has: [{ type: "query", key: "view", value: "performance" }],
+        destination: "/reports?tab=items",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

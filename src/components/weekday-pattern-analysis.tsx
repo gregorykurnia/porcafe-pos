@@ -25,8 +25,9 @@ type WeekdayPatternAnalysisProps = {
   rangeDescription: string;
   from: string;
   to: string;
-  onFromChange: (value: string) => void;
-  onToChange: (value: string) => void;
+  /** Omit both to hide the range inputs, for a range that is set elsewhere. The range is still shown as text. */
+  onFromChange?: (value: string) => void;
+  onToChange?: (value: string) => void;
   summary: WeekdayPatternSummary;
   metrics: WeekdayMetricOption[];
   activeMetric: string;
@@ -121,28 +122,30 @@ export function WeekdayPatternAnalysis({
           <CardTitle>{title}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="space-y-1.5">
-            <Label htmlFor={`${id}-from`}>From</Label>
-            <Input
-              id={`${id}-from`}
-              type="date"
-              value={from}
-              onChange={(event) => onFromChange(event.target.value)}
-              aria-label={`${title} start date`}
-            />
+        {onFromChange && onToChange && (
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-from`}>From</Label>
+              <Input
+                id={`${id}-from`}
+                type="date"
+                value={from}
+                onChange={(event) => onFromChange(event.target.value)}
+                aria-label={`${title} start date`}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-to`}>To</Label>
+              <Input
+                id={`${id}-to`}
+                type="date"
+                value={to}
+                onChange={(event) => onToChange(event.target.value)}
+                aria-label={`${title} end date`}
+              />
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`${id}-to`}>To</Label>
-            <Input
-              id={`${id}-to`}
-              type="date"
-              value={to}
-              onChange={(event) => onToChange(event.target.value)}
-              aria-label={`${title} end date`}
-            />
-          </div>
-        </div>
+        )}
         <p className="text-xs text-muted-foreground">
           {rangeDescription} <span className="font-medium text-foreground">{rangeLabel(summary)}</span>
         </p>

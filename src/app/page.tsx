@@ -374,7 +374,7 @@ export default function Dashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Sales trend · {formatMonthLabel(thisMonth)}</CardTitle>
             <Link
-              href="/sales"
+              href="/reports?tab=revenue"
               className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
             >
               View recap <ArrowRight className="size-3.5" />

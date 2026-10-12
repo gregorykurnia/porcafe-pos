@@ -6,11 +6,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigationGuard } from "@/components/navigation-guard";
-import { Boxes, LayoutDashboard, Wallet, UtensilsCrossed } from "lucide-react";
+import { Boxes, ChartNoAxesColumn, LayoutDashboard, UtensilsCrossed } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/sales", label: "Sales", icon: Wallet },
+  { href: "/reports", label: "Reports", icon: ChartNoAxesColumn },
   { href: "/items", label: "Daily close", icon: UtensilsCrossed },
   { href: "/inventory", label: "Inventory", icon: Boxes },
 ];
