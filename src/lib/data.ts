@@ -15,12 +15,15 @@ import {
   orderBy,
   where,
   runTransaction,
+  getCountFromServer,
+  type Query,
   type QueryConstraint,
 } from "firebase/firestore";
 import { addDays, addMonths, addWeeks, format, isValid, parseISO } from "date-fns";
 import { db } from "./firebase";
 import { formatDisplay } from "./dates";
 import { ConflictError, isStale, recordVersion } from "./concurrency";
+import type { MaterialUsageCounts } from "./material-usage";
 import type {
   SalesEntry,
   MenuItem,
@@ -422,6 +425,25 @@ function mapInventoryRecipe(id: string, data: Record<string, unknown>): Inventor
 
 function mapInventoryRecipeLine(id: string, data: Record<string, unknown>): InventoryRecipeLine {
   return { id, ...(data as Omit<InventoryRecipeLine, "id">) };
+}
+
+// Server-side counts of records that refer to a material, used to decide whether
+// its base unit can still change.
+export async function getMaterialUsageCounts(materialId: string): Promise<MaterialUsageCounts> {
+  const countOf = async (q: Query) => (await getCountFromServer(q)).data().count;
+  const [movements, recipeLines, supplierItems, schedules] = await Promise.all([
+    countOf(query(inventoryMovementsCol, where("materialId", "==", materialId))),
+    countOf(
+      query(
+        inventoryRecipeLinesCol,
+        where("ingredientType", "==", "material"),
+        where("ingredientId", "==", materialId)
+      )
+    ),
+    countOf(query(inventorySupplierItemsCol, where("materialId", "==", materialId))),
+    countOf(query(inventorySupplierDeliverySchedulesCol, where("materialId", "==", materialId))),
+  ]);
+  return { movements, recipeLines, supplierItems, schedules };
 }
 
 export async function listInventoryMaterials(): Promise<InventoryMaterial[]> {

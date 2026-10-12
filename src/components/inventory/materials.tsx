@@ -10,10 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { upsertInventoryMaterial } from "@/lib/data";
+import { getMaterialUsageCounts, upsertInventoryMaterial } from "@/lib/data";
 import { INVENTORY_UNITS, normalizeInventoryName } from "@/lib/inventory";
 import { inventoryMaterialId } from "@/lib/inventory-source";
+import { describeUnitChangeBlock } from "@/lib/material-usage";
 import type { InventoryMaterial, InventoryUnit } from "@/lib/types";
+import { useConfirm } from "@/components/confirm-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type MaterialsProps = {
   materials: InventoryMaterial[];
@@ -25,6 +28,39 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
   const [unit, setUnit] = useState<InventoryUnit>("g");
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [unitCheckId, setUnitCheckId] = useState<string | null>(null);
+  const [unitDialogOpen, setUnitDialogOpen] = useState(false);
+  const [unitChange, setUnitChange] = useState<{ material: InventoryMaterial; blocked: string | null; nextUnit: InventoryUnit } | null>(null);
+  const confirm = useConfirm();
+
+  // The unit is only changeable while nothing refers to the material. Otherwise the
+  // existing quantities would silently change meaning.
+  async function openUnitChange(material: InventoryMaterial) {
+    setUnitCheckId(material.id);
+    try {
+      const counts = await getMaterialUsageCounts(material.id);
+      setUnitChange({ material, blocked: describeUnitChangeBlock(material, counts), nextUnit: material.baseUnit });
+      setUnitDialogOpen(true);
+    } catch (error) {
+      console.error("Failed to check material usage", error);
+      toast.error("Could not check where this material is used. Try again.");
+    } finally {
+      setUnitCheckId(null);
+    }
+  }
+
+  async function applyUnitChange() {
+    const pending = unitChange;
+    setUnitDialogOpen(false);
+    if (!pending || pending.blocked || pending.nextUnit === pending.material.baseUnit) return;
+    const ok = await confirm({
+      title: `Change ${pending.material.name} to ${pending.nextUnit}?`,
+      body: "Nothing uses this material yet, so existing quantities are not affected.",
+      confirmLabel: "Change unit",
+    });
+    if (!ok) return;
+    await updateMaterial(pending.material, { baseUnit: pending.nextUnit });
+  }
 
   async function addMaterial() {
     const trimmedName = name.trim();
@@ -119,7 +155,14 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
                     <TableRow key={material.id} className={!material.active ? "bg-surface-elevated" : undefined}>
                       <TableCell><span className="font-medium">{material.name}</span><span className="block font-mono text-[11px] text-muted-foreground">{material.id}</span></TableCell>
                       <TableCell className="text-muted-foreground">{material.type === "raw_ingredient" ? "Raw ingredient" : material.type}</TableCell>
-                      <TableCell className="min-w-32"><Select value={material.baseUnit} disabled={busy} onValueChange={(value) => void updateMaterial(material, { baseUnit: value as InventoryUnit })}><SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></TableCell>
+                      <TableCell className="min-w-32">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm">{INVENTORY_UNITS.find((option) => option.value === material.baseUnit)?.label ?? material.baseUnit}</span>
+                          <Button size="sm" variant="outline" disabled={busy || unitCheckId === material.id} onClick={() => void openUnitChange(material)}>
+                            {unitCheckId === material.id ? "Checking…" : "Change unit…"}
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell>{material.reviewStatus === "approved" ? <Badge variant="default">Approved</Badge> : <Badge variant="destructive">Needs review</Badge>}</TableCell>
                       <TableCell><Badge variant={material.active ? "secondary" : "outline"}>{material.active ? "Active" : "Archived"}</Badge></TableCell>
                       <TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy} onClick={() => void updateMaterial(material, { active: !material.active })}>{material.active ? <><Archive className="size-3.5" />Archive</> : <><RotateCcw className="size-3.5" />Restore</>}</Button></TableCell>
@@ -131,6 +174,49 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          {unitChange?.blocked ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="pr-8">Base unit is locked</DialogTitle>
+                <DialogDescription>{unitChange.blocked}</DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setUnitDialogOpen(false)}>Close</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="pr-8">Change base unit</DialogTitle>
+                <DialogDescription>
+                  {unitChange?.material.name} is in {unitChange?.material.baseUnit}. Nothing uses it yet, so the unit can change.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-1.5">
+                <Label htmlFor="material-new-unit">New base unit</Label>
+                <Select
+                  value={unitChange?.nextUnit}
+                  onValueChange={(value) => setUnitChange((current) => (current ? { ...current, nextUnit: value as InventoryUnit } : current))}
+                >
+                  <SelectTrigger id="material-new-unit" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setUnitDialogOpen(false)}>Cancel</Button>
+                <Button onClick={() => void applyUnitChange()} disabled={unitChange?.nextUnit === unitChange?.material.baseUnit}>
+                  Continue
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
