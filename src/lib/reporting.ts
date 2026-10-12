@@ -118,3 +118,71 @@ export function getAttentionItems(input: {
   }
   return items;
 }
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function previousMonthOf(monthISO: string): string {
+  const [year, month] = monthISO.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function daysInMonth(monthISO: string): number {
+  const [year, month] = monthISO.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/** Revenue from the 1st of a month through a day of it. */
+export function totalThrough(sales: { date: string; total: number }[], monthISO: string, dayOfMonth: number): number {
+  return sales
+    .filter((sale) => sale.date.startsWith(`${monthISO}-`) && Number(sale.date.slice(8, 10)) <= dayOfMonth)
+    .reduce((sum, sale) => sum + sale.total, 0);
+}
+
+/**
+ * Month to date against the same days of the previous month. A short previous month is
+ * compared through its last day, so the label always says which days were compared.
+ */
+export function monthToDateComparison(
+  sales: { date: string; total: number }[],
+  monthISO: string,
+  dayOfMonth: number
+): { current: number; previous: number; deltaPct: number | null; label: string } {
+  const previousMonth = previousMonthOf(monthISO);
+  const comparedDays = Math.min(dayOfMonth, daysInMonth(previousMonth));
+  const current = totalThrough(sales, monthISO, dayOfMonth);
+  const previous = totalThrough(sales, previousMonth, comparedDays);
+  const previousLabel = `1–${comparedDays} ${SHORT_MONTHS[Number(previousMonth.slice(5, 7)) - 1]}`;
+  return {
+    current,
+    previous,
+    deltaPct: previous > 0 ? (current - previous) / previous : null,
+    label: previousLabel,
+  };
+}
+
+/** Every day of the month, with null where no revenue was recorded, so gaps stay gaps on the chart. */
+export function calendarMonthTrend(sales: { date: string; total: number }[], monthISO: string): { date: string; total: number | null }[] {
+  const byDate = new Map<string, number>();
+  for (const sale of sales) {
+    if (sale.date.startsWith(`${monthISO}-`)) byDate.set(sale.date, (byDate.get(sale.date) ?? 0) + sale.total);
+  }
+  return Array.from({ length: daysInMonth(monthISO) }, (_, index) => {
+    const date = `${monthISO}-${String(index + 1).padStart(2, "0")}`;
+    return { date, total: byDate.get(date) ?? null };
+  });
+}
+
+/** Days with at least one recorded sale. Two entries on the same day count once. */
+export function distinctDaysLogged(sales: { date: string }[], monthISO: string): number {
+  return new Set(sales.filter((sale) => sale.date.startsWith(`${monthISO}-`)).map((sale) => sale.date)).size;
+}
+
+/** One plain sentence describing the month so far. */
+export function monthTakeaway(input: { averagePerDay: number; deltaPct: number | null; comparedLabel: string; formatMoney: (value: number) => string }): string {
+  const average = `Averaging ${input.formatMoney(input.averagePerDay)} a day`;
+  if (input.deltaPct === null) return `${average}. No earlier days to compare yet.`;
+  const percent = Math.round(Math.abs(input.deltaPct) * 100);
+  const direction = input.deltaPct >= 0 ? `up ${percent}%` : `down ${percent}%`;
+  return `${average}, ${direction} on ${input.comparedLabel}.`;
+}

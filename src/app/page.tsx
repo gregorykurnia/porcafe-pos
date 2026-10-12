@@ -6,14 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs, listMenuItems } from "@/lib/data";
 import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
-import { getAttentionItems, getCanonicalItemRows } from "@/lib/reporting";
+import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import {
   format,
   parseISO,
   subDays,
   subWeeks,
-  subMonths,
   addDays,
   getDaysInMonth,
 } from "date-fns";
@@ -93,7 +92,6 @@ export default function Dashboard() {
   const thisWeek = weekKey(today);
   const lastWeek = weekKey(format(subWeeks(parseISO(today), 1), "yyyy-MM-dd"));
   const thisMonth = reportMonth;
-  const lastMonth = monthKey(format(subMonths(parseISO(`${thisMonth}-01`), 1), "yyyy-MM-dd"));
 
   const todayTotal = sales.find((s) => s.date === today)?.total ?? 0;
   const yesterdayTotal = sales.find((s) => s.date === yesterday)?.total ?? 0;
@@ -108,11 +106,9 @@ export default function Dashboard() {
   const monthTotal = sales
     .filter((s) => monthKey(s.date) === thisMonth)
     .reduce((a, s) => a + s.total, 0);
-  const lastMonthTotal = sales
-    .filter((s) => monthKey(s.date) === lastMonth)
-    .reduce((a, s) => a + s.total, 0);
 
-  const monthDaysLogged = sales.filter((s) => monthKey(s.date) === thisMonth).length;
+  // Days, not entries: two entries on one day count once.
+  const monthDaysLogged = distinctDaysLogged(sales, thisMonth);
   const avgPerDay = monthDaysLogged > 0 ? monthTotal / monthDaysLogged : 0;
 
   const allTimeTotal = sales.reduce((a, s) => a + s.total, 0);
@@ -125,10 +121,10 @@ export default function Dashboard() {
   const allTimeTotalWithAdjustment = allTimeTotal + allAdjustments;
   const weekRangeLabel = formatWeekLabel(thisWeek);
 
-  const trend = useMemo(() => {
-    const sorted = [...sales].sort((a, b) => a.date.localeCompare(b.date));
-    return sorted.slice(-30).map((s) => ({ date: formatDayLabel(s.date), total: s.total }));
-  }, [sales]);
+  const trend = useMemo(
+    () => calendarMonthTrend(sales, reportMonth).map((day) => ({ date: formatDayLabel(day.date), total: day.total })),
+    [sales, reportMonth]
+  );
 
   const paymentMix = useMemo(() => {
     const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
@@ -188,7 +184,13 @@ export default function Dashboard() {
   }, [sales, thisMonth]);
 
   const daysElapsed = thisMonth === monthKey(today) ? Number(today.slice(-2)) : getDaysInMonth(parseISO(`${thisMonth}-01`));
-  const avgOrderValue = monthQty > 0 ? monthTotal / monthQty : 0;
+  // Average per Main portion, the figure the owner compares across months.
+  const monthMainQty = items
+    .filter((i) => monthKey(i.date) === thisMonth && i.category === "Main")
+    .reduce((a, i) => a + i.qty, 0);
+  const avgOrderValue = monthMainQty > 0 ? monthTotal / monthMainQty : 0;
+  // Same days of the previous month, so a mid-month figure is not compared with a whole month.
+  const monthComparison = monthToDateComparison(sales, thisMonth, daysElapsed);
 
   const reportMonths = [...new Set([
     monthKey(today),
@@ -198,11 +200,12 @@ export default function Dashboard() {
 
   // The attention list is computed from the same loaded data as the rest of the dashboard.
   const attentionItems = getAttentionItems({ today, dailyLogs, salesEntries: sales });
-  const trendTakeaway = trend.length < 2
-    ? "Add another day to see a trend comparison."
-    : trend[trend.length - 1].total >= trend[trend.length - 2].total
-      ? "The latest recorded day is at or above the previous entry."
-      : "The latest recorded day is below the previous entry.";
+  const trendTakeaway = monthTakeaway({
+    averagePerDay: avgPerDay,
+    deltaPct: monthComparison.deltaPct,
+    comparedLabel: monthComparison.label,
+    formatMoney: idr,
+  });
 
   return (
     <div className="space-y-6">
@@ -296,7 +299,7 @@ export default function Dashboard() {
               <RecapStat label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
               <RecapStat label="Reported month total" value={idr(monthTotalWithAdjustment)} sub="Recorded sales + selisih" />
               <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
-              <RecapStat label="Avg per portion" value={idr(avgOrderValue)} />
+              <RecapStat label="Avg revenue per Main portion" value={idr(avgOrderValue)} />
               <RecapStat
                 label="Best day"
                 value={bestDay ? idr(bestDay.total) : "—"}
@@ -349,8 +352,8 @@ export default function Dashboard() {
           range={formatMonthLabel(thisMonth)}
           value={idr(monthTotalWithAdjustment)}
           color="bg-warning"
-          delta={pctDelta(monthTotal, lastMonthTotal)}
-          deltaLabel="vs last month"
+          delta={monthComparison.deltaPct}
+          deltaLabel={`vs ${monthComparison.label}`}
         />
         <StatCard
           icon={<CalendarDays className="size-4" />}
@@ -369,7 +372,7 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Sales trend (last 30 entries)</CardTitle>
+            <CardTitle>Sales trend · {formatMonthLabel(thisMonth)}</CardTitle>
             <Link
               href="/sales"
               className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
