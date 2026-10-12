@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs, listMenuItems } from "@/lib/data";
 import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
-import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
+import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthIsOver, monthReportedView, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import { chartColors } from "@/lib/chart-colors";
 import { Stat } from "@/components/state/stat";
@@ -109,11 +109,16 @@ export default function Dashboard() {
 
   const allTimeTotal = sales.reduce((a, s) => a + s.total, 0);
 
-  // Bank-reconciliation selisih: folded only into this month's and the
-  // all-time total, never into avgPerDay/delta/trend/paymentMix/bestDay.
+  // Bank-reconciliation selisih is a whole-month figure, so it counts only once its month is over.
+  // Until then the month shows recorded sales, and the selisih is pending. It never reaches the
+  // averages, trend or payment mix.
+  const monthOver = monthIsOver(thisMonth, today);
   const monthAdjustment = adjustments.find((a) => a.month === thisMonth)?.amount ?? 0;
-  const allAdjustments = adjustments.reduce((a, x) => a + x.amount, 0);
-  const monthTotalWithAdjustment = monthTotal + monthAdjustment;
+  const monthView = monthReportedView({ recorded: monthTotal, adjustment: monthAdjustment, monthOver });
+  const allAdjustments = adjustments
+    .filter((a) => monthIsOver(a.month, today))
+    .reduce((a, x) => a + x.amount, 0);
+  const monthTotalWithAdjustment = monthView.reported;
   const allTimeTotalWithAdjustment = allTimeTotal + allAdjustments;
   const weekRangeLabel = formatWeekLabel(thisWeek);
 
@@ -290,7 +295,7 @@ export default function Dashboard() {
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
               <Stat variant="plain" tone="primary" label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
-              <Stat variant="plain" tone="primary" label="Reported month total" value={idr(monthTotalWithAdjustment)} sub="Recorded sales + selisih" />
+              <Stat variant="plain" tone="primary" label="Reported month total" value={idr(monthTotalWithAdjustment)} sub={monthOver ? "Recorded sales + selisih" : "Selisih added at month end"} />
               <Stat variant="plain" tone="primary" label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
               <Stat variant="plain" tone="primary" label="Avg revenue per Main portion" value={idr(avgOrderValue)} />
               <Stat
@@ -316,11 +321,11 @@ export default function Dashboard() {
       <Card className="border-primary/10 bg-surface">
         <CardHeader>
           <CardTitle className="text-lg">Revenue composition · {formatMonthLabel(thisMonth)}</CardTitle>
-          <p className="text-sm text-muted-foreground">Reported total is recorded sales plus the monthly reconciliation adjustment.</p>
+          <p className="text-sm text-muted-foreground">{monthOver ? "Reported total is recorded sales plus the monthly reconciliation adjustment." : "This month is still open. Its selisih is added when the month ends."}</p>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-3">
           <Stat label="Recorded sales" value={idr(monthTotal)} />
-          <Stat label="Reconciliation adjustment" value={idr(monthAdjustment)} sub="Selisih" />
+          <Stat label="Reconciliation adjustment" value={monthView.selisih === null ? "Pending" : idr(monthView.selisih)} sub={monthOver ? "Selisih" : "Added at month end"} />
           <Stat label="Reported total" value={idr(monthTotalWithAdjustment)} emphasized />
         </CardContent>
       </Card>

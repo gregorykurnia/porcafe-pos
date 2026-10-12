@@ -2,7 +2,7 @@
 // tabs. Dates are YYYY-MM-DD, and both ends are included.
 
 import { addDaysISO, monthKey } from "./dates";
-import { daysInMonth, previousMonthOf } from "./reporting";
+import { daysInMonth, monthIsOver, previousMonthOf } from "./reporting";
 import type { MonthlyAdjustment, SalesEntry } from "./types";
 
 export type ReportPeriod = { from: string; to: string };
@@ -99,8 +99,10 @@ export type PeriodSelisih = {
   /** Sum of the adjustments for whole months in the period. */
   amount: number;
   includedMonths: { month: string; amount: number }[];
-  /** Months with an adjustment that the period covers only in part. These are not added. */
+  /** Closed months the period covers only in part. These are not added. */
   partialMonths: { month: string; amount: number }[];
+  /** Months that are still open. Their selisih waits until the month ends. */
+  pendingMonths: { month: string; amount: number }[];
 };
 
 /**
@@ -108,19 +110,23 @@ export type PeriodSelisih = {
  * the period covers its whole month. A partial month is listed, never pro-rated, so the
  * figure does not invent a split. Daily figures never change.
  */
-export function selisihForPeriod(adjustments: MonthlyAdjustment[], period: ReportPeriod): PeriodSelisih {
+export function selisihForPeriod(adjustments: MonthlyAdjustment[], period: ReportPeriod, today: string): PeriodSelisih {
   const includedMonths: PeriodSelisih["includedMonths"] = [];
   const partialMonths: PeriodSelisih["partialMonths"] = [];
+  const pendingMonths: PeriodSelisih["pendingMonths"] = [];
   const touching = new Set(monthsTouching(period));
   for (const adjustment of [...adjustments].sort((a, b) => a.month.localeCompare(b.month))) {
     if (!touching.has(adjustment.month)) continue;
-    const target = coversWholeMonth(adjustment.month, period) ? includedMonths : partialMonths;
-    target.push({ month: adjustment.month, amount: adjustment.amount });
+    const item = { month: adjustment.month, amount: adjustment.amount };
+    if (!monthIsOver(adjustment.month, today)) pendingMonths.push(item);
+    else if (coversWholeMonth(adjustment.month, period)) includedMonths.push(item);
+    else partialMonths.push(item);
   }
   return {
     amount: includedMonths.reduce((sum, item) => sum + item.amount, 0),
     includedMonths,
     partialMonths,
+    pendingMonths,
   };
 }
 
@@ -208,13 +214,13 @@ export type MonthRevenueRow = {
  * Totals for each month the period touches. The rows add up to the period's tiles: the sum of
  * `reported` equals recorded sales plus the selisih for whole months.
  */
-export function revenueByMonth(entries: SalesEntry[], adjustments: MonthlyAdjustment[], period: ReportPeriod): MonthRevenueRow[] {
+export function revenueByMonth(entries: SalesEntry[], adjustments: MonthlyAdjustment[], period: ReportPeriod, today: string): MonthRevenueRow[] {
   return monthsTouching(period).map((month) => {
     const inMonth = entriesInPeriod(entries, period).filter((entry) => entry.date.startsWith(`${month}-`));
     const recorded = inMonth.reduce((sum, entry) => sum + entry.total, 0);
     const wholeMonth = coversWholeMonth(month, period);
     const adjustment = adjustments.find((item) => item.month === month)?.amount ?? 0;
-    const selisih = wholeMonth ? adjustment : 0;
+    const selisih = wholeMonth && monthIsOver(month, today) ? adjustment : 0;
     return {
       month,
       recorded,

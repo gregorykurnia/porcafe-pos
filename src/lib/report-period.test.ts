@@ -18,6 +18,7 @@ import {
   revenueTakeaway,
   selisihForPeriod,
 } from "./report-period";
+import { monthIsOver, monthReportedView } from "./reporting";
 import type { MonthlyAdjustment, SalesEntry } from "./types";
 
 const TODAY = "2026-10-12";
@@ -76,22 +77,42 @@ test("a month counts as whole only when the period covers all of it", () => {
   assert.equal(coversWholeMonth("2026-09", { from: "2026-08-15", to: "2026-09-30" }), true);
 });
 
-test("selisih is added only for whole months and never pro-rated", () => {
-  const period = { from: "2026-09-01", to: "2026-10-12" };
+test("selisih counts only for a closed month the period covers in full, and is never pro-rated", () => {
   const result = selisihForPeriod(
-    [adjustment("2026-08", 100000), adjustment("2026-09", -50000), adjustment("2026-10", 30000)],
-    period
+    [adjustment("2026-08", 100000), adjustment("2026-09", -50000)],
+    { from: "2026-08-15", to: "2026-09-30" },
+    TODAY
   );
   assert.equal(result.amount, -50000);
   assert.deepEqual(result.includedMonths, [{ month: "2026-09", amount: -50000 }]);
-  assert.deepEqual(result.partialMonths, [{ month: "2026-10", amount: 30000 }]);
+  assert.deepEqual(result.partialMonths, [{ month: "2026-08", amount: 100000 }]);
+  assert.deepEqual(result.pendingMonths, []);
 });
 
-test("a period inside one month adds no selisih, but names the partial month", () => {
-  const result = selisihForPeriod([adjustment("2026-10", 30000)], { from: "2026-10-01", to: "2026-10-12" });
+test("an open month waits for its end, even when the period covers all of it", () => {
+  const result = selisihForPeriod([adjustment("2026-10", 30000)], { from: "2026-10-01", to: "2026-10-31" }, TODAY);
   assert.equal(result.amount, 0);
-  assert.deepEqual(result.partialMonths, [{ month: "2026-10", amount: 30000 }]);
+  assert.deepEqual(result.pendingMonths, [{ month: "2026-10", amount: 30000 }]);
+  assert.deepEqual(result.partialMonths, []);
 });
+
+test("a period inside an open month adds no selisih and lists it as pending", () => {
+  const result = selisihForPeriod([adjustment("2026-10", 30000)], { from: "2026-10-01", to: "2026-10-12" }, TODAY);
+  assert.equal(result.amount, 0);
+  assert.deepEqual(result.pendingMonths, [{ month: "2026-10", amount: 30000 }]);
+});
+
+test("a month is over only once today is past it", () => {
+  assert.equal(monthIsOver("2026-09", TODAY), true);
+  assert.equal(monthIsOver("2026-10", TODAY), false);
+  assert.equal(monthIsOver("2026-11", TODAY), false);
+});
+
+test("a reported month total adds the selisih only once the month is over", () => {
+  assert.deepEqual(monthReportedView({ recorded: 1000, adjustment: 200, monthOver: true }), { reported: 1200, selisih: 200 });
+  assert.deepEqual(monthReportedView({ recorded: 1000, adjustment: 200, monthOver: false }), { reported: 1000, selisih: null });
+});
+
 
 const ENTRIES: SalesEntry[] = [
   entry("e1", "2026-09-30", 600, 1),
@@ -148,7 +169,7 @@ test("the takeaway compares the latest closed day with the one before it", () =>
 test("monthly rows add up to the period tiles", () => {
   const period = { from: "2026-09-01", to: "2026-10-12" };
   const adjustments = [adjustment("2026-09", -50000), adjustment("2026-10", 30000)];
-  const rows = revenueByMonth(ENTRIES, adjustments, period);
+  const rows = revenueByMonth(ENTRIES, adjustments, period, TODAY);
   assert.deepEqual(
     rows.map((row) => [row.month, row.recorded, row.selisih, row.wholeMonth]),
     [
@@ -157,7 +178,7 @@ test("monthly rows add up to the period tiles", () => {
     ]
   );
   const reported = rows.reduce((sum, row) => sum + row.reported, 0);
-  assert.equal(reported, recordedTotal(ENTRIES, period) + selisihForPeriod(adjustments, period).amount);
+  assert.equal(reported, recordedTotal(ENTRIES, period) + selisihForPeriod(adjustments, period, TODAY).amount);
 });
 
 test("daily export rows run oldest first and keep same-day entries in creation order", () => {

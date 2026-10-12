@@ -50,7 +50,7 @@ export function RevenueReport({
   const rangeLabel = formatPeriodRange(period);
   const rows = useMemo(() => entriesInPeriod(entries, period), [entries, period]);
   const recorded = useMemo(() => rows.reduce((sum, row) => sum + row.total, 0), [rows]);
-  const selisih = useMemo(() => selisihForPeriod(adjustments, period), [adjustments, period]);
+  const selisih = useMemo(() => selisihForPeriod(adjustments, period, today), [adjustments, period, today]);
   const reported = recorded + selisih.amount;
   const series = useMemo(() => dailyRevenueSeries(entries, period), [entries, period]);
   const stats = useMemo(() => closedDayStats(entries, period, today), [entries, period, today]);
@@ -62,14 +62,16 @@ export function RevenueReport({
 
   // Says which whole months the figure comes from, and names a whole month that has no selisih saved.
   const wholeMonths = useMemo(
-    () => revenueByMonth(entries, adjustments, period).filter((row) => row.wholeMonth).map((row) => formatMonthDisplay(row.month)),
-    [adjustments, entries, period]
+    () => revenueByMonth(entries, adjustments, period, today).filter((row) => row.wholeMonth).map((row) => formatMonthDisplay(row.month)),
+    [adjustments, entries, period, today]
   );
   const selisihNote = selisih.includedMonths.length > 0
     ? `Added for ${selisih.includedMonths.map((item) => formatMonthDisplay(item.month)).join(", ")}`
-    : wholeMonths.length > 0
-      ? `No selisih saved for ${wholeMonths.join(", ")}`
-      : "No whole month in this period, so none is added";
+    : selisih.pendingMonths.length > 0
+      ? `Counts after ${formatMonthDisplay(selisih.pendingMonths[0].month)} ends`
+      : wholeMonths.length > 0
+        ? `No selisih saved for ${wholeMonths.join(", ")}`
+        : "No whole month in this period, so none is added";
 
   function exportDailyRows() {
     downloadCSV(
@@ -89,7 +91,7 @@ export function RevenueReport({
   function exportGroupedTotals() {
     downloadCSV(
       `porcafe-totals-by-month-${period.from}-to-${period.to}.csv`,
-      revenueByMonth(entries, adjustments, period).map((row) => ({
+      revenueByMonth(entries, adjustments, period, today).map((row) => ({
         month: row.month,
         "days recorded": row.daysRecorded,
         recorded: row.recorded,

@@ -46,7 +46,7 @@ export function MonthlyReconciliation({
         <CardTitle>Monthly reconciliation</CardTitle>
         <p className="text-sm text-muted-foreground">
           Selisih is the bank reconciliation difference for one month. It is added to that month&apos;s total only, and daily
-          figures do not change.
+          figures do not change. It counts once the month is over.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">

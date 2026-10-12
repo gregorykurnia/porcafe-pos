@@ -186,3 +186,20 @@ export function monthTakeaway(input: { averagePerDay: number; deltaPct: number |
   const direction = input.deltaPct >= 0 ? `up ${percent}%` : `down ${percent}%`;
   return `${average}, ${direction} on ${input.comparedLabel}.`;
 }
+
+/** True once a month (YYYY-MM) is over, judged against today. Selisih counts only after that. */
+export function monthIsOver(month: string, today: string): boolean {
+  return month < today.slice(0, 7);
+}
+
+/**
+ * A month's reported total. Selisih is a whole-month figure, so it is added only once the month is
+ * over. Until then the reported total is the recorded sales so far, and the selisih is pending (null).
+ */
+export function monthReportedView(input: { recorded: number; adjustment: number; monthOver: boolean }): {
+  reported: number;
+  selisih: number | null;
+} {
+  if (!input.monthOver) return { reported: input.recorded, selisih: null };
+  return { reported: input.recorded + input.adjustment, selisih: input.adjustment };
+}

@@ -10,7 +10,7 @@ import { Boxes, ChartNoAxesColumn, LayoutDashboard, UtensilsCrossed } from "luci
 
 const links = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/items", label: "Today", icon: UtensilsCrossed },
+  { href: "/items", label: "Daily close", icon: UtensilsCrossed },
   { href: "/reports", label: "Reports", icon: ChartNoAxesColumn },
   { href: "/inventory", label: "Stock", icon: Boxes },
 ];
