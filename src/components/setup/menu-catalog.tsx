@@ -240,7 +240,7 @@ export function MenuCatalog() {
             <Table className="min-w-[42rem]">
               <TableHeader>
                 <TableRow>
-                  <SortableHead label="Name" sortKey="name" sort={sort} onSort={(k) => toggleSort(sort, k, setSort)} />
+                  <SortableHead label="Name" sortKey="name" sort={sort} onSort={(k) => toggleSort(sort, k, setSort)} className="sticky left-0 z-10 min-w-44 bg-card" />
                   <SortableHead label="Category" sortKey="category" sort={sort} onSort={(k) => toggleSort(sort, k, setSort)} />
                   <SortableHead label="Price" sortKey="price" sort={sort} onSort={(k) => toggleSort(sort, k, setSort)} className="text-right" />
                   <TableHead>Sheet</TableHead>

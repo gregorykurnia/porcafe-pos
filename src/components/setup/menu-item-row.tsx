@@ -103,7 +103,7 @@ export function EditableMenuItemRow({
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
-        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring ${
+        className={`h-10 border-border bg-transparent px-1.5 sm:h-8 sm:border-transparent hover:border-border focus:border-ring ${
           type === "number" ? "text-right" : ""
         }`}
       />
@@ -112,7 +112,7 @@ export function EditableMenuItemRow({
 
   return (
     <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-surface-elevated"}`}>
-      <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
+      <TableCell className="sticky left-0 z-10 min-w-44 bg-card p-1 font-medium">{cellInput("name", "text")}</TableCell>
       <TableCell className="p-1">
         <Select
           value={fieldValue("category")}
@@ -124,7 +124,7 @@ export function EditableMenuItemRow({
         >
           <SelectTrigger
             size="sm"
-          className="h-8 w-full border-transparent bg-transparent hover:border-border"
+          className="h-10 w-full border-border bg-transparent hover:border-border sm:h-8 sm:border-transparent"
             aria-label={`Category for ${item.name}`}
           >
             <SelectValue />
