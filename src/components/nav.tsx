@@ -9,11 +9,16 @@ import { useNavigationGuard } from "@/components/navigation-guard";
 import { Boxes, ChartNoAxesColumn, LayoutDashboard, UtensilsCrossed } from "lucide-react";
 
 const links = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Home", icon: LayoutDashboard },
+  { href: "/items", label: "Today", icon: UtensilsCrossed },
   { href: "/reports", label: "Reports", icon: ChartNoAxesColumn },
-  { href: "/items", label: "Daily close", icon: UtensilsCrossed },
-  { href: "/inventory", label: "Inventory", icon: Boxes },
+  { href: "/inventory", label: "Stock", icon: Boxes },
 ];
+
+// Prefix matching: /items and /items?view=… are active on /items, and "/" only matches exactly.
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
 
 export function Nav() {
   const pathname = usePathname();
@@ -52,12 +57,13 @@ export function Nav() {
           </Link>
           <nav aria-label="Primary navigation" className="hidden gap-1 rounded-xl bg-primary/5 p-1 sm:flex">
             {links.map((l) => {
-              const active = pathname === l.href;
+              const active = isActive(pathname, l.href);
               return (
                 <Link
                   key={l.href}
                   href={l.href}
                   onNavigate={(event) => guardedNavigate(event, l.href)}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
                     active
@@ -84,7 +90,7 @@ export function Nav() {
       <nav aria-label="Mobile navigation" className="safe-area-bottom fixed inset-x-0 bottom-0 z-40 border-t border-primary/10 bg-background/95 backdrop-blur-md sm:hidden">
         <div className="mx-auto flex w-full min-w-0 max-w-6xl gap-1 px-1.5 py-1.5">
           {links.map((l) => {
-            const active = pathname === l.href;
+            const active = isActive(pathname, l.href);
             return (
               <Link
                 key={l.href}

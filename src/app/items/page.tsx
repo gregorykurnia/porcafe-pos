@@ -1260,9 +1260,7 @@ function ItemsWorkspace() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
-            {activeView === "daily" ? "Daily close" : "Menu items"}
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Daily close</h1>
           <p className="mt-1 text-sm text-muted-foreground">
           {activeView === "daily"
               ? "Record portions and confirm revenue for one operating day."
