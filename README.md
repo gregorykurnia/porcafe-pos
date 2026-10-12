@@ -39,7 +39,7 @@ If you use the Vercel CLI, `vercel env pull` writes these, along with `VERCEL_OI
 
 ## Deploy
 
-- **App:** Vercel. `vercel.json` schedules `/api/cron/reorder-push-reminders` daily at 00:00 UTC (07:00 WIB).
+- **App:** Vercel. `vercel.json` schedules `/api/cron/reorder-push-reminders` daily at 00:00 UTC (07:00 WIB) and `/api/cron/inventory-supplier-deliveries` daily at 01:00 UTC (08:00 WIB). Both need `CRON_SECRET` set in Vercel.
 - **Firestore:** `firebase deploy --only firestore` publishes `firestore.rules` and `firestore.indexes.json`.
 - **Push alerts and supplier ordering:** see [docs/PWA_PUSH_NOTIFICATIONS_DEPLOYMENT.md](docs/PWA_PUSH_NOTIFICATIONS_DEPLOYMENT.md) and [docs/SUPPLIERS_ORDERING_DEPLOYMENT.md](docs/SUPPLIERS_ORDERING_DEPLOYMENT.md).
 
@@ -47,4 +47,4 @@ If you use the Vercel CLI, `vercel env pull` writes these, along with `VERCEL_OI
 
 - **No sign-in.** The Firestore rules allow reads and writes on every collection except the push collections, so anyone with the Firebase web config can change data. Setup is not PIN-protected. Real access control is a separate project.
 - **Usage recalculation** works one day at a time, from Stock → Usage recap. There is no range recalculation yet.
-- **Recurring supplier deliveries** are created when a device opens Stock. `/api/cron/inventory-supplier-deliveries` exists but is not scheduled in `vercel.json`.
+- **Recurring supplier deliveries** are created by `/api/cron/inventory-supplier-deliveries` at 08:00 WIB daily, and also when a device opens Stock. The cron only creates deliveries whose time has passed, so a delivery time later than 08:00 is created only if someone opens Stock after that time. Keep delivery times at 08:00 or earlier.
