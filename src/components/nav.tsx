@@ -68,7 +68,7 @@ export function Nav() {
                     "flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
                     active
                       ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
-                      : "text-primary/65 hover:bg-primary/10 hover:text-primary"
+                      : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                   )}
                 >
                   <l.icon className="size-4" />
@@ -105,9 +105,9 @@ export function Nav() {
                     active ? "bg-primary/10" : ""
                   )}
                 >
-                  <l.icon className={cn("size-5", active ? "text-primary" : "text-primary/45")} />
+                  <l.icon className={cn("size-5", active ? "text-primary" : "text-muted-foreground")} />
                 </span>
-                <span className={cn("max-w-full truncate whitespace-nowrap text-xs font-medium", active ? "text-primary" : "text-primary/45")}>
+                <span className={cn("max-w-full truncate whitespace-nowrap text-xs font-medium", active ? "text-primary" : "text-muted-foreground")}>
                   {l.label}
                 </span>
               </Link>

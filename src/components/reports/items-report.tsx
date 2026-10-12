@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { downloadCSV } from "@/lib/csv";
 import { formatDisplay } from "@/lib/dates";
 import {
@@ -33,10 +33,16 @@ const TOOLTIP_STYLE = {
   fontSize: 12,
 };
 
-const GRAIN_TABS: { key: Grain; label: string }[] = [
-  { key: "day", label: "Day" },
-  { key: "week", label: "Week" },
-  { key: "month", label: "Month" },
+const STEP_OPTIONS: { value: Grain; label: string }[] = [
+  { value: "day", label: "Day" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+];
+
+const RECAP_OPTIONS: { value: Grain; label: string }[] = [
+  { value: "day", label: "By day" },
+  { value: "week", label: "By week" },
+  { value: "month", label: "By month" },
 ];
 
 /**
@@ -255,19 +261,15 @@ export function ItemsReport({
               <CardTitle>Main portions, stepped</CardTitle>
             </div>
             <div className="flex items-center gap-2">
-              <Tabs
+              <SegmentedControl
+                label="Main portions step size"
                 value={navGrain}
-                onValueChange={(value) => {
-                  setNavGrain(value as Grain);
+                options={STEP_OPTIONS}
+                onChange={(value) => {
+                  setNavGrain(value);
                   setNavCursor(today);
                 }}
-              >
-                <TabsList>
-                  {GRAIN_TABS.map((grain) => (
-                    <TabsTrigger key={grain.key} value={grain.key}>{grain.label}</TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
+              />
               {navCursor !== today && (
                 <Button variant="outline" size="sm" onClick={() => setNavCursor(today)}>Today</Button>
               )}
@@ -345,13 +347,7 @@ export function ItemsReport({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Tabs value={recapGrain} onValueChange={(value) => setRecapGrain(value as Grain)}>
-            <TabsList>
-              <TabsTrigger value="day">By day</TabsTrigger>
-              <TabsTrigger value="week">By week</TabsTrigger>
-              <TabsTrigger value="month">By month</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <SegmentedControl label="Recap grouping" value={recapGrain} options={RECAP_OPTIONS} onChange={setRecapGrain} />
           {recapBuckets.length === 0 ? (
             <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No item sales in this period</div>
           ) : (

@@ -8,6 +8,7 @@ import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemL
 import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
 import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
+import { chartColors } from "@/lib/chart-colors";
 import {
   format,
   parseISO,
@@ -38,16 +39,11 @@ import {
 } from "lucide-react";
 
 // Payment-method categorical colors (dataviz skill: fixed hue order, never cycled)
-const PAYMENT_COLORS: Record<string, string> = {
-  BCA: "#2a78d6", // slot 1 blue
-  Cash: "#eb6834", // slot 2 orange
-  Soundbox: "#1baf7a", // slot 3 aqua
-  Other: "#eda100", // slot 4 yellow
-};
+const PAYMENT_COLORS = chartColors.payment;
 
 // Fixed categorical order for item categories - first 4 slots, rest fold into "Other"
-const CATEGORY_COLOR_SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
-const CATEGORY_OTHER_COLOR = "#898781";
+const CATEGORY_COLOR_SLOTS = chartColors.categorySlots;
+const CATEGORY_OTHER_COLOR = chartColors.other;
 
 export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
@@ -392,23 +388,23 @@ export default function Dashboard() {
                 <AreaChart data={trend}>
                   <defs>
                     <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1f3a2f" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="#1f3a2f" stopOpacity={0} />
+                      <stop offset="0%" stopColor={chartColors.primary} stopOpacity={0.25} />
+                      <stop offset="100%" stopColor={chartColors.primary} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    stroke="#898781"
+                    stroke={chartColors.other}
                   />
                   <YAxis
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    stroke="#898781"
+                    stroke={chartColors.other}
                     tickFormatter={(v) => `${Math.round(v / 1000)}k`}
                     width={40}
                   />
@@ -416,10 +412,10 @@ export default function Dashboard() {
                   <Area
                     type="monotone"
                     dataKey="total"
-                    stroke="#1f3a2f"
+                    stroke={chartColors.primary}
                     strokeWidth={2.5}
                     fill="url(#salesFill)"
-                    dot={{ r: 3, fill: "#1f3a2f" }}
+                    dot={{ r: 3, fill: chartColors.primary }}
                     activeDot={{ r: 5 }}
                   />
                 </AreaChart>
@@ -601,9 +597,9 @@ function formatWeekLabel(dateISO: string): string {
 function RecapStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <p className="text-xs text-primary/60">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
       <p className="truncate text-base font-semibold text-primary">{value}</p>
-      {sub && <p className="text-xs text-primary/50">{sub}</p>}
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
     </div>
   );
 }

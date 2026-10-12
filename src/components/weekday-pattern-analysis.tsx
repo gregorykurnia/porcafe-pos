@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { formatDisplay } from "@/lib/dates";
 import type { WeekdayPatternRow, WeekdayPatternSummary } from "@/lib/weekday-analysis";
 
@@ -151,15 +151,12 @@ export function WeekdayPatternAnalysis({
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Tabs value={selectedMetric.key} onValueChange={onMetricChange}>
-          <TabsList aria-label={`${title} metric`}>
-            {metrics.map((metric) => (
-              <TabsTrigger key={metric.key} value={metric.key}>
-                {metric.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <SegmentedControl
+          label={`${title} metric`}
+          value={selectedMetric.key}
+          options={metrics.map((metric) => ({ value: metric.key, label: metric.label }))}
+          onChange={onMetricChange}
+        />
 
         {loading ? (
           <div className="space-y-3 rounded-xl border border-border p-4" aria-label={`Loading ${title}`}>
@@ -201,7 +198,7 @@ export function WeekdayPatternAnalysis({
               {patternTakeaway(summary, formatAverage, averageBasis)}
             </div>
 
-            <div className="h-[240px] w-full" aria-label={`${title} chart`}>
+            <div className="h-[240px] w-full" role="img" aria-label={`${title} chart`}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />

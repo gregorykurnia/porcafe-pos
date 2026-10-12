@@ -347,7 +347,7 @@ export default function InventoryPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm text-primary/65"><Boxes className="size-4" />Inventory foundation</div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Boxes className="size-4" />Inventory foundation</div>
           <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">Stock</h1>
           <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning.</p>
         </div>

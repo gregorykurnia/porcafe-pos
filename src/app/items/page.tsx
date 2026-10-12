@@ -1481,12 +1481,12 @@ function ItemsWorkspace() {
                   {dailySections.map((section) => (
                     <section key={section.category} aria-labelledby={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}>
                       <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
-                        <h3
+                        <h2
                           id={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}
                           className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground"
                         >
                           {section.category}
-                        </h3>
+                        </h2>
                         <span className="text-xs font-medium text-muted-foreground">Qty</span>
                       </div>
                       <div className="divide-y divide-border/70">

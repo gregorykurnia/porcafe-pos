@@ -514,7 +514,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                         if (movementReason === "Stock In") setMovementReason("");
                       }
                     }}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label="Movement type" className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>{MANUAL_MOVEMENT_TYPES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -524,7 +524,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                       setMovementMaterialId(value);
                       if (movementType === "receiving") fillReceivingDefaults(value);
                     }}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                      <SelectTrigger aria-label="Movement material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
                       <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -571,7 +571,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                     <div className="space-y-1.5">
                       <Label>Direction</Label>
                       <Select value={movementDirection} onValueChange={(value) => setMovementDirection(value as typeof movementDirection)}>
-                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label="Movement direction" className="w-full"><SelectValue /></SelectTrigger>
                         <SelectContent><SelectItem value="add">Add stock</SelectItem><SelectItem value="remove">Remove stock</SelectItem></SelectContent>
                       </Select>
                     </div>
@@ -591,7 +591,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                 <div className="space-y-1.5">
                   <Label>Material</Label>
                   <Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}>
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                    <SelectTrigger aria-label="Count material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
                     <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -647,7 +647,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                 <div className="space-y-1.5">
                   <Label>Movement type</Label>
                   <Select value={auditMovementType} onValueChange={(value) => setAuditMovementType(value as "all" | InventoryMovementType)}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Movement type filter" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All types</SelectItem>
                       {Object.entries(MOVEMENT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
@@ -657,7 +657,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                 <div className="space-y-1.5">
                   <Label>Material</Label>
                   <Select value={auditMaterialId} onValueChange={setAuditMaterialId}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Material filter" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All materials</SelectItem>
                       {auditMaterials.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
@@ -676,7 +676,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
               {filteredMovements.length === 0 ? (
                 <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{movements.length === 0 ? "No movements recorded yet." : "No movements match these filters."}</p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Stock movements table">
                   <Table>
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader>
                     <TableBody>{filteredMovements.slice(0, historyLimit).map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`whitespace-nowrap text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span>{movement.sourceRef && <span className="block text-xs text-muted-foreground" title={movement.sourceRef}>{describeSourceRef(movement.sourceRef)?.label ?? movement.sourceRef}</span>}</TableCell></TableRow>)}</TableBody>

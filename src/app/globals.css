@@ -69,6 +69,13 @@
   --surface: #fffdf9;
   --surface-elevated: #ffffff;
   --primary-brand: #1f3a2f;
+  /* Chart series, in fixed order. Read through src/lib/chart-colors.ts. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-other: #898781;
+  --chart-grid: #e1e0d9;
   --primary-hover: #16291f;
   --text-main: #18231f;
   --text-muted: #5e6963;
@@ -77,7 +84,7 @@
   --warm-accent: #e9e2d0;
   --ember: #d86d3e;
   --success: #237a4b;
-  --warning: #9a6700;
+  --warning: #7d5300;
   --danger: #b83a36;
   --info: #2f6fd6;
 

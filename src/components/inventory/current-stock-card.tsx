@@ -100,7 +100,7 @@ export function CurrentStockCard({
               <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing matches. Clear the search or the filter.</p>
             ) : (
               <>
-                <div className="hidden overflow-x-auto sm:block">
+                <div className="hidden overflow-x-auto sm:block" role="region" tabIndex={0} aria-label="Current stock table">
                   <Table>
                     <TableHeader>
                       <TableRow>
