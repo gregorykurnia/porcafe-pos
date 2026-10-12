@@ -154,6 +154,8 @@ export type InventorySupplierOrderEvent = {
 
 export type InventorySupplierOrder = {
   id: string;
+  /** Optional. "schedule" marks a pending order created by a recurring delivery. */
+  source?: "manual" | "schedule";
   supplierId: string;
   supplierName: string;
   orderReference: string;

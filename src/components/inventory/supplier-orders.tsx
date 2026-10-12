@@ -227,6 +227,36 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
     orderFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  // A scheduled delivery opens as a pending order. This confirms that everything outstanding arrived.
+  async function receiveAsPlanned(order: InventorySupplierOrder) {
+    const lines = order.lines
+      .map((line) => ({ lineId: line.id, quantity: Math.max(0, line.quantity - line.receivedQuantity), line }))
+      .filter((entry) => entry.quantity > 0);
+    if (lines.length === 0) return;
+    const ok = await confirm({
+      title: `${order.orderReference} arrived as planned?`,
+      body: `Stock goes up by: ${lines.map((entry) => `${entry.line.materialName} ${entry.quantity} ${entry.line.unit}`).join(", ")}.`,
+      confirmLabel: "Record delivery",
+    });
+    if (!ok) return;
+    setReceivingSaving(true);
+    try {
+      await receiveInventorySupplierOrder({
+        orderId: order.id,
+        receiptId: `receipt-${order.id}-${crypto.randomUUID()}`,
+        receivedOn: todayISO(),
+        lines: lines.map(({ lineId, quantity }) => ({ lineId, quantity })),
+      });
+      toast.success("Delivery recorded and stock updated");
+      await onChanged();
+    } catch (error) {
+      console.error("Failed to record the scheduled delivery", error);
+      toast.error(error instanceof Error ? error.message : "Could not record the delivery");
+    } finally {
+      setReceivingSaving(false);
+    }
+  }
+
   async function cancelOrder(order: InventorySupplierOrder) {
     const ok = await confirm({
       title: `Cancel ${order.orderReference}?`,
@@ -376,7 +406,7 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
             <div className="space-y-1.5"><Label htmlFor="order-filter-from">Ordered from</Label><Input id="order-filter-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
             <div className="space-y-1.5"><Label htmlFor="order-filter-to">Ordered through</Label><Input id="order-filter-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
           </div>}
-          {orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : filteredOrders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredOrders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; const canEdit = canReceive; const canCancel = canReceive; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">Ordered {formatDisplay(order.orderedOn)}</span>{order.history && order.history.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Activity ({order.history.length})</summary><div className="mt-1 space-y-1">{[...order.history].reverse().map((event, index) => <p key={`${event.occurredAt}-${index}`} className="text-muted-foreground">{new Date(event.occurredAt).toLocaleString("id-ID")} · {event.summary}</p>)}</div></details>}</TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit} (received ${line.receivedQuantity})`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell><TableCell><div className="flex flex-wrap justify-end gap-1">{canEdit && <Button size="sm" variant="outline" onClick={() => editOrder(order)} disabled={saving}><Pencil className="size-3.5" />Edit</Button>}{canReceive && <OrderSendButtons order={order} supplier={supplierById.get(order.supplierId)} />}{canReceive && <Button size="sm" onClick={() => openReceiving(order)} disabled={saving}>Receive</Button>}{canCancel && <Button size="sm" variant="destructive" onClick={() => void cancelOrder(order)} disabled={saving}><Ban className="size-3.5" />Cancel</Button>}</div></TableCell></TableRow>; })}</TableBody></Table></div>}
+          {orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : filteredOrders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredOrders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; const canEdit = canReceive; const canCancel = canReceive; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">Ordered {formatDisplay(order.orderedOn)}</span>{order.source === "schedule" && <span className="block text-xs font-medium text-info">Scheduled delivery · waiting to be confirmed</span>}{order.history && order.history.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Activity ({order.history.length})</summary><div className="mt-1 space-y-1">{[...order.history].reverse().map((event, index) => <p key={`${event.occurredAt}-${index}`} className="text-muted-foreground">{new Date(event.occurredAt).toLocaleString("id-ID")} · {event.summary}</p>)}</div></details>}</TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit} (received ${line.receivedQuantity})`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><Badge variant={orderStatusVariant(order.status)}>{orderStatusLabel(order.status)}</Badge></TableCell><TableCell><div className="flex flex-wrap justify-end gap-1">{canEdit && <Button size="sm" variant="outline" onClick={() => editOrder(order)} disabled={saving}><Pencil className="size-3.5" />Edit</Button>}{canReceive && order.source === "schedule" && <Button size="sm" onClick={() => void receiveAsPlanned(order)} disabled={saving || receivingSaving}>Arrived as planned</Button>}{canReceive && <OrderSendButtons order={order} supplier={supplierById.get(order.supplierId)} />}{canReceive && <Button size="sm" onClick={() => openReceiving(order)} disabled={saving}>Receive</Button>}{canCancel && <Button size="sm" variant="destructive" onClick={() => void cancelOrder(order)} disabled={saving}><Ban className="size-3.5" />Cancel</Button>}</div></TableCell></TableRow>; })}</TableBody></Table></div>}
         </CardContent>
       </Card>
 

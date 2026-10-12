@@ -25,6 +25,7 @@ import { formatDisplay } from "./dates";
 import { ConflictError, isStale, recordVersion } from "./concurrency";
 import type { MaterialUsageCounts } from "./material-usage";
 import { classifyLegacyItemSales } from "./legacy-item-sales";
+import { buildScheduledDeliveryOrder, scheduledOrderId } from "./scheduled-delivery";
 import type {
   SalesEntry,
   MenuItem,
@@ -1062,25 +1063,25 @@ export async function runDueInventorySupplierDeliverySchedules(
   asOfDate: string,
   asOfTime = format(new Date(), "HH:mm"),
   forceDue = false,
-): Promise<{ schedulesRun: number; movementIds: string[] }> {
+): Promise<{ schedulesRun: number; orderIds: string[] }> {
   if (!validInventoryDate(asOfDate)) throw new Error("Choose a valid schedule date.");
   if (!/^\d{2}:\d{2}$/.test(asOfTime) || Number(asOfTime.slice(0, 2)) > 23 || Number(asOfTime.slice(3, 5)) > 59) throw new Error("Choose a valid schedule time.");
   const setup = await getInventoryStockSetup();
-  if (!setup?.initialized) return { schedulesRun: 0, movementIds: [] };
+  if (!setup?.initialized) return { schedulesRun: 0, orderIds: [] };
 
   const schedules = await listInventorySupplierDeliverySchedules();
   const dueSchedules = schedules.filter((schedule) => schedule.active && schedule.nextRunOn <= asOfDate && (!schedule.endOn || schedule.nextRunOn <= schedule.endOn));
-  const movementIds: string[] = [];
+  const orderIds: string[] = [];
   let schedulesRun = 0;
 
   for (const schedule of dueSchedules) {
     const scheduleRef = doc(inventorySupplierDeliverySchedulesCol, schedule.id);
     const result = await runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(scheduleRef);
-      if (!snapshot.exists()) return { changed: false, movementId: null as string | null };
+      if (!snapshot.exists()) return { changed: false, orderId: null as string | null };
       const current = mapInventorySupplierDeliverySchedule(snapshot.id, snapshot.data());
       if (!current.active || current.nextRunOn > asOfDate || (current.endOn && current.nextRunOn > current.endOn)) {
-        return { changed: false, movementId: null as string | null };
+        return { changed: false, orderId: null as string | null };
       }
 
       const runDate = supplierDeliveryOnOrAfter(current, asOfDate);
@@ -1088,48 +1089,35 @@ export async function runDueInventorySupplierDeliverySchedules(
       if (runDate > asOfDate || !eligibleByEndDate) {
         const now = Date.now();
         transaction.set(scheduleRef, omitUndefined({ nextRunOn: runDate, active: eligibleByEndDate, updatedAt: now }), { merge: true });
-        return { changed: false, movementId: null as string | null };
+        return { changed: false, orderId: null as string | null };
       }
       if (!forceDue && (current.executionTime ?? "08:00") > asOfTime) {
         if (runDate !== current.nextRunOn) {
           transaction.set(scheduleRef, { nextRunOn: runDate, updatedAt: Date.now() }, { merge: true });
         }
-        return { changed: false, movementId: null as string | null };
+        return { changed: false, orderId: null as string | null };
       }
 
       const nextRunOn = advanceSupplierDeliveryPastDate({ ...current, nextRunOn: runDate }, asOfDate);
       const stillActive = !current.endOn || nextRunOn <= current.endOn;
-      const movementId = `scheduled-delivery-${inventoryDocPart(current.id)}-${inventoryDocPart(runDate)}`;
       const now = Date.now();
-      transaction.set(
-        doc(db, "inventoryMovements", movementId),
-        omitUndefined({
-          materialId: current.materialId,
-          materialName: current.materialName,
-          unit: current.unit,
-          quantity: current.quantity,
-          movementType: "receiving" satisfies InventoryMovementType,
-          occurredOn: runDate,
-          reason: `Recurring supplier delivery received from ${current.supplierName}`,
-          sourceRef: `supplier-delivery-schedule:${current.id}:${runDate}`,
-          notes: current.notes,
-          createdByType: "schedule",
-          createdByLabel: "Automated recurring delivery",
-          createdAt: now,
-        }),
-        { merge: true }
-      );
+      // A due delivery opens a pending order for staff to confirm. It adds no stock yet.
+      const orderRef = doc(db, "inventorySupplierOrders", scheduledOrderId(current.id, runDate));
+      const existingOrder = await transaction.get(orderRef);
+      if (!existingOrder.exists()) {
+        transaction.set(orderRef, buildScheduledDeliveryOrder(current, runDate, now));
+      }
       transaction.set(scheduleRef, omitUndefined({ lastRunOn: runDate, nextRunOn, active: stillActive, updatedAt: now }), { merge: true });
-      return { changed: true, movementId };
+      return { changed: !existingOrder.exists(), orderId: orderRef.id };
     });
 
-    if (result.changed && result.movementId) {
+    if (result.changed && result.orderId) {
       schedulesRun += 1;
-      movementIds.push(result.movementId);
+      orderIds.push(result.orderId);
     }
   }
 
-  return { schedulesRun, movementIds };
+  return { schedulesRun, orderIds };
 }
 
 export async function listInventoryAliasMappings(): Promise<InventoryAliasMapping[]> {

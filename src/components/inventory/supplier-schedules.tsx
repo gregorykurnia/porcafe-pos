@@ -133,7 +133,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
     setRunning(true);
     try {
       const result = await runDueInventorySupplierDeliverySchedules(todayISO(), undefined, true);
-      toast.success(result.schedulesRun > 0 ? `${result.schedulesRun} recurring delivery recorded` : "No recurring deliveries are due");
+      toast.success(result.schedulesRun > 0 ? `${result.schedulesRun} recurring delivery waiting in Orders to confirm` : "No recurring deliveries are due");
       await onChanged();
     } catch (error) {
       console.error("Failed to run due deliveries", error);
