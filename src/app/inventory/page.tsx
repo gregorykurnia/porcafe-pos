@@ -4,11 +4,11 @@ import { PageHeader } from "@/components/page-header";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Handshake, Loader2, Scale, Truck } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsageRecap } from "@/components/inventory/usage-recap";
 import { PushAlertsChip } from "@/components/push-notifications-settings";
+import { AsyncSection, type AsyncStatus } from "@/components/state/async-section";
 import {
   listInventoryMaterials,
   listInventorySupplierDeliverySchedules,
@@ -78,20 +78,6 @@ function InventoryTabLoading() {
     <Card>
       <CardContent className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />Loading inventory section…
-      </CardContent>
-    </Card>
-  );
-}
-
-function InventoryTabError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <Card className="border-danger/20 bg-danger/5">
-      <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-medium">Could not load this inventory section</p>
-          <p className="mt-1 text-sm text-muted-foreground">{message}</p>
-        </div>
-        <Button variant="outline" onClick={onRetry}>Retry</Button>
       </CardContent>
     </Card>
   );
@@ -269,9 +255,18 @@ export default function InventoryPage() {
   }, [handleTabChange]);
 
   const section = (tab: DataTab, children: React.ReactNode) => {
-    if (loadedTabs.has(tab)) return children;
-    if (tabErrors[tab]) return <InventoryTabError message={tabErrors[tab]!} onRetry={() => void refresh(tab)} />;
-    return <InventoryTabLoading />;
+    const status: AsyncStatus = loadedTabs.has(tab) ? "ready" : tabErrors[tab] ? "error" : "loading";
+    return (
+      <AsyncSection
+        status={status}
+        label="Loading inventory section"
+        onRetry={() => void refresh(tab)}
+        errorTitle="Could not load this inventory section"
+        errorDescription={tabErrors[tab]}
+      >
+        {children}
+      </AsyncSection>
+    );
   };
 
   // To order and Orders share one Suppliers panel, so an order being drafted survives a switch between them.
