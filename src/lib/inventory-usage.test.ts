@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateDailyInventoryUsage, isInventoryUsageEnabledForDate } from "./inventory-usage";
+import { calculateDailyInventoryUsage, isInventoryUsageEnabledForDate, usageStatusDeductsStock } from "./inventory-usage";
 import type {
   DailyItemLog,
   InventoryMaterial,
@@ -105,7 +105,7 @@ test("expands direct, per-portion, and batch recipe lines from saved portions", 
   const sauceRecipe = recipe("recipe-sauce", "prepared_component", "component-sauce", "Saus Mentai", "batch", 150, "g");
   const eggRecipe = recipe("recipe-egg", "prepared_component", "component-egg", "Egg Salad");
   const event = calculateDailyInventoryUsage({
-    log: log(),
+    log: log("complete"),
     menuItems: [menuItem],
     materials: [material("rice", "Rice"), material("mentai", "Mentai"), material("mayo", "Mayonnaise"), material("egg", "Egg", "pcs")],
     recipes: [menuRecipe, sauceRecipe, eggRecipe],
@@ -143,6 +143,35 @@ test("surfaces unit problems and does not publish partial material usage", () =>
   assert.equal(event.status, "needs-review");
   assert.equal(event.lines.length, 0);
   assert.equal(event.issues[0]?.code, "unit-mismatch");
+});
+
+test("drafts stay pending and deduct nothing until the day is completed", () => {
+  const menuRecipe = recipe("recipe-menu", "menu_item", menuItem.id, menuItem.name);
+  const inputs = {
+    menuItems: [menuItem],
+    materials: [material("rice", "Rice")],
+    recipes: [menuRecipe],
+    recipeLines: [line("menu-rice", menuRecipe.id, "material", "rice", "Rice", 75, "g", "D1:F1")],
+    calculatedAt: timestamp,
+  };
+
+  const draft = calculateDailyInventoryUsage({ ...inputs, log: log("draft") });
+  assert.equal(draft.status, "pending-draft");
+  assert.equal(draft.lines.length, 0);
+  assert.equal(draft.issues.length, 0);
+
+  const complete = calculateDailyInventoryUsage({ ...inputs, log: log("complete") });
+  assert.equal(complete.status, "calculated");
+  assert.equal(complete.lines.length, 1);
+  assert.equal(complete.lines[0].quantity, 150);
+});
+
+test("only calculated usage deducts stock", () => {
+  assert.equal(usageStatusDeductsStock("calculated"), true);
+  assert.equal(usageStatusDeductsStock("calculated-with-exclusions"), true);
+  assert.equal(usageStatusDeductsStock("pending-draft"), false);
+  assert.equal(usageStatusDeductsStock("needs-review"), false);
+  assert.equal(usageStatusDeductsStock("no-sales"), false);
 });
 
 test("keeps no-sales at zero and gates dates before go-live", () => {

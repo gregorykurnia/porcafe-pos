@@ -18,6 +18,7 @@ import type {
   InventoryUsageExclusion,
   InventoryUsageIssue,
   InventoryUsageLine,
+  InventoryUsageStatus,
   InventoryUnit,
   MenuItem,
   RecipeTargetType,
@@ -52,6 +53,11 @@ type ExpandedCalculation = {
 
 function usageEventId(date: string): string {
   return `usage-${date}`;
+}
+
+/** Only calculated usage deducts stock. Drafts, no-sales days and days needing review do not. */
+export function usageStatusDeductsStock(status: InventoryUsageStatus): boolean {
+  return status === "calculated" || status === "calculated-with-exclusions";
 }
 
 export function isInventoryUsageEnabledForDate(
@@ -403,6 +409,26 @@ export function calculateDailyInventoryUsage({
   goLiveDate = INVENTORY_USAGE_GO_LIVE_DATE,
   calculatedAt = Date.now(),
 }: InventoryUsageCalculationInput): InventoryUsageEvent {
+  // A draft is not final, so it does not deduct stock. Completing the day calculates
+  // usage. Downgrading it again reverses the earlier deduction (see applyInventoryConsumptionEvent).
+  if (log.status === "draft") {
+    return {
+      id: usageEventId(log.date),
+      sourceDate: log.date,
+      sourceDailyLogId: log.id,
+      sourceRevision: log.updatedAt,
+      sourceStatus: log.status,
+      status: "pending-draft",
+      totalPortions: 0,
+      lines: [],
+      issues: [],
+      excludedItems: [],
+      recipeIds: [],
+      goLiveDate,
+      calculatedAt,
+    };
+  }
+
   if (log.status === "no_sales") {
     return {
       id: usageEventId(log.date),

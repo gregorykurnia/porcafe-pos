@@ -18,12 +18,14 @@ import {
   listInventoryUsageRecap,
   setInventoryUsageItemExcluded,
   summarizeInventoryUsage,
+  usageStatusDeductsStock,
 } from "@/lib/inventory-usage";
 import type { InventoryUsageEvent } from "@/lib/types";
 
 function statusBadge(event: InventoryUsageEvent) {
   if (event.status === "needs-review") return <Badge variant="destructive">Needs review</Badge>;
   if (event.status === "no-sales") return <Badge variant="outline">No sales</Badge>;
+  if (event.status === "pending-draft") return <Badge variant="outline">Waiting for close</Badge>;
   if (event.status === "calculated-with-exclusions") return <Badge variant="secondary">Calculated with exclusions</Badge>;
   return <Badge variant="default">Calculated</Badge>;
 }
@@ -100,7 +102,7 @@ export function UsageRecap() {
     try {
       const updatedEvent = await setInventoryUsageItemExcluded(selectedEvent.sourceDate, menuItemId, excluded);
       setEvents((current) => current.map((event) => event.sourceDate === updatedEvent.sourceDate ? updatedEvent : event));
-      void fetch("/api/push/reorder-transition", {
+      if (usageStatusDeductsStock(updatedEvent.status)) void fetch("/api/push/reorder-transition", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ date: updatedEvent.sourceDate }),
@@ -132,7 +134,7 @@ export function UsageRecap() {
       if (!updatedEvent) throw new Error(`Inventory usage calculation is not enabled for ${sourceDate}.`);
 
       setEvents((current) => current.map((event) => event.sourceDate === sourceDate ? updatedEvent : event));
-      void fetch("/api/push/reorder-transition", {
+      if (usageStatusDeductsStock(updatedEvent.status)) void fetch("/api/push/reorder-transition", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ date: sourceDate }),

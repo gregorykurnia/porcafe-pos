@@ -145,3 +145,8 @@ test("aggregates calculated usage by material before ledger application", () => 
   assert.deepEqual(aggregated, [{ materialId: "rice", materialName: "Rice", unit: "g", quantity: 200 }]);
   assert.deepEqual(aggregateUsageMaterials({ ...usageEvent, status: "needs-review" }), []);
 });
+
+test("a draft day applies no consumption to the ledger", () => {
+  // Drafts carry no lines, so nothing is deducted until the day is completed.
+  assert.deepEqual(aggregateUsageMaterials({ ...usageEvent, status: "pending-draft", lines: [] }), []);
+});

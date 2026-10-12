@@ -247,7 +247,8 @@ export type InventoryRecipeLine = {
 
 // ---------- Inventory usage calculation ----------
 
-export type InventoryUsageStatus = "calculated" | "calculated-with-exclusions" | "needs-review" | "no-sales";
+// "pending-draft": the day is still a draft, so no stock is deducted yet.
+export type InventoryUsageStatus = "calculated" | "calculated-with-exclusions" | "needs-review" | "no-sales" | "pending-draft";
 
 export type InventoryUsageIssueCode =
   | "missing-menu-item"

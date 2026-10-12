@@ -82,7 +82,7 @@ import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, T
 import { toast } from "sonner";
 import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
 import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
-import { calculateAndPersistDailyInventoryUsage } from "@/lib/inventory-usage";
+import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from "@/lib/inventory-usage";
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
@@ -101,7 +101,8 @@ const ITEM_CATEGORIES = ["Main", "Add On"] as const;
 async function calculateSavedDailyUsage(log: DailyItemLog) {
   try {
     const event = await calculateAndPersistDailyInventoryUsage(log);
-    if (event) {
+    // Only calculated usage moves stock, so only that can change reorder alerts.
+    if (event && usageStatusDeductsStock(event.status)) {
       void fetch("/api/push/reorder-transition", {
         method: "POST",
         headers: { "content-type": "application/json" },
