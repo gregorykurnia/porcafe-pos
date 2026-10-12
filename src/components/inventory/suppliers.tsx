@@ -326,7 +326,7 @@ function ReorderSettingRow({
         createdAt: material.createdAt,
         reorderThreshold: nextThreshold,
         reorderQuantity: nextQuantity,
-        preferredSupplierId: preferredSupplierId || undefined,
+        preferredSupplierId,
         lowStockAlertEnabled: alertEnabled,
       });
       toast.success("Reorder settings saved");
@@ -589,7 +589,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
     setSupplierSku(item.supplierSku ?? "");
     setMinimumOrderQuantity(item.minimumOrderQuantity === undefined ? "" : String(item.minimumOrderQuantity));
     setLeadTimeDays(item.leadTimeDays === undefined ? "" : String(item.leadTimeDays));
-    setPreferred(item.preferred);
+    setPreferred(materialById.get(item.materialId)?.preferredSupplierId === item.supplierId);
     setSupplierItemNotes(item.notes ?? "");
     supplierItemFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -648,6 +648,14 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
         notes: supplierItemNotes.trim() || undefined,
         createdAt: existing?.createdAt,
       });
+      // The material's preferred supplier is the one source of truth. The link form's
+      // "Preferred" checkbox writes through to it. An empty string clears it, because the
+      // merge write would keep an omitted field.
+      if (preferred && material.preferredSupplierId !== supplier.id) {
+        await upsertInventoryMaterial({ ...material, id: material.id, createdAt: material.createdAt, preferredSupplierId: supplier.id });
+      } else if (!preferred && material.preferredSupplierId === supplier.id) {
+        await upsertInventoryMaterial({ ...material, id: material.id, createdAt: material.createdAt, preferredSupplierId: "" });
+      }
       toast.success(editingSupplierItemId ? "Supplier item updated" : "Supplier item linked");
       resetSupplierItemForm();
       await onChanged();
@@ -773,7 +781,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
               <TableCell>{supplier?.name ?? "Archived supplier"}</TableCell>
               <TableCell className="tabular-nums">{item.currency} {item.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })}<span className="block text-xs text-muted-foreground">per {item.unit} · effective {item.costEffectiveFrom ?? "date not recorded"}</span>{item.costHistory && item.costHistory.length > 0 && <span className="mt-1 block whitespace-normal text-xs text-muted-foreground">Previous: {[...item.costHistory].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom)).map((version) => `${version.currency} ${version.costPerUnit.toLocaleString("id-ID", { maximumFractionDigits: 2 })} from ${version.effectiveFrom}`).join(" · ")}</span>}</TableCell>
               <TableCell className="text-sm text-muted-foreground">{item.minimumOrderQuantity !== undefined ? `Min ${item.minimumOrderQuantity} · ` : ""}{item.leadTimeDays !== undefined ? `${item.leadTimeDays} day lead` : "No lead time"}</TableCell>
-              <TableCell>{item.preferred ? <Badge variant="default">Preferred</Badge> : <Badge variant="outline">Alternate</Badge>}</TableCell>
+              <TableCell>{materialById.get(item.materialId)?.preferredSupplierId === item.supplierId ? <Badge variant="default">Preferred</Badge> : <Badge variant="outline">Alternate</Badge>}</TableCell>
               <TableCell className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => startEditingSupplierItem(item)} disabled={supplierItemSaving}><Pencil className="size-3.5" />Edit</Button><Button size="sm" variant="destructive" onClick={() => void removeSupplierItem(item)} disabled={supplierItemSaving}>Remove</Button></div></TableCell>
             </TableRow>;
           })}</TableBody></Table></div>}
