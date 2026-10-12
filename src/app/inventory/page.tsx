@@ -7,6 +7,8 @@ import { BookOpen, Handshake, Loader2, Scale, Truck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsageRecap } from "@/components/inventory/usage-recap";
+import type { StockSummary } from "@/components/inventory/stock-dashboard";
+import { Stat } from "@/components/state/stat";
 import { PushAlertsChip } from "@/components/push-notifications-settings";
 import { AsyncSection, type AsyncStatus } from "@/components/state/async-section";
 import {
@@ -17,7 +19,7 @@ import {
   listInventorySuppliers,
   runDueInventorySupplierDeliverySchedules,
 } from "@/lib/data";
-import { todayISO } from "@/lib/dates";
+import { formatDisplay, todayISO } from "@/lib/dates";
 import { isOffline } from "@/lib/connection";
 import { stockTabFromParam, type StockTab } from "@/lib/workspace-tabs";
 import type {
@@ -106,6 +108,7 @@ export default function InventoryPage() {
   const [visitedTabs, setVisitedTabs] = useState<Set<StockTab>>(() => new Set(["stock"]));
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
+  const [stockSummary, setStockSummary] = useState<StockSummary | null>(null);
 
   const materialsLoadedRef = useRef(false);
   const suppliersLoadedRef = useRef(false);
@@ -280,6 +283,13 @@ export default function InventoryPage() {
         actions={<PushAlertsChip />}
       />
 
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Stat label="To order" value={stockSummary?.toOrder ?? "—"} tone={stockSummary && stockSummary.toOrder > 0 ? "warning" : "default"} />
+        <Stat label="Materials on order" value={stockSummary?.onOrder ?? "—"} />
+        <Stat label="Negative" value={stockSummary?.negative ?? "—"} tone={stockSummary && stockSummary.negative > 0 ? "danger" : "default"} />
+        <Stat label="Last count" value={stockSummary?.lastCount ? formatDisplay(stockSummary.lastCount) : "—"} />
+      </div>
+
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList aria-label="Inventory sections" className="grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto lg:inline-flex lg:w-auto lg:gap-0 lg:group-data-horizontal/tabs:h-8">
           <TabsTrigger value="stock" className={TAB_CLASS}><Scale className={TAB_ICON_CLASS} /><span>Stock</span></TabsTrigger>
@@ -289,7 +299,7 @@ export default function InventoryPage() {
         </TabsList>
 
         <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} onOrderMaterial={openOrderFor} />)}
+          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} onOrderMaterial={openOrderFor} onSummaryChange={setStockSummary} />)}
         </TabsContent>
         <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("usage") && <UsageRecap />}

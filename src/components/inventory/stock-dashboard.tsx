@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { todayISO, formatDisplay } from "@/lib/dates";
+import { getInventoryReorderStatus } from "@/lib/reorder-status";
 import {
   createInventoryMovement,
   getInventoryMovementTotals,
@@ -45,6 +46,14 @@ import type {
   InventorySupplierOrder,
 } from "@/lib/types";
 
+/** The figures the Stock header shows. */
+export type StockSummary = {
+  toOrder: number;
+  onOrder: number;
+  negative: number;
+  lastCount: string | null;
+};
+
 type StockDashboardProps = {
   materials: InventoryMaterial[];
   onChanged: () => Promise<void>;
@@ -54,6 +63,8 @@ type StockDashboardProps = {
   onReceiveAgainst?: (orderId: string) => void;
   /** Opens a new order for the material on the Suppliers tab. */
   onOrderMaterial?: (materialId: string) => void;
+  /** Reports the header figures once the dashboard has loaded. */
+  onSummaryChange?: (summary: StockSummary) => void;
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
@@ -135,7 +146,7 @@ function sortMovementsByDate(movements: InventoryMovement[]): InventoryMovement[
   });
 }
 
-export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openOrders = [], onReceiveAgainst, onOrderMaterial }: StockDashboardProps) {
+export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openOrders = [], onReceiveAgainst, onOrderMaterial, onSummaryChange }: StockDashboardProps) {
   const [setup, setSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [balanceTotals, setBalanceTotals] = useState<Record<string, number>>({});
@@ -191,6 +202,34 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     () => buildCurrentStockRows({ materials, balances: currentStockBalances, openOrders }),
     [materials, currentStockBalances, openOrders]
   );
+  const stockSummary = useMemo<StockSummary>(() => {
+    const openOrderMaterialIds = new Set(
+      openOrders
+        .filter((order) => order.status === "ordered" || order.status === "partially_received")
+        .flatMap((order) => order.lines.map((line) => line.materialId))
+    );
+    return {
+      // The same reorder rule as the To order tab, so the two counts agree.
+      toOrder: activeMaterials.filter((material) =>
+        getInventoryReorderStatus(
+          material,
+          balances.find((balance) => balance.materialId === material.id)?.currentQuantity,
+          Boolean(setup?.initialized),
+          openOrderMaterialIds.has(material.id)
+        ) === "to-order"
+      ).length,
+      onOrder: stockRows.filter((row) => row.hasOpenOrder).length,
+      negative: stockRows.filter((row) => row.status === "negative").length,
+      lastCount: movements.reduce<string | null>(
+        (latest, movement) => (movement.movementType === "stock_count" && (!latest || movement.occurredOn > latest) ? movement.occurredOn : latest),
+        null
+      ),
+    };
+  }, [activeMaterials, balances, openOrders, setup, stockRows, movements]);
+  useEffect(() => {
+    if (loading || !onSummaryChange) return;
+    onSummaryChange(stockSummary);
+  }, [loading, onSummaryChange, stockSummary]);
   function focusCount(materialId: string) {
     setCountMaterialId(materialId);
     document.getElementById("stock-count")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -244,7 +283,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     if (initialReceivingPrefillRef.current || movementType !== "receiving" || !selectedMovementMaterialId) return;
     if (!activeMaterials.some((material) => material.id === selectedMovementMaterialId)) return;
     initialReceivingPrefillRef.current = true;
-    fillReceivingDefaults(selectedMovementMaterialId);
+    void Promise.resolve().then(() => fillReceivingDefaults(selectedMovementMaterialId));
   }, [activeMaterials, fillReceivingDefaults, movementType, selectedMovementMaterialId]);
 
   const refresh = useCallback(async (blocking = false) => {
