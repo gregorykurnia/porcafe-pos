@@ -305,17 +305,17 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
           ) : (
             <div className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5"><Label>Target type</Label><Select value={draftRecipe.targetType} onValueChange={(value) => setTargetType(value as RecipeTargetType)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="menu_item">Menu item</SelectItem><SelectItem value="prepared_component">Prepared component</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Target</Label><Select value={draftRecipe.targetId} onValueChange={setTargetId}><SelectTrigger className="w-full"><SelectValue placeholder="Choose a target" /></SelectTrigger><SelectContent>{draftRecipe.targetType === "menu_item" ? menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>) : componentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Status</Label><Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => <SelectItem key={status} value={status}>{recipeStatusView(status).label}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Effective from</Label><Input type="date" value={draftRecipe.effectiveFrom ?? ""} onChange={(event) => updateRecipe({ effectiveFrom: event.target.value || null })} /></div>
+                <div className="space-y-1.5"><Label>Target type</Label><Select value={draftRecipe.targetType} onValueChange={(value) => setTargetType(value as RecipeTargetType)}><SelectTrigger aria-label="Target type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="menu_item">Menu item</SelectItem><SelectItem value="prepared_component">Prepared component</SelectItem></SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Target</Label><Select value={draftRecipe.targetId} onValueChange={setTargetId}><SelectTrigger aria-label="Target" className="w-full"><SelectValue placeholder="Choose a target" /></SelectTrigger><SelectContent>{draftRecipe.targetType === "menu_item" ? menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>) : componentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Status</Label><Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}><SelectTrigger aria-label="Recipe status" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => <SelectItem key={status} value={status}>{recipeStatusView(status).label}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Effective from</Label><Input aria-label="Effective from" type="date" value={draftRecipe.effectiveFrom ?? ""} onChange={(event) => updateRecipe({ effectiveFrom: event.target.value || null })} /></div>
               </div>
 
-              {draftRecipe.targetType === "prepared_component" && <div className="rounded-xl border border-border/70 bg-surface/50 p-3"><div className="grid gap-3 sm:grid-cols-3"><div className="space-y-1.5"><Label>Component basis</Label><Select value={draftRecipe.basis} onValueChange={(value) => updateRecipe({ basis: value as RecipeBasis, yieldQuantity: value === "batch" ? draftRecipe.yieldQuantity : null, yieldUnit: value === "batch" ? draftRecipe.yieldUnit : null })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="per_portion">Per portion</SelectItem><SelectItem value="batch">Batch with yield</SelectItem></SelectContent></Select></div>{draftRecipe.basis === "batch" && <><div className="space-y-1.5"><Label>Yield quantity</Label><Input type="number" min="0" step="0.01" value={draftRecipe.yieldQuantity ?? ""} onChange={(event) => updateRecipe({ yieldQuantity: event.target.value ? Number(event.target.value) : null })} /></div><div className="space-y-1.5"><Label>Yield unit</Label><Select value={draftRecipe.yieldUnit ?? ""} onValueChange={(value) => updateRecipe({ yieldUnit: value as InventoryUnit })}><SelectTrigger className="w-full"><SelectValue placeholder="Choose unit" /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></>}</div>{draftRecipe.basis === "per_portion" && <p className="mt-2 text-xs text-muted-foreground">This records the reviewed one-portion basis without inventing a batch yield.</p>}</div>}
+              {draftRecipe.targetType === "prepared_component" && <div className="rounded-xl border border-border/70 bg-surface/50 p-3"><div className="grid gap-3 sm:grid-cols-3"><div className="space-y-1.5"><Label>Component basis</Label><Select value={draftRecipe.basis} onValueChange={(value) => updateRecipe({ basis: value as RecipeBasis, yieldQuantity: value === "batch" ? draftRecipe.yieldQuantity : null, yieldUnit: value === "batch" ? draftRecipe.yieldUnit : null })}><SelectTrigger aria-label="Component basis" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="per_portion">Per portion</SelectItem><SelectItem value="batch">Batch with yield</SelectItem></SelectContent></Select></div>{draftRecipe.basis === "batch" && <><div className="space-y-1.5"><Label>Yield quantity</Label><Input aria-label="Yield quantity" type="number" min="0" step="0.01" value={draftRecipe.yieldQuantity ?? ""} onChange={(event) => updateRecipe({ yieldQuantity: event.target.value ? Number(event.target.value) : null })} /></div><div className="space-y-1.5"><Label>Yield unit</Label><Select value={draftRecipe.yieldUnit ?? ""} onValueChange={(value) => updateRecipe({ yieldUnit: value as InventoryUnit })}><SelectTrigger aria-label="Yield unit" className="w-full"><SelectValue placeholder="Choose unit" /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></>}</div>{draftRecipe.basis === "per_portion" && <p className="mt-2 text-xs text-muted-foreground">This records the reviewed one-portion basis without inventing a batch yield.</p>}</div>}
 
               <div className="flex items-end justify-between gap-3">
                 <div>
-                  <h3 className="font-semibold">Recipe lines</h3>
+                  <h2 className="font-semibold">Recipe lines</h2>
                   <p className="text-sm text-muted-foreground">Review each mapping, quantity, and unit, then approve the line before saving.</p>
                 </div>
                 <Button size="sm" variant="outline" onClick={addLine}><Plus className="size-4" />Add line</Button>
@@ -329,7 +329,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                       <TableHead className="w-40">Unit</TableHead>
                       <TableHead>Source</TableHead>
                       <TableHead>Review</TableHead>
-                      <TableHead className="w-12" />
+                      <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -353,7 +353,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                                 });
                               }}
                             >
-                              <SelectTrigger size="sm" className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectTrigger size="sm" aria-label="Ingredient for this line" className="w-full"><SelectValue /></SelectTrigger>
                               <SelectContent>
                                 {ingredientOptions.map((option) => (
                                   <SelectItem key={option.key} value={option.key}>
@@ -371,11 +371,12 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                               value={line.quantity ?? ""}
                               onChange={(event) => updateLine(line.id, { quantity: event.target.value ? Number(event.target.value) : null })}
                               className="h-8 text-right"
+                              aria-label="Quantity for this line"
                             />
                           </TableCell>
                           <TableCell className="p-1">
                             <Select value={line.unit ?? ""} onValueChange={(value) => updateLine(line.id, { unit: value as InventoryUnit })}>
-                              <SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger>
+                              <SelectTrigger size="sm" aria-label="Unit for this line" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger>
                               <SelectContent>
                                 {INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.value}</SelectItem>)}
                               </SelectContent>
