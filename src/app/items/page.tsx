@@ -25,6 +25,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/confirm-dialog";
+import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
@@ -45,15 +46,12 @@ import {
   upsertMenuItem,
   getDailyItemLog,
   listDailyItemLogs,
-  upsertDailyItemLog,
   saveDailyClose,
   listItemSales,
-  listItemSalesByDate,
   upsertItemSale,
   deleteItemSale,
   migrateLegacyItemSalesToDailyLogs,
   getSalesEntryByDate,
-  upsertSalesEntryByDate,
 } from "@/lib/data";
 import type { DailyItemLog, MenuItem, ItemSale, SalesEntry } from "@/lib/types";
 import {
@@ -71,15 +69,6 @@ import {
 } from "@/lib/dates";
 import { isValid as isValidDate } from "date-fns";
 
-// OCR-returned dates aren't guaranteed to be strict zero-padded YYYY-MM-DD (e.g. the
-// model may emit "2026-8-2"). date-fns parses/displays that fine, but every filter in
-// this app does exact string equality on `date`, so a non-canonical string silently
-// breaks day filters and same-date lookups. Always normalize before storing.
-function normalizeISODate(raw: string | null | undefined): string {
-  if (!raw) return todayISO();
-  const d = parseISO(raw);
-  return isValidDate(d) ? toISODate(d) : todayISO();
-}
 import { downloadCSV } from "@/lib/csv";
 import {
   ResponsiveContainer,
@@ -91,7 +80,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ScanLine, X, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
 import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
@@ -507,414 +496,6 @@ function EditableItemSaleRow({
   );
 }
 
-type ScanDraftItem = {
-  menuItemId: string;
-  rawName: string;
-  qty: string;
-};
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // strip the "data:image/jpeg;base64," prefix
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function TicketScanDialog({
-  menuItems,
-  onDone,
-}: {
-  menuItems: MenuItem[];
-  onDone: (savedDate: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [scanDate, setScanDate] = useState(todayISO());
-  const [draftItems, setDraftItems] = useState<ScanDraftItem[]>([]);
-  const [cash, setCash] = useState("");
-  const [bca, setBca] = useState("");
-  const [nobu, setNobu] = useState("");
-  const [existingEntryId, setExistingEntryId] = useState<string | null>(null);
-  const [existingOther, setExistingOther] = useState(0);
-  const [existingItemSaleCount, setExistingItemSaleCount] = useState(0);
-  const [step, setStep] = useState<"items" | "revenue">("items");
-  const confirm = useConfirm();
-  const [itemsSaved, setItemsSaved] = useState(false);
-
-  function reset() {
-    setScanning(false);
-    setSaving(false);
-    setPreviewUrl(null);
-    setScanDate(todayISO());
-    setDraftItems([]);
-    setCash("");
-    setBca("");
-    setNobu("");
-    setExistingEntryId(null);
-    setExistingOther(0);
-    setExistingItemSaleCount(0);
-    setStep("items");
-    setItemsSaved(false);
-  }
-
-  async function handleFile(file: File) {
-    setPreviewUrl(URL.createObjectURL(file));
-    setScanning(true);
-    try {
-      const imageBase64 = await fileToBase64(file);
-      const res = await fetch("/api/scan-ticket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64,
-          mediaType: file.type || "image/jpeg",
-          menuItems: menuItems.map((m) => ({ id: m.id, name: m.name, category: m.category, price: m.price })),
-        }),
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result?.error || `Scan failed (${res.status})`);
-      const normDate = normalizeISODate(result.date);
-      setScanDate(normDate);
-      setDraftItems(
-        (result.items ?? []).map((it: { menuItemId: string | null; rawName: string; qty: number }) => ({
-          menuItemId: it.menuItemId ?? "",
-          rawName: it.rawName,
-          qty: String(it.qty ?? ""),
-        }))
-      );
-      setCash(String(result.cash ?? ""));
-      setBca(String(result.bca ?? ""));
-      setNobu(String(result.nobu ?? ""));
-
-      const existing = await getSalesEntryByDate(normDate);
-      if (existing) {
-        setExistingEntryId(existing.id);
-        setExistingOther(existing.other);
-      }
-      const existingItemSales = await listItemSalesByDate(normDate);
-      setExistingItemSaleCount(existingItemSales.length);
-      toast.success("Ticket scanned — review before saving");
-    } catch (err) {
-      console.error("Scan failed:", err);
-      toast.error(err instanceof Error ? err.message : "Scan failed");
-    } finally {
-      setScanning(false);
-    }
-  }
-
-  function updateDraft(idx: number, patch: Partial<ScanDraftItem>) {
-    setDraftItems((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-  }
-
-  function removeDraft(idx: number) {
-    setDraftItems((rows) => rows.filter((_, i) => i !== idx));
-  }
-
-  async function confirmItems() {
-    const rowsWithQty = draftItems.filter((r) => parseFloat(r.qty) > 0);
-    const unmatched = rowsWithQty.filter((r) => !r.menuItemId);
-    if (unmatched.length > 0) {
-      toast.error(
-        `Match every row before saving — no menu item selected for: ${unmatched
-          .map((r) => `"${r.rawName}"`)
-          .join(", ")}`
-      );
-      return;
-    }
-    if (rowsWithQty.length === 0) {
-      toast.error("Nothing to save");
-      return;
-    }
-    setSaving(true);
-    try {
-      const quantities: Record<string, number> = {};
-      for (const row of rowsWithQty) {
-        const item = menuItems.find((m) => m.id === row.menuItemId);
-        if (item) quantities[item.id] = (quantities[item.id] ?? 0) + parseFloat(row.qty);
-      }
-
-      const existingForDate = await listItemSalesByDate(scanDate);
-      const existingByItemId = new Map<string, ItemSale>();
-      const staleLegacyRows = existingForDate.filter((sale) => {
-        if (!quantities[sale.itemId] || existingByItemId.has(sale.itemId)) return true;
-        existingByItemId.set(sale.itemId, sale);
-        return false;
-      });
-
-      if (staleLegacyRows.length > 0) {
-        const ok = await confirm({
-          title: "Replace legacy item rows?",
-          body: `This rescan will replace ${staleLegacyRows.length} legacy item row${staleLegacyRows.length === 1 ? "" : "s"} that no longer matches the reviewed sheet.`,
-          confirmLabel: "Replace and continue",
-        });
-        if (!ok) return;
-      }
-
-      // The daily log is the canonical scanner output. Saving by date makes a
-      // rescan idempotent and replaces the complete quantity map for that sheet.
-      const existingDailyLog = await getDailyItemLog(scanDate);
-      const savedDailyLog: DailyItemLog = {
-        id: scanDate,
-        date: scanDate,
-        quantities,
-        totalQty: Object.values(quantities).reduce((total, value) => total + value, 0),
-        status: "complete",
-        source: "scan",
-        createdAt: existingDailyLog?.createdAt ?? Date.now(),
-        updatedAt: Date.now(),
-      };
-      await upsertDailyItemLog(savedDailyLog);
-      await calculateSavedDailyUsage(savedDailyLog);
-
-      // Keep the legacy collection mirrored for older consumers. A confirmed
-      // rescan is replacement semantics: stale rows and duplicate item rows
-      // are removed, while reviewed quantities are written once per item.
-      await Promise.all(staleLegacyRows.map((sale) => deleteItemSale(sale.id)));
-      await Promise.all(Object.entries(quantities).map(([itemId, qty]) => {
-        const item = menuItems.find((m) => m.id === itemId);
-        if (!item) return Promise.resolve();
-        return upsertItemSale({
-          id: existingByItemId.get(item.id)?.id,
-          date: scanDate,
-          itemId: item.id,
-          itemName: item.name,
-          category: item.category,
-          qty,
-        });
-      }));
-      toast.success(
-        staleLegacyRows.length > 0
-          ? `Daily quantities saved — removed ${staleLegacyRows.length} stale row${staleLegacyRows.length === 1 ? "" : "s"}`
-          : "Daily quantities saved — now review the revenue split"
-      );
-      setItemsSaved(true);
-      onDone(scanDate);
-      // scanDate may have been edited since the initial OCR-date lookup — refresh
-      // which SalesEntry (if any) this revenue confirm should merge into.
-      const existing = await getSalesEntryByDate(scanDate);
-      setExistingEntryId(existing?.id ?? null);
-      setExistingOther(existing?.other ?? 0);
-      setStep("revenue");
-    } catch (err) {
-      console.error("Failed to save item sales:", err);
-      toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function confirmRevenue() {
-    setSaving(true);
-    try {
-      await upsertSalesEntryByDate({
-        date: scanDate,
-        cash: parseFloat(cash) || 0,
-        bca: parseFloat(bca) || 0,
-        soundbox: parseFloat(nobu) || 0,
-        other: existingOther,
-      });
-      toast.success("Revenue logged to Sales recap");
-      setOpen(false);
-      const savedDate = scanDate;
-      reset();
-      onDone(savedDate);
-    } catch (err) {
-      console.error("Failed to save sales entry:", err);
-      toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) reset();
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button size="sm" variant="outline">
-          <ScanLine className="size-4" /> Scan sheet
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {previewUrl && step === "revenue"
-              ? "Step 2: Review revenue split"
-              : previewUrl
-                ? "Step 1: Review items sold"
-                : "Scan daily ticker sheet"}
-          </DialogTitle>
-        </DialogHeader>
-
-        {!previewUrl ? (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Upload or photograph the handwritten ticker sheet. Claude will read the item quantities and
-              Cash/BCA/Nobu totals for you to review before saving.
-            </p>
-            <Input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-            />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex gap-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={previewUrl} alt="Ticket preview" className="h-24 w-24 rounded-md object-cover border" />
-              <div className="flex-1 space-y-1.5">
-                <Label htmlFor="scan-date">Date <span className="font-normal text-muted-foreground">({formatDisplay(scanDate)})</span></Label>
-                <Input
-                  id="scan-date"
-                  type="date"
-                  value={scanDate}
-                  disabled={itemsSaved}
-                  onChange={(e) => setScanDate(e.target.value)}
-                />
-                {existingEntryId && (
-                  <p className="text-xs text-warning">
-                    A Sales entry already exists for this date — saving will update it.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {scanning ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                Reading ticket… this can take 30-60s while it carefully counts tally marks.
-              </p>
-            ) : step === "items" ? (
-              <div className="space-y-2">
-                <Label>Items sold</Label>
-                <p className="text-xs text-muted-foreground">
-                  Confirm each row matches the correct menu item, then save. You&apos;ll review the Cash/BCA/Nobu
-                  revenue split next.
-                </p>
-                {existingItemSaleCount > 0 && (
-                  <div className="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
-                    Existing item rows for this date were found. Confirming this scan uses replacement semantics and may remove rows no longer present.
-                  </div>
-                )}
-                <div className="overflow-x-auto rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Menu item</TableHead>
-                        <TableHead className="text-right w-24">Qty</TableHead>
-                        <TableHead className="w-10"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {draftItems.map((row, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="p-1">
-                            <Select
-                              value={row.menuItemId}
-                              onValueChange={(v) => updateDraft(idx, { menuItemId: v })}
-                            >
-                              <SelectTrigger size="sm" className="h-8 w-full">
-                                <SelectValue placeholder={`"${row.rawName}" — no match`} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {menuItems.map((m) => (
-                                  <SelectItem key={m.id} value={m.id}>
-                                    {m.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell className="p-1">
-                            <Input
-                              type="number"
-                              inputMode="numeric"
-                              value={row.qty}
-                              onChange={(e) => updateDraft(idx, { qty: e.target.value })}
-                              className="h-8 text-right"
-                            />
-                          </TableCell>
-                          <TableCell className="p-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeDraft(idx)}
-                              aria-label={`Remove ${row.rawName} from scan`}
-                            >
-                              <X className="size-4 text-muted-foreground" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {draftItems.length === 0 && (
-                    <p className="py-4 text-center text-sm text-muted-foreground">No items detected</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs text-success">
-                  Daily quantities for {formatDisplay(scanDate)} saved. Now review the payment-method split before it&apos;s logged
-                  to Sales recap.
-                </div>
-                <Label>Revenue (this sheet)</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="scan-cash" className="text-xs text-muted-foreground">Cash</Label>
-                    <Input id="scan-cash" type="number" inputMode="decimal" value={cash} onChange={(e) => setCash(e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="scan-bca" className="text-xs text-muted-foreground">BCA</Label>
-                    <Input id="scan-bca" type="number" inputMode="decimal" value={bca} onChange={(e) => setBca(e.target.value)} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="scan-nobu" className="text-xs text-muted-foreground">Nobu (→ Soundbox)</Label>
-                    <Input id="scan-nobu" type="number" inputMode="decimal" value={nobu} onChange={(e) => setNobu(e.target.value)} />
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Total: {(parseFloat(cash) || 0) + (parseFloat(bca) || 0) + (parseFloat(nobu) || 0)}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <DialogFooter>
-          {previewUrl && !scanning && step === "items" && (
-            <Button onClick={confirmItems} disabled={saving} className="bg-primary hover:bg-primary-hover">
-              {saving ? "Saving…" : "Save item sales & continue"}
-            </Button>
-          )}
-          {previewUrl && !scanning && step === "revenue" && (
-            <Button onClick={confirmRevenue} disabled={saving} className="bg-primary hover:bg-primary-hover">
-              {saving ? "Saving…" : "Confirm & log to Sales recap"}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function ItemsPage() {
   const confirm = useConfirm();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -1209,12 +790,13 @@ export default function ItemsPage() {
   // The scanner wrote this day's quantities and revenue. Show that day reloaded, so
   // the scanned values are what the close screen displays. Any unsaved draft for the
   // day is dropped, because the scan replaces it.
-  function handleScanSaved(savedDate: string) {
+  function handleScanSaved(savedDate: string, savedLog: DailyItemLog) {
     refresh();
     clearSessionDraft(closeDraftKey(savedDate));
     setActiveView("daily");
     setDate(savedDate);
     setDailyRetryKey((key) => key + 1);
+    void calculateSavedDailyUsage(savedLog);
   }
 
   async function switchView(view: ItemsView) {
@@ -1766,7 +1348,7 @@ export default function ItemsPage() {
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-        <TicketScanDialog menuItems={menuItems} onDone={handleScanSaved} />
+        <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} />
         {activeView === "daily" && (
           <Button asChild className="flex-1 bg-primary hover:bg-primary-hover sm:flex-none">
             <Link href="/sales">

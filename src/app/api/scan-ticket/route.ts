@@ -45,6 +45,10 @@ export type ScanTicketResult = z.infer<typeof TicketSchema> & {
   nobu: number;
 };
 
+// The client shrinks each photo before sending it. A payload this large did not come from it.
+// About 3 MB of image.
+const MAX_IMAGE_BASE64_LENGTH = 4 * 1024 * 1024;
+
 export async function POST(req: Request) {
   const body = await req.json();
   const { imageBase64, mediaType, menuItems } = body as {
@@ -55,6 +59,10 @@ export async function POST(req: Request) {
 
   if (!imageBase64) {
     return NextResponse.json({ error: "Missing image" }, { status: 400 });
+  }
+
+  if (imageBase64.length > MAX_IMAGE_BASE64_LENGTH) {
+    return NextResponse.json({ error: "image-too-large" }, { status: 413 });
   }
 
   const SUPPORTED_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];

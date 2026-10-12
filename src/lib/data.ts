@@ -24,6 +24,7 @@ import { db } from "./firebase";
 import { formatDisplay } from "./dates";
 import { ConflictError, isStale, recordVersion } from "./concurrency";
 import type { MaterialUsageCounts } from "./material-usage";
+import { classifyLegacyItemSales } from "./legacy-item-sales";
 import type {
   SalesEntry,
   MenuItem,
@@ -417,6 +418,33 @@ export type LegacyItemSalesMigrationResult = {
 // Non-destructive migration helper for the eventual one-time data cleanup.
 // Existing daily logs win, duplicate legacy rows are summed by date/item, and
 // the legacy itemSales documents are never deleted.
+/**
+ * Replaces the legacy itemSales rows for one date with a reviewed sheet: one row per
+ * item, stale rows removed. Keeps older readers in step with the daily log.
+ */
+export async function replaceLegacyItemSalesForDate(
+  date: string,
+  rows: { itemId: string; itemName: string; category: string; qty: number }[]
+): Promise<{ removed: number }> {
+  const existing = await listItemSalesByDate(date);
+  const wanted = new Map(rows.map((row) => [row.itemId, row]));
+  const { keep, stale } = classifyLegacyItemSales(existing, new Set(wanted.keys()));
+  await Promise.all(stale.map((sale) => deleteItemSale(sale.id)));
+  await Promise.all(
+    [...wanted.values()].map((row) =>
+      upsertItemSale({
+        id: keep.get(row.itemId),
+        date,
+        itemId: row.itemId,
+        itemName: row.itemName,
+        category: row.category,
+        qty: row.qty,
+      })
+    )
+  );
+  return { removed: stale.length };
+}
+
 export async function migrateLegacyItemSalesToDailyLogs(options?: {
   dryRun?: boolean;
 }): Promise<LegacyItemSalesMigrationResult> {
