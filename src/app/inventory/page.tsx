@@ -5,12 +5,11 @@ import { Stat } from "@/components/state/stat";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Handshake, Loader2, Scale } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsageRecap } from "@/components/inventory/usage-recap";
-import { PushNotificationsSettings } from "@/components/push-notifications-settings";
+import { PushAlertsChip } from "@/components/push-notifications-settings";
 import {
   listInventoryAliasMappings,
   listInventoryMaterials,
@@ -354,7 +353,7 @@ export default function InventoryPage() {
         eyebrow={<><Boxes className="size-4" />Inventory foundation</>}
         title="Stock"
         description={"Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning."}
-        actions={<Badge variant="outline">Phase 3 · Ledger</Badge>}
+        actions={<PushAlertsChip />}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -362,8 +361,6 @@ export default function InventoryPage() {
         <Stat variant="card" size="sm" icon={<BookOpen className="size-5 text-success" />} label="Recipe versions" value={loadedTabs.has("recipes") || loadedTabs.has("import") ? recipes.length : "—"} />
         <Stat variant="card" size="sm" icon={<AlertTriangle className="size-5 text-warning" />} label="Stock balance" value="Opening stock gated" />
       </div>
-
-      <PushNotificationsSettings />
 
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList aria-label="Inventory sections" className="grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto lg:inline-flex lg:w-auto lg:gap-0 lg:group-data-horizontal/tabs:h-8">

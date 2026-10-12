@@ -478,6 +478,7 @@ export async function replaceLegacyItemSalesForDate(
   date: string,
   rows: { itemId: string; itemName: string; category: string; qty: number }[]
 ): Promise<{ removed: number }> {
+  assertOnline();
   const existing = await listItemSalesByDate(date);
   const wanted = new Map(rows.map((row) => [row.itemId, row]));
   const { keep, stale } = classifyLegacyItemSales(existing, new Set(wanted.keys()));
@@ -501,6 +502,7 @@ export async function migrateLegacyItemSalesToDailyLogs(options?: {
   dryRun?: boolean;
 }): Promise<LegacyItemSalesMigrationResult> {
   const dryRun = options?.dryRun ?? true;
+  if (!dryRun) assertOnline();
   const [legacySales, existingLogs] = await Promise.all([
     listItemSales(),
     listDailyItemLogs(),

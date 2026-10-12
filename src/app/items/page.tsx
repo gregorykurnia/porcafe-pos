@@ -31,7 +31,6 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { useQueryState } from "@/hooks/use-query-state";
-import { Stat } from "@/components/state/stat";
 import { RelativeSavedAt } from "@/components/state/relative-saved-at";
 import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
@@ -62,7 +61,6 @@ import {
   listItemSales,
   upsertItemSale,
   deleteItemSale,
-  migrateLegacyItemSalesToDailyLogs,
   getSalesEntryByDate,
 } from "@/lib/data";
 import type { DailyItemLog, MenuItem, ItemSale, SalesEntry } from "@/lib/types";
@@ -112,14 +110,6 @@ type CloseRecapState = {
   revenue: number;
   stockStatus: string;
   undo: CloseUndo;
-};
-
-type MigrationPreview = {
-  datesFound: number;
-  datesMigrated: number;
-  datesSkipped: number;
-  rowsMigrated: number;
-  dryRun: boolean;
 };
 
 const ITEM_CATEGORIES = ["Main", "Add On"] as const;
@@ -584,9 +574,6 @@ function ItemsWorkspace() {
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState<string>(ITEM_CATEGORIES[0]);
   const [newPrice, setNewPrice] = useState("");
-  const [migrationPreview, setMigrationPreview] = useState<MigrationPreview | null>(null);
-  const [migrationPreviewLoading, setMigrationPreviewLoading] = useState(false);
-  const [migrationApplying, setMigrationApplying] = useState(false);
 
   function refresh() {
     setLoading(true);
@@ -1057,52 +1044,8 @@ function ItemsWorkspace() {
   const dailyLogDates = new Set(dailyLogs.map((log) => log.date));
   const legacyItemSaleDates = new Set(sales.map((sale) => sale.date));
   const legacyOnlyDates = [...legacyItemSaleDates].filter((date) => !dailyLogDates.has(date));
-  const dailyOnlyDates = [...dailyLogDates].filter((date) => !legacyItemSaleDates.has(date));
-  const sourceMismatch = legacyOnlyDates.length > 0;
   // Legacy rows stay editable only until their dates are copied into Daily close (D5).
   const legacyEditable = legacyOnlyDates.length > 0;
-
-  async function previewLegacyMigration() {
-    setMigrationPreviewLoading(true);
-    try {
-      const preview = await migrateLegacyItemSalesToDailyLogs({ dryRun: true });
-      setMigrationPreview(preview);
-      toast.success("Migration preview ready — no records changed");
-    } catch (err) {
-      console.error("Failed to preview item migration:", err);
-      toast.error(err instanceof Error ? err.message : "Could not preview item migration");
-    } finally {
-      setMigrationPreviewLoading(false);
-    }
-  }
-
-  async function applyLegacyMigration() {
-    if (!migrationPreview) return;
-    const datesToMigrate = migrationPreview.datesFound - migrationPreview.datesSkipped;
-    if (datesToMigrate <= 0) {
-      toast.success("Nothing to migrate — all legacy dates already have daily logs");
-      return;
-    }
-    const ok = await confirm({
-      title: `Copy ${datesToMigrate} legacy date${datesToMigrate === 1 ? "" : "s"} into Daily close?`,
-      body: "Existing legacy rows will be kept.",
-      confirmLabel: "Copy dates",
-    });
-    if (!ok) return;
-
-    setMigrationApplying(true);
-    try {
-      const result = await migrateLegacyItemSalesToDailyLogs({ dryRun: false });
-      toast.success(`Migrated ${result.datesMigrated} date${result.datesMigrated === 1 ? "" : "s"} into Daily close`);
-      setMigrationPreview(null);
-      refresh();
-    } catch (err) {
-      console.error("Failed to migrate legacy item sales:", err);
-      toast.error(err instanceof Error ? err.message : "Could not migrate legacy item sales");
-    } finally {
-      setMigrationApplying(false);
-    }
-  }
 
   async function removeSale(id: string) {
     const sale = sales.find((candidate) => candidate.id === id);
@@ -1321,41 +1264,11 @@ function ItemsWorkspace() {
         </TabsList>
       </Tabs>
 
-      {activeView === "history" && sourceMismatch && (
-        <Card className="border-warning/25 bg-warning/5">
-          <CardHeader>
-            <CardTitle className="text-lg text-foreground">Item history source check</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Daily close and History now use the canonical daily log when one exists. These legacy-only dates still need the migration preview below.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Stat label="Daily-log dates" value={String(dailyLogDates.size)} />
-              <Stat label="Legacy-only dates" value={String(legacyOnlyDates.length)} tone={legacyOnlyDates.length > 0 ? "warning" : "default"} />
-              <Stat label="Daily-only dates" value={String(dailyOnlyDates.length)} />
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={previewLegacyMigration} disabled={migrationPreviewLoading}>
-                {migrationPreviewLoading ? "Preparing preview…" : "Preview migration"}
-              </Button>
-              <p className="text-xs text-muted-foreground">Preview only — it will not write or delete data.</p>
-            </div>
-            {migrationPreview && (
-              <div className="rounded-xl border border-info/20 bg-info/5 p-4 text-sm text-foreground">
-                <p className="font-medium">Migration preview</p>
-                <p className="mt-1 text-muted-foreground">
-                  Would copy {migrationPreview.datesFound - migrationPreview.datesSkipped} date{migrationPreview.datesFound - migrationPreview.datesSkipped === 1 ? "" : "s"} from {migrationPreview.rowsMigrated} legacy item row{migrationPreview.rowsMigrated === 1 ? "" : "s"}. Existing daily logs would be skipped and legacy rows would remain untouched.
-                </p>
-                {migrationPreview.datesFound - migrationPreview.datesSkipped > 0 && (
-                  <Button type="button" className="mt-3 bg-primary hover:bg-primary-hover" onClick={applyLegacyMigration} disabled={migrationApplying}>
-                    {migrationApplying ? "Applying migration…" : "Apply non-destructive migration"}
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {activeView === "history" && legacyEditable && (
+        <p className="rounded-xl border border-warning/25 bg-warning/5 px-4 py-3 text-sm text-foreground">
+          {legacyOnlyDates.length} {legacyOnlyDates.length === 1 ? "date is" : "dates are"} still stored only as legacy item rows, so they stay editable here. Copy them into Daily close in{" "}
+          <Link href="/setup?tab=data" className="font-medium underline underline-offset-2">Setup → Data maintenance</Link>.
+        </p>
       )}
 
       {activeView === "daily" && (

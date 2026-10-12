@@ -6,13 +6,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigationGuard } from "@/components/navigation-guard";
-import { Boxes, ChartNoAxesColumn, LayoutDashboard, UtensilsCrossed } from "lucide-react";
+import { Boxes, ChartNoAxesColumn, LayoutDashboard, Settings, UtensilsCrossed } from "lucide-react";
 
 const links = [
   { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/items", label: "Daily close", icon: UtensilsCrossed },
   { href: "/reports", label: "Reports", icon: ChartNoAxesColumn },
   { href: "/inventory", label: "Stock", icon: Boxes },
+  { href: "/setup", label: "Setup", icon: Settings },
 ];
 
 // Prefix matching: /items and /items?view=… are active on /items, and "/" only matches exactly.

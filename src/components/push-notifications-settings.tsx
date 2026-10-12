@@ -1,11 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { shouldShowIosHint } from "@/lib/push-alerts";
+import { cn } from "@/lib/utils";
 
-type PushState = "loading" | "ready" | "enabled" | "unsupported" | "not-configured" | "denied";
+export type PushState = "loading" | "ready" | "enabled" | "unsupported" | "not-configured" | "denied";
 
 function decodeVapidKey(value: string): ArrayBuffer {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
@@ -23,45 +26,74 @@ async function readPublicKey(): Promise<string | null> {
   return typeof data.publicKey === "string" && data.publicKey.length > 0 ? data.publicKey : null;
 }
 
+/** What this device can do for push alerts right now, and the server's public key for subscribing. */
+export async function readPushState(): Promise<{ state: PushState; publicKey: string | null }> {
+  const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  if (!supported) return { state: "unsupported", publicKey: null };
+  try {
+    const [key, registration] = await Promise.all([readPublicKey(), navigator.serviceWorker.getRegistration()]);
+    const subscription = await registration?.pushManager.getSubscription();
+    if (subscription) return { state: "enabled", publicKey: key };
+    if (Notification.permission === "denied") return { state: "denied", publicKey: key };
+    return { state: key ? "ready" : "not-configured", publicKey: key };
+  } catch (error) {
+    console.error("Could not load push notification settings", error);
+    return { state: "not-configured", publicKey: null };
+  }
+}
+
+/** A compact status for the Stock header. Turning alerts on happens in Setup, under Notifications. */
+export function PushAlertsChip() {
+  const [state, setState] = useState<PushState>("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(async () => {
+      const result = await readPushState();
+      if (!cancelled) setState(result.state);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Hidden where alerts cannot work at all, so the header stays uncluttered.
+  if (state === "unsupported" || state === "not-configured") return null;
+
+  const on = state === "enabled";
+  const label = state === "loading" ? "Checking…" : on ? "On" : state === "denied" ? "Blocked" : "Off";
+  return (
+    <Link
+      href="/setup?tab=notifications"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+        on ? "border-success/25 bg-success/10 text-success" : "border-border bg-surface text-muted-foreground"
+      )}
+    >
+      <Bell className="size-3.5" aria-hidden />
+      Alerts on this phone: {label}
+      {!on && state === "ready" && <span className="font-semibold text-primary">· Turn on</span>}
+    </Link>
+  );
+}
+
 export function PushNotificationsSettings() {
   const [state, setState] = useState<PushState>("loading");
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [showIosHint, setShowIosHint] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-      if (!supported) {
-        if (!cancelled) setState("unsupported");
-        return;
-      }
-
-      try {
-        const [key, registration] = await Promise.all([
-          readPublicKey(),
-          navigator.serviceWorker.getRegistration(),
-        ]);
-        if (cancelled) return;
-        setPublicKey(key);
-        const subscription = await registration?.pushManager.getSubscription();
-        if (cancelled) return;
-        if (subscription) {
-          setState("enabled");
-          return;
-        }
-        if (Notification.permission === "denied") {
-          setState("denied");
-          return;
-        }
-        setState(key ? "ready" : "not-configured");
-      } catch (error) {
-        console.error("Could not load push notification settings", error);
-        if (!cancelled) setState("not-configured");
-      }
-    }
-    void load();
+    void Promise.resolve().then(async () => {
+      const result = await readPushState();
+      if (cancelled) return;
+      setPublicKey(result.publicKey);
+      setState(result.state);
+      const standalone = window.matchMedia("(display-mode: standalone)").matches;
+      setShowIosHint(shouldShowIosHint(navigator.userAgent, standalone));
+    });
     return () => {
       cancelled = true;
     };
@@ -156,7 +188,7 @@ export function PushNotificationsSettings() {
         {state === "unsupported" && <p className="text-sm text-muted-foreground">This browser does not support Web Push. Try a current browser that supports service workers and push notifications.</p>}
         {state === "not-configured" && <p className="text-sm text-muted-foreground">The server has not been configured for push notifications yet.</p>}
         {state === "denied" && <p className="text-sm text-muted-foreground">Notifications are blocked for this site. Change the site permission in your browser or device settings to enable them.</p>}
-        <p className="text-sm text-muted-foreground">On iPhone or iPad running iOS or iPadOS 16.4 or later, use Share → Add to Home Screen, then open Porcafe POS from its icon before enabling notifications. A regular bookmark does not support these push alerts.</p>
+        {showIosHint && <p className="text-sm text-muted-foreground">On iPhone or iPad running iOS or iPadOS 16.4 or later, use Share → Add to Home Screen, then open Porcafe POS from its icon before enabling notifications. A regular bookmark does not support these push alerts.</p>}
         {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
       </CardContent>
     </Card>

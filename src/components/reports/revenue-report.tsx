@@ -26,7 +26,6 @@ import {
   type ReportPeriod,
 } from "@/lib/report-period";
 import type { MonthlyAdjustment, SalesEntry } from "@/lib/types";
-import { DuplicateDatesCard } from "./duplicate-dates";
 import { MonthlyReconciliation } from "./monthly-reconciliation";
 
 /**
@@ -161,7 +160,18 @@ export function RevenueReport({
 
   return (
     <div className="space-y-6">
-      {duplicates.length > 0 && <DuplicateDatesCard groups={duplicates} onResolved={onChanged} />}
+      {duplicates.length > 0 && (
+        <Card className="border-warning/25 bg-warning/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="text-sm text-foreground">
+              {duplicates.length} {duplicates.length === 1 ? "date has" : "dates have"} more than one revenue record. Review them in Setup → Data maintenance.
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/setup?tab=data">Review in Setup</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
