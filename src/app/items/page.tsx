@@ -517,7 +517,7 @@ function TicketScanDialog({
   onDone,
 }: {
   menuItems: MenuItem[];
-  onDone: () => void;
+  onDone: (savedDate: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -682,7 +682,7 @@ function TicketScanDialog({
           : "Daily quantities saved — now review the revenue split"
       );
       setItemsSaved(true);
-      onDone();
+      onDone(scanDate);
       // scanDate may have been edited since the initial OCR-date lookup — refresh
       // which SalesEntry (if any) this revenue confirm should merge into.
       const existing = await getSalesEntryByDate(scanDate);
@@ -709,8 +709,9 @@ function TicketScanDialog({
       });
       toast.success("Revenue logged to Sales recap");
       setOpen(false);
+      const savedDate = scanDate;
       reset();
-      onDone();
+      onDone(savedDate);
     } catch (err) {
       console.error("Failed to save sales entry:", err);
       toast.error(err instanceof Error ? `Failed to save: ${err.message}` : "Failed to save");
@@ -1166,6 +1167,17 @@ export default function ItemsPage() {
     onSave: () => saveDailyLog("draft"),
     onDiscard: discardDailyChanges,
   });
+
+  // The scanner wrote this day's quantities and revenue. Show that day reloaded, so
+  // the scanned values are what the close screen displays. Any unsaved draft for the
+  // day is dropped, because the scan replaces it.
+  function handleScanSaved(savedDate: string) {
+    refresh();
+    clearSessionDraft(closeDraftKey(savedDate));
+    setActiveView("daily");
+    setDate(savedDate);
+    setDailyRetryKey((key) => key + 1);
+  }
 
   async function goToDate(next: string) {
     if (next === date) return;
@@ -1687,7 +1699,7 @@ export default function ItemsPage() {
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-        <TicketScanDialog menuItems={menuItems} onDone={refresh} />
+        <TicketScanDialog menuItems={menuItems} onDone={handleScanSaved} />
         {activeView === "daily" && (
           <Button asChild className="flex-1 bg-primary hover:bg-primary-hover sm:flex-none">
             <Link href="/sales">
