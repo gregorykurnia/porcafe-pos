@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -365,6 +366,7 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, onChan
 }
 
 export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, onChanged }: SuppliersProps) {
+  const confirm = useConfirm();
   const supplierFormRef = useRef<HTMLDivElement>(null);
   const supplierItemFormRef = useRef<HTMLDivElement>(null);
   const [today] = useState(() => todayISO());
@@ -529,6 +531,14 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   }
 
   async function toggleSupplier(supplier: InventorySupplier) {
+    if (supplier.active) {
+      const ok = await confirm({
+        title: `Archive ${supplier.name}?`,
+        body: "Archived suppliers can no longer be picked for new orders or delivery schedules. Past orders are kept.",
+        confirmLabel: "Archive",
+      });
+      if (!ok) return;
+    }
     setSupplierUpdatingId(supplier.id);
     try {
       await upsertInventorySupplier({
@@ -649,6 +659,14 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   }
 
   async function removeSupplierItem(item: InventorySupplierItem) {
+    const supplierName = supplierById.get(item.supplierId)?.name ?? "this supplier";
+    const ok = await confirm({
+      title: `Remove ${item.materialName} from ${supplierName}?`,
+      body: `This removes the supplier link with its price (${item.costPerUnit} ${item.currency} per ${item.unit}) and lead time. Past orders are kept.`,
+      confirmLabel: "Remove link",
+      tone: "danger",
+    });
+    if (!ok) return;
     setSupplierItemSaving(true);
     try {
       await deleteInventorySupplierItem(item.id);

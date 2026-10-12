@@ -49,6 +49,18 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
     }
   }
 
+  async function toggleMaterialActive(material: InventoryMaterial) {
+    if (material.active) {
+      const ok = await confirm({
+        title: `Archive ${material.name}?`,
+        body: "It leaves the stock and ordering lists. Its history is kept and it can be restored.",
+        confirmLabel: "Archive",
+      });
+      if (!ok) return;
+    }
+    await updateMaterial(material, { active: !material.active });
+  }
+
   async function applyUnitChange() {
     const pending = unitChange;
     setUnitDialogOpen(false);
@@ -165,7 +177,7 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
                       </TableCell>
                       <TableCell>{material.reviewStatus === "approved" ? <Badge variant="default">Approved</Badge> : <Badge variant="destructive">Needs review</Badge>}</TableCell>
                       <TableCell><Badge variant={material.active ? "secondary" : "outline"}>{material.active ? "Active" : "Archived"}</Badge></TableCell>
-                      <TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy} onClick={() => void updateMaterial(material, { active: !material.active })}>{material.active ? <><Archive className="size-3.5" />Archive</> : <><RotateCcw className="size-3.5" />Restore</>}</Button></TableCell>
+                      <TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy} onClick={() => void toggleMaterialActive(material)}>{material.active ? <><Archive className="size-3.5" />Archive</> : <><RotateCcw className="size-3.5" />Restore</>}</Button></TableCell>
                     </TableRow>
                   );
                 })}

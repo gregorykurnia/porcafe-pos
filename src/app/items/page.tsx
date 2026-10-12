@@ -1074,6 +1074,14 @@ export default function ItemsPage() {
   async function toggleMenuItemActive(id: string, active: boolean) {
     const item = menuItems.find((menuItem) => menuItem.id === id);
     if (!item) return;
+    if (!active) {
+      const ok = await confirm({
+        title: `Archive ${item.name}?`,
+        body: "Archived items disappear from Daily close and scanning. Past sales stay in History.",
+        confirmLabel: "Archive",
+      });
+      if (!ok) return;
+    }
     try {
       await upsertMenuItem({
         id: item.id,
