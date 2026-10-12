@@ -1,3 +1,4 @@
+import { assertOnline } from "./connection";
 import {
   collection,
   doc,
@@ -81,6 +82,7 @@ export function findDuplicateSalesDates(entries: SalesEntry[]): DuplicateSalesDa
 }
 
 export async function resolveDuplicateSalesDate(date: string, keepId: string) {
+  assertOnline();
   const entries = await listSalesEntriesByDate(date);
   const keepEntry = entries.find((entry) => entry.id === keepId);
   if (!keepEntry) throw new Error("The selected sales entry no longer exists.");
@@ -117,6 +119,7 @@ type SalesEntryInput = {
 // The check and the write share one transaction, so a day saved on another
 // device between load and save is refused instead of overwritten.
 async function writeSalesEntry(entry: SalesEntryInput, id: string) {
+  assertOnline();
   const { date, bca, cash, soundbox, other, note, expectedUpdatedAt } = entry;
   const total = bca + cash + soundbox + other;
   const ref = doc(db, "salesEntries", id);
@@ -165,6 +168,7 @@ export async function upsertSalesEntry(entry: SalesEntryInput) {
 }
 
 export async function deleteSalesEntry(id: string) {
+  assertOnline();
   await deleteDoc(doc(db, "salesEntries", id));
 }
 
@@ -202,6 +206,7 @@ export async function listMonthlyAdjustments(): Promise<MonthlyAdjustment[]> {
 }
 
 export async function upsertMonthlyAdjustment(month: string, amount: number, note?: string) {
+  assertOnline();
   await setDoc(
     doc(db, "monthlyAdjustments", month),
     omitUndefined({ month, amount, note, createdAt: Date.now() }),
@@ -221,6 +226,7 @@ export async function listMenuItems(): Promise<MenuItem[]> {
 export async function upsertMenuItem(
   item: Omit<MenuItem, "id" | "createdAt"> & { id?: string }
 ) {
+  assertOnline();
   if (item.id) {
     const { id, ...rest } = item;
     await setDoc(doc(db, "menuItems", id), omitUndefined(rest), { merge: true });
@@ -233,6 +239,7 @@ export async function upsertMenuItem(
 }
 
 export async function deleteMenuItem(id: string) {
+  assertOnline();
   await deleteDoc(doc(db, "menuItems", id));
 }
 
@@ -275,6 +282,7 @@ export async function upsertDailyItemLog(
     updatedAt?: number;
   }
 ) {
+  assertOnline();
   const id = log.date;
   const now = Date.now();
   const { id: inputId, createdAt, updatedAt, ...rest } = log;
@@ -311,6 +319,7 @@ export type DailyCloseSaveInput = {
  * would keep items removed from the day in the stored map.
  */
 export async function saveDailyClose(input: DailyCloseSaveInput): Promise<{ log: DailyItemLog; salesEntry: SalesEntry | null }> {
+  assertOnline();
   const logRef = doc(db, "dailyItemLogs", input.date);
   // Without a loaded record, look the date up first, so payments never create a second record
   // for a date that already has one. If that record appeared since the load, the check below refuses the save.
@@ -392,6 +401,7 @@ export type DailyCloseUndoInput = {
 
 /** Puts a completed day back the way it was just before completion, if nothing changed since. */
 export async function undoDailyClose(input: DailyCloseUndoInput): Promise<void> {
+  assertOnline();
   const logRef = doc(db, "dailyItemLogs", input.date);
   await runTransaction(db, async (transaction) => {
     const logSnapshot = await transaction.get(logRef);
@@ -432,6 +442,7 @@ export async function listItemSalesByDate(date: string): Promise<ItemSale[]> {
 export async function upsertItemSale(
   sale: Omit<ItemSale, "id" | "createdAt"> & { id?: string }
 ) {
+  assertOnline();
   if (sale.id) {
     const { id, ...rest } = sale;
     await setDoc(doc(db, "itemSales", id), omitUndefined(rest), { merge: true });
@@ -444,6 +455,7 @@ export async function upsertItemSale(
 }
 
 export async function deleteItemSale(id: string) {
+  assertOnline();
   await deleteDoc(doc(db, "itemSales", id));
 }
 
@@ -616,6 +628,7 @@ export async function upsertInventoryMaterial(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const { id: inputId, createdAt, ...rest } = material;
   const payload: Record<string, unknown> = { ...rest, updatedAt: now };
@@ -637,6 +650,7 @@ export async function upsertInventoryMaterial(
 export async function saveReorderSettings(
   changes: { materialId: string; patch: Record<string, number | string | boolean | null> }[]
 ): Promise<void> {
+  assertOnline();
   if (changes.length === 0) return;
   const batch = writeBatch(db);
   const now = Date.now();
@@ -659,6 +673,7 @@ export async function upsertInventorySupplier(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const { id: inputId, createdAt, ...rest } = supplier;
   const payload: Record<string, unknown> = { ...rest, updatedAt: now };
@@ -686,6 +701,7 @@ export async function upsertInventorySupplierItem(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const inputId = supplierItem.id;
   const rest = { ...supplierItem };
@@ -753,6 +769,7 @@ export async function upsertInventorySupplierItem(
 }
 
 export async function deleteInventorySupplierItem(id: string) {
+  assertOnline();
   await deleteDoc(doc(db, "inventorySupplierItems", id));
 }
 
@@ -769,6 +786,7 @@ export async function upsertInventorySupplierOrder(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const inputId = order.id;
   const rest = { ...order };
@@ -832,6 +850,7 @@ export type InventorySupplierOrderEditInput = Pick<
 >;
 
 export async function updateInventorySupplierOrder(orderId: string, input: InventorySupplierOrderEditInput): Promise<void> {
+  assertOnline();
   if (!orderId) throw new Error("Choose a supplier order.");
   const totalCost = validateSupplierOrder(input);
   const orderRef = doc(inventorySupplierOrdersCol, orderId);
@@ -870,6 +889,7 @@ export async function updateInventorySupplierOrder(orderId: string, input: Inven
 }
 
 export async function cancelInventorySupplierOrder(orderId: string): Promise<void> {
+  assertOnline();
   if (!orderId) throw new Error("Choose a supplier order.");
   const orderRef = doc(inventorySupplierOrdersCol, orderId);
   await runTransaction(db, async (transaction) => {
@@ -896,6 +916,7 @@ export type InventorySupplierReceiptInput = {
 };
 
 export async function receiveInventorySupplierOrder(input: InventorySupplierReceiptInput): Promise<{ changed: boolean; status: InventorySupplierOrder["status"] }> {
+  assertOnline();
   if (!input.orderId || !input.receiptId) throw new Error("A supplier order and receipt reference are required.");
   if (!validInventoryDate(input.receivedOn)) throw new Error("Choose a valid receiving date.");
   if (input.lines.length === 0) throw new Error("Add at least one received line.");
@@ -997,6 +1018,7 @@ export async function upsertInventorySupplierDeliverySchedule(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const { id: inputId, createdAt, ...rest } = schedule;
   if (!schedule.supplierId || !schedule.materialId || !schedule.materialName.trim()) throw new Error("Choose a supplier and material.");
@@ -1064,6 +1086,7 @@ export async function runDueInventorySupplierDeliverySchedules(
   asOfTime = format(new Date(), "HH:mm"),
   forceDue = false,
 ): Promise<{ schedulesRun: number; orderIds: string[] }> {
+  assertOnline();
   if (!validInventoryDate(asOfDate)) throw new Error("Choose a valid schedule date.");
   if (!/^\d{2}:\d{2}$/.test(asOfTime) || Number(asOfTime.slice(0, 2)) > 23 || Number(asOfTime.slice(3, 5)) > 59) throw new Error("Choose a valid schedule time.");
   const setup = await getInventoryStockSetup();
@@ -1131,6 +1154,7 @@ export async function upsertInventoryAliasMapping(
     createdAt?: number;
   }
 ) {
+  assertOnline();
   const now = Date.now();
   const { id, createdAt, ...rest } = mapping;
   await setDoc(
@@ -1160,6 +1184,7 @@ export async function saveInventoryRecipeVersion(
   lines: InventoryRecipeLine[],
   options?: { deleteLineIds?: string[] }
 ) {
+  assertOnline();
   const batch = writeBatch(db);
   const now = Date.now();
   const recipePayload = { ...recipe, updatedAt: now };
@@ -1191,6 +1216,7 @@ export type InventoryFoundationCommit = {
 // rollout is small enough to stay well below Firestore's batch limit and this
 // avoids charging one write round-trip per source row.
 export async function commitInventoryFoundation(input: InventoryFoundationCommit) {
+  assertOnline();
   const batch = writeBatch(db);
   const now = Date.now();
 
@@ -1255,6 +1281,7 @@ export async function listInventoryUsageEvents(
 // recalculating a saved day replaces the prior calculation instead of adding a
 // second event. This is a usage audit record, not an inventory movement.
 export async function upsertInventoryUsageEvent(event: InventoryUsageEvent) {
+  assertOnline();
   await setDoc(doc(db, "inventoryUsageEvents", event.id), omitUndefined(event));
   return event.id;
 }
@@ -1339,6 +1366,7 @@ export async function initializeInventoryOpeningBalances(
   openingDate: string,
   balances: InventoryOpeningBalanceInput[]
 ): Promise<InventoryStockSetup> {
+  assertOnline();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(openingDate)) {
     throw new Error("Choose a valid opening date.");
   }
@@ -1407,6 +1435,7 @@ export type InventoryMovementInput = {
 };
 
 export async function createInventoryMovement(input: InventoryMovementInput): Promise<string> {
+  assertOnline();
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) throw new Error("Initialize opening stock before recording manual movements.");
   if (!input.materialId || !input.materialName.trim()) throw new Error("Choose a material.");
@@ -1446,6 +1475,7 @@ export type InventoryStockCountInput = {
 };
 
 export async function recordInventoryStockCount(input: InventoryStockCountInput): Promise<string> {
+  assertOnline();
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) throw new Error("Initialize opening stock before recording a stock count.");
   if (!Number.isFinite(input.observedQuantity) || input.observedQuantity < 0) throw new Error("Stock count must be zero or greater.");
@@ -1479,6 +1509,7 @@ export async function recordInventoryStockCount(input: InventoryStockCountInput)
  * brings its balance to the counted quantity, as recordInventoryStockCount does.
  */
 export async function recordInventoryStockCounts(inputs: InventoryStockCountInput[]): Promise<string[]> {
+  assertOnline();
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) throw new Error("Initialize opening stock before recording a stock count.");
   if (inputs.length === 0) return [];
@@ -1561,6 +1592,7 @@ export async function applyInventoryConsumptionEvent(
   event: InventoryUsageEvent,
   materials: InventoryConsumptionMaterial[]
 ): Promise<{ changed: boolean; movementIds: string[] }> {
+  assertOnline();
   const consumptionRef = doc(db, "inventoryConsumptionEvents", event.id);
   const materialDetails = Object.fromEntries(materials.map((material) => [material.materialId, { name: material.materialName, unit: material.unit }]));
   const materialQuantities = Object.fromEntries(materials.map((material) => [material.materialId, material.quantity]));

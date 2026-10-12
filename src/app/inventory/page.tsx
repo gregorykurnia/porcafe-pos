@@ -24,6 +24,7 @@ import {
   runDueInventorySupplierDeliverySchedules,
 } from "@/lib/data";
 import { todayISO } from "@/lib/dates";
+import { isOffline } from "@/lib/connection";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
@@ -264,6 +265,8 @@ export default function InventoryPage() {
   }, [activeTab]);
 
   useEffect(() => {
+    // Recurring deliveries are only created when the device is online. A manual run still reports offline.
+    if (isOffline()) return;
     scheduleRunRef.current = runDueInventorySupplierDeliverySchedules(todayISO())
       .then((result) => {
         if (result.schedulesRun > 0) setScheduleRefreshKey((current) => current + 1);
