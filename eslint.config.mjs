@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local git worktrees are copies of the repo, not part of the app.
+    ".kilo/**",
   ]),
 ]);
 

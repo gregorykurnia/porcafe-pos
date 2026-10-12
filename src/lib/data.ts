@@ -12,7 +12,6 @@ import {
   getAggregateFromServer,
   sum,
   query,
-  limit as limitQuery,
   orderBy,
   where,
   runTransaction,
