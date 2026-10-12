@@ -68,9 +68,12 @@ async function loadSavedDay(date: string): Promise<SavedDay> {
 export function ScanSheet({
   menuItems,
   onSaved,
+  primary = false,
 }: {
   menuItems: MenuItem[];
   onSaved: (savedDate: string, savedLog: DailyItemLog) => void;
+  /** Filled, for the page's main action. Otherwise a quieter outline button. */
+  primary?: boolean;
 }) {
   const confirm = useConfirm();
   const [open, setOpen] = useState(false);
@@ -361,7 +364,7 @@ export function ScanSheet({
     <>
       <Dialog open={open} onOpenChange={(next) => void handleOpenChange(next)}>
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant={primary ? "default" : "outline"} className={primary ? "bg-primary shadow-sm shadow-primary/20 hover:bg-primary-hover" : undefined}>
             <ScanLine className="size-4" /> Scan sheet
           </Button>
         </DialogTrigger>

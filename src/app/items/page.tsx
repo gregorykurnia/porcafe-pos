@@ -1530,9 +1530,9 @@ export default function ItemsPage() {
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
-        <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} />
+        <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary />
         {activeView === "daily" && (
-          <Button asChild className="flex-1 bg-primary hover:bg-primary-hover sm:flex-none">
+          <Button asChild variant="outline" className="flex-1 sm:flex-none">
             <Link href="/sales">
               <ExternalLink className="size-4" /> Open revenue
             </Link>
@@ -1817,10 +1817,6 @@ export default function ItemsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <div>
-                <p className="text-sm text-muted-foreground">Main portions</p>
-                <p className="mt-1 text-4xl font-bold tracking-tight text-foreground tabular-nums">{dailyCategoryTotals.main}</p>
-              </div>
-              <div className="border-t border-primary/10 pt-4">
                 <p className="text-sm font-medium text-foreground">Portion split</p>
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="rounded-lg border border-primary/10 bg-surface/70 px-3 py-2">
@@ -1835,10 +1831,6 @@ export default function ItemsPage() {
                 <p className="mt-2 text-xs text-muted-foreground">
                   All items: {dailyTotal}{dailyCategoryTotals.other > 0 ? ` · Other: ${dailyCategoryTotals.other}` : ""} portions
                 </p>
-              </div>
-              <div className="border-t border-primary/10 pt-4">
-                <p className="text-sm text-muted-foreground">Close status</p>
-                <Badge className={`mt-2 ${dailyStatusClass}`}>{dailyStatus}</Badge>
               </div>
               <div className="space-y-3 border-t border-primary/10 pt-4">
                 <div className="flex items-baseline justify-between gap-3">
