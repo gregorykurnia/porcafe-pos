@@ -41,6 +41,7 @@ import {
 } from "@/lib/close-draft";
 import { ConflictError, recordVersion } from "@/lib/concurrency";
 import { getCloseWarnings } from "@/lib/close-checks";
+import { filterSheetItems, moveWithinCategory, parseAliases, sortForSheet } from "@/lib/menu-sheet";
 import { CompleteDayReview } from "@/components/close/complete-day-review";
 import { CloseRecap } from "@/components/close/close-recap";
 import { MoneyInput } from "@/components/fields/money-input";
@@ -84,7 +85,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, eachDayOfInterval, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
+import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Soup, Trophy, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
 import { analyzeWeekdayPattern, weekdayIndex } from "@/lib/weekday-analysis";
@@ -251,14 +252,41 @@ function cmp(a: string | number, b: string | number): number {
 type EditableMenuItemField = "name" | "category" | "price";
 type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
 
+// Other names the item is written under on the sheet. Saved when the field loses focus.
+function SheetNamesInput({ item, onSaved }: { item: MenuItem; onSaved: () => void }) {
+  const current = (item.sheetAliases ?? []).join(", ");
+  return (
+    <Input
+      aria-label={`Sheet names for ${item.name}`}
+      placeholder="e.g. Nanban, Nanban ayam"
+      defaultValue={current}
+      onBlur={async (event) => {
+        const aliases = parseAliases(event.target.value);
+        if (aliases.join("|") === (item.sheetAliases ?? []).join("|")) return;
+        try {
+          await upsertMenuItem({ id: item.id, name: item.name, category: item.category, price: item.price, active: item.active, sheetAliases: aliases });
+          toast.success("Sheet names saved");
+          onSaved();
+        } catch (err) {
+          console.error("Failed to save sheet names:", err);
+          toast.error(err instanceof Error ? err.message : "Could not save sheet names");
+        }
+      }}
+      className="h-8 min-w-40 flex-1 text-sm"
+    />
+  );
+}
+
 function EditableMenuItemRow({
   item,
   onSaved,
   onToggleActive,
+  onMove,
 }: {
   item: MenuItem;
   onSaved: () => void;
   onToggleActive: (id: string, active: boolean) => void;
+  onMove: (direction: -1 | 1) => void;
 }) {
   const [draft, setDraft] = useState<MenuItemDraft>({});
   const [saving, setSaving] = useState(false);
@@ -352,6 +380,17 @@ function EditableMenuItemRow({
       <TableCell className="p-1 text-right">
         {cellInput("price", "number")}
         {item.price === null && <p className="px-1.5 text-left text-xs font-medium text-warning">Missing price</p>}
+      </TableCell>
+      <TableCell className="p-1">
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => onMove(-1)} disabled={saving} aria-label={`Move ${item.name} up on the sheet`}>
+            <ChevronUp className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => onMove(1)} disabled={saving} aria-label={`Move ${item.name} down on the sheet`}>
+            <ChevronDown className="size-4" />
+          </Button>
+          <SheetNamesInput key={(item.sheetAliases ?? []).join("|")} item={item} onSaved={onSaved} />
+        </div>
       </TableCell>
       <TableCell>
         <Badge variant={item.active ? "default" : "outline"}>{item.active ? "Active" : "Archived"}</Badge>
@@ -533,6 +572,8 @@ export default function ItemsPage() {
   // The day changed on another device since it was loaded. Saving is refused until it is reloaded.
   const [dailyConflict, setDailyConflict] = useState(false);
   const [completeReviewOpen, setCompleteReviewOpen] = useState(false);
+  const [closeQuery, setCloseQuery] = useState("");
+  const [closeOnlyQuantities, setCloseOnlyQuantities] = useState(false);
   const [closeRecap, setCloseRecap] = useState<CloseRecapState | null>(null);
   const [undoing, setUndoing] = useState(false);
 
@@ -706,6 +747,25 @@ export default function ItemsPage() {
     refresh();
   }
 
+  // Renumbers the item's category so the sheet order is 1, 2, 3… with the item one place along.
+  async function moveMenuItem(item: MenuItem, direction: -1 | 1) {
+    const orders = moveWithinCategory(menuItems, item.id, direction);
+    if (orders.size === 0) return;
+    try {
+      await Promise.all(
+        [...orders].map(([id, sheetOrder]) => {
+          const menuItem = menuItems.find((candidate) => candidate.id === id);
+          if (!menuItem) return Promise.resolve();
+          return upsertMenuItem({ id, name: menuItem.name, category: menuItem.category, price: menuItem.price, active: menuItem.active, sheetOrder });
+        })
+      );
+      refresh();
+    } catch (err) {
+      console.error("Failed to reorder menu items:", err);
+      toast.error(err instanceof Error ? `Could not change the order: ${err.message}` : "Could not change the order");
+    }
+  }
+
   async function toggleMenuItemActive(id: string, active: boolean) {
     const item = menuItems.find((menuItem) => menuItem.id === id);
     if (!item) return;
@@ -757,6 +817,8 @@ export default function ItemsPage() {
     return totals;
   }, [dailyQuantities, menuItems]);
 
+  // Items follow the order of the paper sheet within each category. The find box and the
+  // only-with-quantity toggle narrow the list without changing what is saved.
   const dailySections = useMemo(() => {
     const knownCategories = new Set<string>(ITEM_CATEGORIES);
     const sections: { category: string; items: MenuItem[] }[] = ITEM_CATEGORIES.map((category) => ({
@@ -765,8 +827,14 @@ export default function ItemsPage() {
     }));
     const otherItems = activeMenuItems.filter((item) => !knownCategories.has(item.category));
     if (otherItems.length) sections.push({ category: "Other", items: otherItems });
-    return sections.filter((section) => section.items.length > 0);
-  }, [activeMenuItems]);
+    const quantities = Object.fromEntries(Object.entries(dailyQuantities).map(([itemId, value]) => [itemId, parseFloat(value) || 0]));
+    return sections
+      .map((section) => ({
+        ...section,
+        items: filterSheetItems(sortForSheet(section.items), closeQuery, { onlyWithQuantity: closeOnlyQuantities, quantities }),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [activeMenuItems, closeQuery, closeOnlyQuantities, dailyQuantities]);
 
   const dailyLoading = dailyLoadedDate !== date;
 
@@ -1649,7 +1717,30 @@ export default function ItemsPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      aria-label="Find an item"
+                      placeholder="Type to find…"
+                      value={closeQuery}
+                      onChange={(event) => setCloseQuery(event.target.value)}
+                      className="h-11 max-w-xs sm:h-9"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={closeOnlyQuantities ? "secondary" : "outline"}
+                      aria-pressed={closeOnlyQuantities}
+                      onClick={() => setCloseOnlyQuantities((current) => !current)}
+                      className="min-h-11 sm:min-h-8"
+                    >
+                      Only items with quantity
+                    </Button>
+                  </div>
+                  {dailySections.length === 0 && (
+                    <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">No items match. Clear the find box or the filter.</p>
+                  )}
+                  <div className="space-y-6">
                   {dailySections.map((section) => (
                     <section key={section.category} aria-labelledby={`daily-${section.category.toLowerCase().replaceAll(" ", "-")}`}>
                       <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
@@ -1713,6 +1804,7 @@ export default function ItemsPage() {
                       </div>
                     </section>
                   ))}
+                </div>
                 </div>
               )}
             </CardContent>
@@ -2305,13 +2397,14 @@ export default function ItemsPage() {
                     onSort={(k) => toggleSort(menuSort, k, setMenuSort)}
                     className="text-right"
                   />
+                  <TableHead>Sheet</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedMenuItems.map((m) => (
-                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onToggleActive={toggleMenuItemActive} />
+                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onToggleActive={toggleMenuItemActive} onMove={(direction) => void moveMenuItem(m, direction)} />
                 ))}
               </TableBody>
             </Table>

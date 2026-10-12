@@ -137,7 +137,7 @@ export function ScanSheet({
         body: JSON.stringify({
           imageBase64: photo.base64,
           mediaType: photo.mediaType,
-          menuItems: menuItems.map((item) => ({ id: item.id, name: item.name, category: item.category, price: item.price })),
+          menuItems: menuItems.map((item) => ({ id: item.id, name: item.name, category: item.category, price: item.price, sheetAliases: item.sheetAliases ?? [] })),
         }),
         signal: controller.signal,
       });

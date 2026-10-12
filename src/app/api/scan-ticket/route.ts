@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   const { imageBase64, mediaType, menuItems } = body as {
     imageBase64: string;
     mediaType: string;
-    menuItems: { id: string; name: string; category: string; price: number | null }[];
+    menuItems: { id: string; name: string; category: string; price: number | null; sheetAliases?: string[] }[];
   };
 
   if (!imageBase64) {
@@ -87,10 +87,14 @@ export async function POST(req: Request) {
 async function scanTicket(
   imageBase64: string,
   mediaType: string,
-  menuItems: { id: string; name: string; category: string; price: number | null }[]
+  menuItems: { id: string; name: string; category: string; price: number | null; sheetAliases?: string[] }[]
 ) {
+  // Names the item is written under on the sheet help the model match rows to the catalog.
   const catalog = menuItems
-    .map((m) => `${m.id} | ${m.name} | ${m.category} | price=${m.price ?? "unknown"}`)
+    .map((m) => {
+      const aliases = m.sheetAliases?.length ? ` | sheet names: ${m.sheetAliases.join(", ")}` : "";
+      return `${m.id} | ${m.name} | ${m.category} | price=${m.price ?? "unknown"}${aliases}`;
+    })
     .join("\n");
 
   // Pass 1: force a slow, explicit row-by-row transcription with extended thinking

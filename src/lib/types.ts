@@ -19,6 +19,10 @@ export type MenuItem = {
   price: number | null;
   active: boolean;
   createdAt: number;
+  /** Optional. Position on the paper sheet, within its category. Older items have none. */
+  sheetOrder?: number;
+  /** Optional. Other names the item is written under on the sheet, used by the scanner. */
+  sheetAliases?: string[];
 };
 
 // A bank-reconciliation discrepancy ("selisih") for a given month. Folded only
