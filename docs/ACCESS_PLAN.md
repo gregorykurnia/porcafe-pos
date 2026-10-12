@@ -1,6 +1,6 @@
 # Access plan: sign-in and Firestore rules
 
-Status: planned, not started. Target: within the next few weeks, as a separate piece of work from the UX backlog.
+Status: not needed for now. The owner decided against a sign-in gate. The rules stay as they are: open except the push collections. Revisit this plan only if the app is used outside the team or the owner asks.
 
 ## Where we are
 
