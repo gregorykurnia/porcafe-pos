@@ -28,17 +28,22 @@ import {
 } from "@/lib/data";
 import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
 import { filterCurrentStockBalances, summarizeInventoryBalancesFromTotals, type InventoryBalance } from "@/lib/inventory-ledger";
+import { getOpenReceiptsForMaterial } from "@/lib/open-receipts";
 import type {
   InventoryMaterial,
   InventoryMovement,
   InventoryMovementType,
   InventoryStockSetup,
+  InventorySupplierOrder,
 } from "@/lib/types";
 
 type StockDashboardProps = {
   materials: InventoryMaterial[];
   onChanged: () => Promise<void>;
   scheduleRefreshKey: number;
+  openOrders?: InventorySupplierOrder[];
+  /** Opens the order so its receipt is recorded against it, not as an unplanned delivery. */
+  onReceiveAgainst?: (orderId: string) => void;
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
@@ -119,7 +124,7 @@ function sortMovementsByDate(movements: InventoryMovement[]): InventoryMovement[
   });
 }
 
-export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: StockDashboardProps) {
+export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openOrders = [], onReceiveAgainst }: StockDashboardProps) {
   const [setup, setSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [balanceTotals, setBalanceTotals] = useState<Record<string, number>>({});
@@ -157,6 +162,10 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
+  const openReceipts = useMemo(
+    () => getOpenReceiptsForMaterial(openOrders, selectedMovementMaterialId),
+    [openOrders, selectedMovementMaterialId]
+  );
   const auditMaterials = useMemo(() => {
     const names = new Map<string, string>();
     for (const movement of movements) names.set(movement.materialId, movement.materialName);
@@ -472,6 +481,21 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey }: Sto
                     </Select>
                   </div>
                 </div>
+                {movementType === "receiving" && openReceipts.map(({ order, line, remaining }) => (
+                  <div key={`${order.id}-${line.id}`} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-info/20 bg-info/5 p-3 text-sm">
+                    <p className="min-w-0 flex-1 text-foreground">
+                      {order.orderReference} from {order.supplierName} has {formatInventoryUsageQuantity(remaining)} {line.unit} of {line.materialName} on the way.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {onReceiveAgainst && (
+                        <Button type="button" size="sm" onClick={() => onReceiveAgainst(order.id)}>Receive against this order</Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {movementType === "receiving" && openReceipts.length > 0 && (
+                  <p className="text-xs text-muted-foreground">Different delivery? Keep recording it below.</p>
+                )}
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div>
                   <div className="space-y-1.5">

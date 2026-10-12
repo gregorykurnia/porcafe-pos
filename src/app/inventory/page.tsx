@@ -144,6 +144,7 @@ export default function InventoryPage() {
   const [supplierItems, setSupplierItems] = useState<InventorySupplierItem[]>([]);
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
+  const [receiveRequest, setReceiveRequest] = useState<{ orderId: string; requestId: number } | null>(null);
   const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
   const [visitedTabs, setVisitedTabs] = useState<Set<InventoryTab>>(() => new Set(["stock"]));
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
@@ -182,6 +183,8 @@ export default function InventoryPage() {
             materialsLoadedRef.current = true;
             writeCachedMaterials(materialsResult);
           }
+          // Open orders let a receipt be recorded against the order it belongs to.
+          setSupplierOrders(await listInventorySupplierOrders());
         } else if (tab === "materials") {
           if (force || !materialsLoadedRef.current) {
             const loadedMaterials = await listInventoryMaterials();
@@ -260,11 +263,14 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get("tab");
     const initialTab: InventoryTab = isInventoryTab(requestedTab) ? requestedTab : "stock";
+    const requestedReceiveOrderId = params.get("receive");
     const cachedMaterials = readCachedMaterials();
     setActiveTab(initialTab);
     setVisitedTabs(new Set([initialTab]));
+    if (requestedReceiveOrderId) setReceiveRequest({ orderId: requestedReceiveOrderId, requestId: Date.now() });
     if (cachedMaterials) {
       setMaterials(cachedMaterials);
       materialsLoadedRef.current = true;
@@ -304,6 +310,13 @@ export default function InventoryPage() {
     setActiveTab(nextTab);
   }, [refresh]);
 
+  // Receiving against an order lives in the Suppliers tab for now (WP-3.7 moves it to Orders).
+  const openReceiveAgainst = useCallback((orderId: string) => {
+    handleTabChange("suppliers");
+    setReceiveRequest({ orderId, requestId: Date.now() });
+    window.history.replaceState(null, "", `/inventory?tab=suppliers&receive=${encodeURIComponent(orderId)}`);
+  }, [handleTabChange]);
+
   const section = (tab: DataTab, children: React.ReactNode) => {
     if (loadedTabs.has(tab)) return children;
     if (tabErrors[tab]) return <InventoryTabError message={tabErrors[tab]!} onRetry={() => void refresh(tab)} />;
@@ -340,7 +353,7 @@ export default function InventoryPage() {
         </TabsList>
 
         <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} />)}
+          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} />)}
         </TabsContent>
         <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("usage") && <UsageRecap />}
@@ -355,7 +368,7 @@ export default function InventoryPage() {
           {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
         <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className={activeTab === "suppliers" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} onChanged={refresh} />)}
+          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} onChanged={refresh} />)}
         </TabsContent>
       </Tabs>
     </div>

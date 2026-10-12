@@ -48,6 +48,7 @@ type SuppliersProps = {
   supplierItems: InventorySupplierItem[];
   orders: InventorySupplierOrder[];
   schedules: InventorySupplierDeliverySchedule[];
+  receiveRequest?: { orderId: string; requestId: number } | null;
   onChanged: () => Promise<void>;
 };
 
@@ -365,7 +366,7 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, onChan
   );
 }
 
-export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, onChanged }: SuppliersProps) {
+export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, receiveRequest, onChanged }: SuppliersProps) {
   const confirm = useConfirm();
   const supplierFormRef = useRef<HTMLDivElement>(null);
   const supplierItemFormRef = useRef<HTMLDivElement>(null);
@@ -693,7 +694,7 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
 
       <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} onCreateOrder={(materialId) => setOrderPrefillRequest({ materialId, requestId: ++orderPrefillRequestId.current })} />
 
-      <SupplierOrders key={orderPrefillRequest?.requestId ?? "new-order"} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} createOrderRequest={orderPrefillRequest} onChanged={async () => { await onChanged(); await refreshStock(); }} />
+      <SupplierOrders key={orderPrefillRequest?.requestId ?? "new-order"} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={orders} createOrderRequest={orderPrefillRequest} receiveRequest={receiveRequest} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 
       <ReorderSettings materials={activeMaterials} suppliers={suppliers} supplierItems={supplierItems} balances={balances} onChanged={async () => { await onChanged(); await refreshStock(); }} />
 

@@ -28,6 +28,8 @@ type SupplierOrdersProps = {
   supplierItems: InventorySupplierItem[];
   orders: InventorySupplierOrder[];
   createOrderRequest: { materialId: string; requestId: number } | null;
+  /** Opens the receive dialog for an order, e.g. from the Stock tab's "Receive against this order". */
+  receiveRequest?: { orderId: string; requestId: number } | null;
   onChanged: () => Promise<void>;
 };
 
@@ -60,10 +62,11 @@ function orderStatusVariant(status: InventorySupplierOrder["status"]): "default"
   return "destructive";
 }
 
-export function SupplierOrders({ materials, suppliers, supplierItems, orders, createOrderRequest, onChanged }: SupplierOrdersProps) {
+export function SupplierOrders({ materials, suppliers, supplierItems, orders, createOrderRequest, receiveRequest, onChanged }: SupplierOrdersProps) {
   const confirm = useConfirm();
   const orderFormRef = useRef<HTMLDivElement>(null);
   const hasHandledCreateOrderRequest = useRef(false);
+  const handledReceiveRequestId = useRef<number | null>(null);
   const createOrderMaterial = createOrderRequest
     ? materials.find((material) => material.id === createOrderRequest.materialId && material.active)
     : undefined;
@@ -119,6 +122,19 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
       toast.warning("This material is not linked to its preferred supplier. Choose a supplier with this material linked.");
     }
   }, [createOrderMaterial, createOrderRequest, createOrderSupplier, createOrderSupplierItem]);
+
+  useEffect(() => {
+    if (!receiveRequest || handledReceiveRequestId.current === receiveRequest.requestId) return;
+    const order = orders.find((candidate) => candidate.id === receiveRequest.orderId);
+    if (!order) return;
+    handledReceiveRequestId.current = receiveRequest.requestId;
+    if (order.status !== "ordered" && order.status !== "partially_received") {
+      toast.warning("That order is no longer open for receiving.");
+      return;
+    }
+    // Deferred so the dialog opens after this effect has committed.
+    void Promise.resolve().then(() => openReceiving(order));
+  }, [orders, receiveRequest]);
 
   const materialFilterOptions = useMemo(() => {
     const names = new Map<string, string>();
