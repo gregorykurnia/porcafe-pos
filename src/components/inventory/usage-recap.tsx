@@ -23,7 +23,8 @@ import {
 import type { InventoryUsageEvent } from "@/lib/types";
 
 function statusBadge(event: InventoryUsageEvent) {
-  if (event.status === "needs-review") return <Badge variant="destructive">Needs review</Badge>;
+  // A review is a warning to act on, not a failure, so it uses the warning tone.
+  if (event.status === "needs-review") return <Badge variant="outline" className="border-warning/25 bg-warning/10 text-warning">Needs review</Badge>;
   if (event.status === "no-sales") return <Badge variant="outline">No sales</Badge>;
   if (event.status === "pending-draft") return <Badge variant="outline">Waiting for close</Badge>;
   if (event.status === "calculated-with-exclusions") return <Badge variant="secondary">Calculated with exclusions</Badge>;
@@ -186,7 +187,7 @@ export function UsageRecap() {
           {error && <div className="rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm text-danger">{error}</div>}
 
           <div className="grid gap-3 sm:grid-cols-4">
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Usage events</p><p className="mt-1 text-xl font-semibold tabular-nums">{events.length}</p></CardContent></Card>
+            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Days calculated</p><p className="mt-1 text-xl font-semibold tabular-nums">{events.length}</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Recorded portions</p><p className="mt-1 text-xl font-semibold tabular-nums">{formatInventoryUsageQuantity(totalPortions)}</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Material totals</p><p className="mt-1 text-xl font-semibold tabular-nums">{materialSummary.length}</p></CardContent></Card>
             <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Review issues</p><p className="mt-1 text-xl font-semibold tabular-nums">{issueCount}{(reviewEvents > 0 || exclusionEvents > 0) && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} review · {exclusionEvents} with exclusions)</span>}</p></CardContent></Card>
@@ -202,7 +203,7 @@ export function UsageRecap() {
           ) : (
             <div className="overflow-hidden rounded-xl border">
               <Table>
-                <TableHeader><TableRow><TableHead className="w-8" /><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Portions</TableHead><TableHead className="text-right">Usage lines</TableHead><TableHead className="text-right">Issues</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead className="w-8" /><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Portions</TableHead><TableHead className="text-right">Ingredients</TableHead><TableHead className="text-right">Issues</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {events.map((event) => {
                     const selected = event.sourceDate === selectedDate;
