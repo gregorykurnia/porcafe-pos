@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/responsive-table";
 import { StatusBadge } from "@/components/state/status-badge";
 import { orderStatusView } from "@/lib/status";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -383,6 +384,41 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
     }
   }
 
+  // The cells of one order. The table row and the phone card both use them, so they always match.
+  const orderCells = (order: InventorySupplierOrder) => {
+    const currency = order.lines[0]?.currency ?? "";
+    const canReceive = order.status === "ordered" || order.status === "partially_received";
+    const canEdit = canReceive;
+    const canCancel = canReceive;
+    return {
+      reference: <>{order.orderReference}<span className="block text-xs text-muted-foreground">Ordered {formatDisplay(order.orderedOn)}</span>{order.source === "schedule" && <span className="block text-xs font-medium text-info">Scheduled delivery · waiting to be confirmed</span>}{order.history && order.history.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Activity ({order.history.length})</summary><div className="mt-1 space-y-1">{[...order.history].reverse().map((event, index) => <p key={`${event.occurredAt}-${index}`} className="text-muted-foreground">{new Date(event.occurredAt).toLocaleString("id-ID")} · {event.summary}</p>)}</div></details>}</>,
+      supplier: <>{order.supplierName}</>,
+      items: <>{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit} (received ${line.receivedQuantity})`).join(" · ")}</>,
+      dates: <>{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</>,
+      total: <>{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</>,
+      status: <><StatusBadge view={orderStatusView(order.status)} /></>,
+      actions: <><div className="flex flex-wrap justify-end gap-1">{canEdit && <Button size="sm" variant="outline" onClick={() => editOrder(order)} disabled={saving}><Pencil className="size-3.5" />Edit</Button>}{canReceive && order.source === "schedule" && <Button size="sm" onClick={() => void receiveAsPlanned(order)} disabled={saving || receivingSaving}>Arrived as planned</Button>}{canReceive && <OrderSendButtons order={order} supplier={supplierById.get(order.supplierId)} />}{canReceive && <Button size="sm" onClick={() => openReceiving(order)} disabled={saving}>Receive</Button>}{canCancel && <Button size="sm" variant="destructive" onClick={() => void cancelOrder(order)} disabled={saving}><Ban className="size-3.5" />Cancel</Button>}</div></>,
+    };
+  };
+
+  // The same orders for phones, as cards.
+  const orderCards = filteredOrders.map((order) => {
+    const c = orderCells(order);
+    return (
+      <li key={order.id} className="space-y-2 rounded-xl border border-border bg-surface p-3">
+        <div className="text-sm">{c.reference}</div>
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span>{c.supplier}</span>
+          {c.status}
+        </div>
+        <div className="text-sm text-muted-foreground">{c.items}</div>
+        <div className="text-sm text-muted-foreground">{c.dates}</div>
+        <div className="text-sm font-medium tabular-nums">{c.total}</div>
+        {c.actions}
+      </li>
+    );
+  });
+
   return (
     <div className="space-y-5">
       <Card>
@@ -395,7 +431,7 @@ export function SupplierOrders({ materials, suppliers, supplierItems, orders, cr
             <div className="space-y-1.5"><Label htmlFor="order-filter-from">Ordered from</Label><Input id="order-filter-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
             <div className="space-y-1.5"><Label htmlFor="order-filter-to">Ordered through</Label><Input id="order-filter-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
           </div>}
-          {orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : filteredOrders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders match these filters.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredOrders.map((order) => { const currency = order.lines[0]?.currency ?? ""; const canReceive = order.status === "ordered" || order.status === "partially_received"; const canEdit = canReceive; const canCancel = canReceive; return <TableRow key={order.id}><TableCell className="font-medium">{order.orderReference}<span className="block text-xs text-muted-foreground">Ordered {formatDisplay(order.orderedOn)}</span>{order.source === "schedule" && <span className="block text-xs font-medium text-info">Scheduled delivery · waiting to be confirmed</span>}{order.history && order.history.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-muted-foreground">Activity ({order.history.length})</summary><div className="mt-1 space-y-1">{[...order.history].reverse().map((event, index) => <p key={`${event.occurredAt}-${index}`} className="text-muted-foreground">{new Date(event.occurredAt).toLocaleString("id-ID")} · {event.summary}</p>)}</div></details>}</TableCell><TableCell>{order.supplierName}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{order.lines.map((line) => `${line.materialName} × ${line.quantity} ${line.unit} (received ${line.receivedQuantity})`).join(" · ")}</TableCell><TableCell className="text-sm text-muted-foreground">{order.expectedOn ? `Expected ${formatDisplay(order.expectedOn)}` : "No expected date"}{order.receivedOn && <span className="block">Received {formatDisplay(order.receivedOn)}</span>}</TableCell><TableCell className="tabular-nums">{currency} {order.totalCost.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell><TableCell><StatusBadge view={orderStatusView(order.status)} /></TableCell><TableCell><div className="flex flex-wrap justify-end gap-1">{canEdit && <Button size="sm" variant="outline" onClick={() => editOrder(order)} disabled={saving}><Pencil className="size-3.5" />Edit</Button>}{canReceive && order.source === "schedule" && <Button size="sm" onClick={() => void receiveAsPlanned(order)} disabled={saving || receivingSaving}>Arrived as planned</Button>}{canReceive && <OrderSendButtons order={order} supplier={supplierById.get(order.supplierId)} />}{canReceive && <Button size="sm" onClick={() => openReceiving(order)} disabled={saving}>Receive</Button>}{canCancel && <Button size="sm" variant="destructive" onClick={() => void cancelOrder(order)} disabled={saving}><Ban className="size-3.5" />Cancel</Button>}</div></TableCell></TableRow>; })}</TableBody></Table></div>}
+          {orders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No supplier orders yet.</p> : filteredOrders.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No orders match these filters.</p> : <ResponsiveTable label="Supplier orders" cards={orderCards}><Table><TableHeader><TableRow><TableHead>Order</TableHead><TableHead>Supplier</TableHead><TableHead>Items</TableHead><TableHead>Dates</TableHead><TableHead>Total</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredOrders.map((order) => { const c = orderCells(order); return <TableRow key={order.id}><TableCell className="font-medium">{c.reference}</TableCell><TableCell>{c.supplier}</TableCell><TableCell className="max-w-64 text-sm text-muted-foreground">{c.items}</TableCell><TableCell className="text-sm text-muted-foreground">{c.dates}</TableCell><TableCell className="tabular-nums">{c.total}</TableCell><TableCell>{c.status}</TableCell><TableCell>{c.actions}</TableCell></TableRow>; })}</TableBody></Table></ResponsiveTable>}
         </CardContent>
       </Card>
 

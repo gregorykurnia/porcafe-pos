@@ -1,3 +1,4 @@
+import { ResponsiveTable } from "@/components/responsive-table";
 import { useMemo } from "react";
 import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
@@ -119,6 +120,43 @@ export function RevenueReport({
 
   const chartData = series.map((point) => ({ label: chartLabel(point.date, "day"), total: point.total }));
 
+  // The same rows as the table, for phones. Each card keeps the figures and the same two actions.
+  const dayCards = (
+    <>
+      {rows.map((row) => (
+        <li key={row.id} className="space-y-2 rounded-xl border border-border bg-surface p-3">
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium">{formatDisplay(row.date)}</p>
+            <p className="font-semibold tabular-nums">{idr(row.total)}</p>
+          </div>
+          <p className="text-sm tabular-nums text-muted-foreground">
+            BCA {idr(row.bca)} · Cash {idr(row.cash)} · Soundbox {idr(row.soundbox)} · Other {idr(row.other)}
+          </p>
+          {row.note && <p className="text-sm text-muted-foreground">{row.note}</p>}
+          <div className="flex items-center justify-end gap-1">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/items?date=${row.date}`}>
+                Edit<span className="sr-only"> {formatDisplay(row.date)} in Daily close</span>
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void removeEntry(row)}
+              aria-label={`Delete revenue entry for ${formatDisplay(row.date)}`}
+            >
+              <Trash2 className="size-4 text-muted-foreground" />
+            </Button>
+          </div>
+        </li>
+      ))}
+      <li className="flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm font-medium">
+        <span>Recorded sales in this period</span>
+        <span className="tabular-nums">{idr(recorded)}</span>
+      </li>
+    </>
+  );
+
   return (
     <div className="space-y-6">
       {duplicates.length > 0 && <DuplicateDatesCard groups={duplicates} onResolved={onChanged} />}
@@ -216,7 +254,7 @@ export function RevenueReport({
               No revenue recorded in this period
             </p>
           ) : (
-            <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Revenue by day">
+            <ResponsiveTable label="Revenue by day" cards={dayCards}>
               <Table className="min-w-[44rem]">
                 <TableHeader>
                   <TableRow>
@@ -270,7 +308,7 @@ export function RevenueReport({
                   </TableRow>
                 </TableFooter>
               </Table>
-            </div>
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>

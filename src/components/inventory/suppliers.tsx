@@ -1,5 +1,6 @@
 "use client";
 
+import { ResponsiveTable } from "@/components/responsive-table";
 import { StatusBadge } from "@/components/state/status-badge";
 import { reorderStatusView } from "@/lib/status";
 import { Stat } from "@/components/state/stat";
@@ -218,6 +219,36 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
     }));
   }
 
+  // The same rows as the table, for phones: the figures stack under each material.
+  const reorderCards = filteredRows.map(({ material, balance, gapToAlert, status, supplierName }) => (
+    <li key={material.id} className="space-y-2 rounded-xl border border-border bg-surface p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium">{material.name}</p>
+          <p className="text-xs text-muted-foreground">{material.baseUnit}</p>
+        </div>
+        <StatusBadge view={reorderStatusView(status)} />
+      </div>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+        <dt className="text-muted-foreground">Current stock</dt>
+        <dd className="text-right tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</dd>
+        <dt className="text-muted-foreground">Alert at</dt>
+        <dd className="text-right tabular-nums">{material.reorderThreshold === undefined ? "—" : material.reorderThreshold.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</dd>
+        <dt className="text-muted-foreground">Gap to alert</dt>
+        <dd className="text-right"><ReorderGap gap={gapToAlert} thresholdConfigured={material.reorderThreshold !== undefined} unit={material.baseUnit} status={status} /></dd>
+        <dt className="text-muted-foreground">Order quantity</dt>
+        <dd className="text-right tabular-nums">{Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? material.reorderQuantity!.toLocaleString("id-ID", { maximumFractionDigits: 2 }) : status === "to-order" ? <span className="text-warning">Set a valid order quantity to enable push alerts.</span> : "—"}</dd>
+        <dt className="text-muted-foreground">Preferred supplier</dt>
+        <dd className="text-right">{supplierName}</dd>
+      </dl>
+      {status === "to-order" && (
+        <Button type="button" size="sm" variant="outline" className="w-full" onClick={() => onCreateOrder(material.id)} aria-label={`Create supplier order for ${material.name}`}>
+          <Plus />Create order
+        </Button>
+      )}
+    </li>
+  ));
+
   return (
     <Card id="reorder-overview" className="scroll-mt-6">
       <CardHeader>
@@ -230,7 +261,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <Button type="button" size="sm" variant={statusFilter === "all" ? "default" : "outline"} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All <span className="ml-1 tabular-nums opacity-75">{counts.get("all") ?? 0}</span></Button>
             {reorderStatusFilters.map((status) => <Button key={status} type="button" size="sm" variant={statusFilter === status ? "default" : "outline"} aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}>{reorderStatusView(status).label} <span className="ml-1 tabular-nums opacity-75">{counts.get(status) ?? 0}</span></Button>)}
           </div>
-          {filteredRows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No materials match this status.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow>
+          {filteredRows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No materials match this status.</p> : <ResponsiveTable label="Materials to order" cards={reorderCards}><Table><TableHeader><TableRow>
             <ReorderOverviewHead label="Material" sortKey="material" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Current stock" sortKey="stock" sort={sort} onSort={toggleSort} />
             <ReorderOverviewHead label="Alert at" sortKey="threshold" sort={sort} onSort={toggleSort} />
@@ -248,7 +279,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell>{supplierName}</TableCell>
             <TableCell><StatusBadge view={reorderStatusView(status)} /></TableCell>
             <TableCell className="text-right">{status === "to-order" ? <Button type="button" size="sm" variant="outline" onClick={() => onCreateOrder(material.id)} aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</Button> : "—"}</TableCell>
-          </TableRow>)}</TableBody></Table></div>}
+          </TableRow>)}</TableBody></Table></ResponsiveTable>}
         </>}
       </CardContent>
     </Card>
