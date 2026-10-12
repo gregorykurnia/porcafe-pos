@@ -32,6 +32,8 @@ import { getOpenReceiptsForMaterial } from "@/lib/open-receipts";
 import { buildCurrentStockRows } from "@/lib/current-stock";
 import { CurrentStockCard } from "@/components/inventory/current-stock-card";
 import { CountSheet } from "@/components/inventory/count-sheet";
+import { describeSourceRef } from "@/lib/source-ref";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import { acceptQuantityInput } from "@/lib/field-input";
 import { countVariance, parseCountQuantity } from "@/lib/stock-count";
 import type {
@@ -92,8 +94,9 @@ function writeStockLedgerCache(cache: StockLedgerCache) {
 const MANUAL_MOVEMENT_TYPES: Array<{ value: ManualMovementType; label: string }> = [
   { value: "receiving", label: "Receive stock" },
   { value: "waste_spoilage", label: "Waste / spoilage" },
-  { value: "manual_adjustment", label: "Manual adjustment" },
-  { value: "correction", label: "Correction" },
+  // Adjustment replaces the older "Manual adjustment" and "Correction" choices. Both stored
+  // types still display with their own labels in the history.
+  { value: "manual_adjustment", label: "Adjustment (+/−)" },
 ];
 
 const MOVEMENT_LABELS: Record<InventoryMovementType, string> = {
@@ -142,6 +145,21 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   const [error, setError] = useState<string | null>(null);
   const [openingDate, setOpeningDate] = useState(todayISO());
   const [openingQuantities, setOpeningQuantities] = useState<Record<string, string>>({});
+  // Opening stock is typed over several minutes on a busy day. It is kept in this browser
+  // session until it is initialized, so a reload does not lose it.
+  const openingDraftKey = "porcafe.inventory.opening-draft";
+  const openingDraftRestored = useRef(false);
+  useEffect(() => {
+    if (openingDraftRestored.current) return;
+    openingDraftRestored.current = true;
+    const draft = readSessionDraft<Record<string, string>>(openingDraftKey);
+    if (draft) void Promise.resolve().then(() => setOpeningQuantities(draft.value));
+  }, []);
+  function updateOpeningQuantity(materialId: string, value: string) {
+    const next = { ...openingQuantities, [materialId]: value };
+    setOpeningQuantities(next);
+    writeSessionDraft(openingDraftKey, next);
+  }
   const [movementType, setMovementType] = useState<ManualMovementType>("receiving");
   const [movementMaterialId, setMovementMaterialId] = useState("");
   const [movementDate, setMovementDate] = useState(todayISO());
@@ -160,6 +178,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   const [auditTo, setAuditTo] = useState("");
   const initialReceivingPrefillRef = useRef(false);
   const movementQuantityAutoFilledRef = useRef(false);
+  const [quantityFromDefault, setQuantityFromDefault] = useState(false);
   const refreshRequestRef = useRef(0);
   const scheduleRefreshKeyRef = useRef(scheduleRefreshKey);
 
@@ -177,6 +196,11 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   }
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
+  const selectedMovementMaterial = activeMaterials.find((material) => material.id === selectedMovementMaterialId);
+  const openingEntered = activeMaterials.filter((material) => {
+    const text = openingQuantities[material.id];
+    return text !== undefined && text.trim() !== "" && Number.isFinite(Number(text)) && Number(text) >= 0;
+  }).length;
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterial = activeMaterials.find((material) => material.id === selectedCountMaterialId);
   const selectedSystemQuantity = balanceTotals[selectedCountMaterialId] ?? 0;
@@ -193,6 +217,8 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     for (const movement of movements) names.set(movement.materialId, movement.materialName);
     return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [movements]);
+  // The history shows this many rows at a time, so a long audit trail stays readable on a phone.
+  const [historyLimit, setHistoryLimit] = useState(50);
   const filteredMovements = useMemo(() => movements.filter((movement) => {
     if (auditMovementType !== "all" && movement.movementType !== auditMovementType) return false;
     if (auditMaterialId !== "all" && movement.materialId !== auditMaterialId) return false;
@@ -208,6 +234,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
       ? String(orderQuantity)
       : "";
     movementQuantityAutoFilledRef.current = Boolean(defaultQuantity);
+    setQuantityFromDefault(Boolean(defaultQuantity));
     setMovementQuantity(defaultQuantity);
     setMovementReason("Stock In");
   }, [activeMaterials]);
@@ -293,6 +320,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     setSaving(true);
     try {
       await initializeInventoryOpeningBalances(openingDate, balancesToSave);
+      clearSessionDraft(openingDraftKey);
       toast.success("Opening stock initialized");
       await Promise.all([refresh(), onChanged()]);
     } catch (saveError) {
@@ -447,8 +475,9 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
             ) : (
               <>
                 <div className="max-w-52 space-y-1.5"><Label htmlFor="opening-stock-date">Opening date</Label><Input id="opening-stock-date" type="date" value={openingDate} onChange={(event) => setOpeningDate(event.target.value)} /></div>
+                <p className="text-sm text-muted-foreground" aria-live="polite">{openingEntered} of {activeMaterials.length} entered</p>
                 <div className="overflow-hidden rounded-xl border bg-background">
-                  <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Base unit</TableHead><TableHead className="w-44 text-right">Opening quantity</TableHead></TableRow></TableHeader><TableBody>{activeMaterials.map((material) => <TableRow key={material.id}><TableCell className="font-medium">{material.name}</TableCell><TableCell className="text-muted-foreground">{material.baseUnit}</TableCell><TableCell className="p-1"><Input aria-label={`Opening quantity for ${material.name}`} type="number" min="0" step="0.01" value={openingQuantities[material.id] ?? ""} onChange={(event) => setOpeningQuantities((current) => ({ ...current, [material.id]: event.target.value }))} className="h-8 text-right" /></TableCell></TableRow>)}</TableBody></Table>
+                  <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Base unit</TableHead><TableHead className="w-44 text-right">Opening quantity</TableHead></TableRow></TableHeader><TableBody>{activeMaterials.map((material) => <TableRow key={material.id}><TableCell className="font-medium">{material.name}</TableCell><TableCell className="text-muted-foreground">{material.baseUnit}</TableCell><TableCell className="p-1"><Input aria-label={`Opening quantity for ${material.name}`} type="number" min="0" step="0.01" value={openingQuantities[material.id] ?? ""} onChange={(event) => updateOpeningQuantity(material.id, event.target.value)} className="h-8 text-right" /></TableCell></TableRow>)}</TableBody></Table>
                 </div>
                 <Button onClick={() => void initializeOpeningStock()} disabled={saving}><Scale className="size-4" />{saving ? "Initializing…" : "Initialize opening stock"}</Button>
               </>
@@ -516,20 +545,27 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                   <p className="text-xs text-muted-foreground">Different delivery? Keep recording it below.</p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div>
+                  <div className="space-y-1.5"><Label htmlFor="movement-date">Date</Label><Input id="movement-date" type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div>
                   <div className="space-y-1.5">
-                    <Label>Quantity</Label>
+                    <Label htmlFor="movement-quantity">Quantity{selectedMovementMaterial ? ` (${selectedMovementMaterial.baseUnit})` : ""}</Label>
                     <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      id="movement-quantity"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       value={movementQuantity}
                       onChange={(event) => {
+                        const next = acceptQuantityInput(event.target.value, true);
+                        if (next === null) return;
                         movementQuantityAutoFilledRef.current = false;
-                        setMovementQuantity(event.target.value);
+                        setQuantityFromDefault(false);
+                        setMovementQuantity(next);
                       }}
-                      placeholder={movementType === "receiving" ? "Order quantity if set" : "0"}
+                      placeholder={movementType === "receiving" ? "Usual order quantity, if set" : "0"}
                     />
+                    {quantityFromDefault && movementQuantity !== "" && (
+                      <p className="text-xs text-muted-foreground">Pre-filled from usual order quantity · change if different</p>
+                    )}
                   </div>
                   {movementType !== "receiving" && movementType !== "waste_spoilage" ? (
                     <div className="space-y-1.5">
@@ -543,7 +579,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                     <div className="flex items-end text-xs text-muted-foreground">{movementType === "receiving" ? "Adds stock" : "Removes stock"}</div>
                   )}
                 </div>
-                <div className="space-y-1.5"><Label>Reason</Label><Input value={movementReason} onChange={(event) => setMovementReason(event.target.value)} placeholder="e.g. Supplier delivery #123" /></div>
+                <div className="space-y-1.5"><Label htmlFor="movement-reason">Reason</Label><Input id="movement-reason" value={movementReason} onChange={(event) => setMovementReason(event.target.value)} placeholder="e.g. Supplier delivery #123" /></div>
                 <div className="space-y-1.5"><Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={movementNotes} onChange={(event) => setMovementNotes(event.target.value)} placeholder="Additional context" /></div>
                 <Button onClick={() => void saveMovement()} disabled={saving || activeMaterials.length === 0}><PackagePlus className="size-4" />{saving ? "Saving…" : "Record movement"}</Button>
               </CardContent>
@@ -643,8 +679,14 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader>
-                    <TableBody>{filteredMovements.map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`whitespace-nowrap text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span><span className="block font-mono text-[11px] text-muted-foreground">{movement.sourceRef}</span></TableCell></TableRow>)}</TableBody>
+                    <TableBody>{filteredMovements.slice(0, historyLimit).map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`whitespace-nowrap text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span>{movement.sourceRef && <span className="block text-xs text-muted-foreground" title={movement.sourceRef}>{describeSourceRef(movement.sourceRef)?.label ?? movement.sourceRef}</span>}</TableCell></TableRow>)}</TableBody>
                   </Table>
+                  {filteredMovements.length > historyLimit && (
+                    <div className="flex items-center justify-between gap-3 pt-3 text-sm text-muted-foreground">
+                      <span>Showing {historyLimit} of {filteredMovements.length}</span>
+                      <Button variant="outline" size="sm" onClick={() => setHistoryLimit((limit) => limit + 50)}>Show 50 more</Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
