@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs, listMenuItems } from "@/lib/data";
 import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
-import { getCanonicalItemRows } from "@/lib/reporting";
+import { getAttentionItems, getCanonicalItemRows } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import {
   format,
@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [loadError, setLoadError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [reportMonth, setReportMonth] = useState(monthKey(todayISO()));
+  const [showAllAttention, setShowAllAttention] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,22 +196,8 @@ export default function Dashboard() {
     ...adjustments.map((adjustment) => adjustment.month),
   ])].sort().reverse();
 
-  const dailyLogsByDate = new Map(dailyLogs.map((log) => [log.date, log]));
-  const todayLog = dailyLogsByDate.get(today);
-  const draftDays = dailyLogs.filter((log) => monthKey(log.date) === thisMonth && log.status === "draft").length;
-  const revenueDates = new Set(sales.filter((sale) => monthKey(sale.date) === thisMonth).map((sale) => sale.date));
-  const itemCloseDates = new Set(dailyLogs.filter((log) => monthKey(log.date) === thisMonth).map((log) => log.date));
-  const revenueWithoutItemClose = [...revenueDates].filter((date) => !itemCloseDates.has(date)).length;
-  const todayNeedsAttention = !todayLog || todayLog.status === "draft";
-  const todayDraftCount = todayLog?.status === "draft" && monthKey(today) === thisMonth ? 1 : 0;
-  const attentionCount = (todayNeedsAttention ? 1 : 0) + Math.max(0, draftDays - todayDraftCount) + revenueWithoutItemClose;
-  const todayCloseLabel = todayLog?.status === "complete"
-    ? "Complete"
-    : todayLog?.status === "no_sales"
-      ? "No sales"
-      : todayLog
-        ? "Draft"
-        : "Not started";
+  // The attention list is computed from the same loaded data as the rest of the dashboard.
+  const attentionItems = getAttentionItems({ today, dailyLogs, salesEntries: sales });
   const trendTakeaway = trend.length < 2
     ? "Add another day to see a trend comparison."
     : trend[trend.length - 1].total >= trend[trend.length - 2].total
@@ -249,17 +236,35 @@ export default function Dashboard() {
       <Card className="border-warning/20 bg-warning/5">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div>
-            <CardTitle className="flex items-center gap-2 text-lg">Needs attention <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">{attentionCount}</span></CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">Needs attention <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">{attentionItems.length}</span></CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">A quick close-status check before reviewing performance.</p>
           </div>
           <Button asChild variant="outline" className="border-warning/20 bg-surface text-foreground hover:bg-surface-elevated">
             <Link href="/items">Open Daily close <ArrowRight className="size-4" /></Link>
           </Button>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
-          <AttentionItem label="Today" value={todayCloseLabel} detail={todayTotal > 0 ? `${idr(todayTotal)} revenue logged` : "No revenue logged yet"} />
-          <AttentionItem label={`${formatMonthLabel(thisMonth)} drafts`} value={String(draftDays)} detail={draftDays === 1 ? "Day needs completion" : "Days need completion"} />
-          <AttentionItem label="Revenue without item close" value={String(Math.max(0, revenueWithoutItemClose))} detail="Recorded days without a daily log" />
+        <CardContent>
+          {attentionItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing needs attention. Today and recent days agree.</p>
+          ) : (
+            <ul className="space-y-2">
+              {(showAllAttention ? attentionItems : attentionItems.slice(0, 6)).map((item) => (
+                <li key={`${item.kind}-${item.date ?? item.label}`}>
+                  <Link href={item.href} className="flex items-center justify-between gap-3 rounded-lg border border-warning/15 bg-surface/70 px-3 py-2 text-sm hover:bg-surface-elevated">
+                    <span className="min-w-0 text-foreground">{item.label}</span>
+                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                </li>
+              ))}
+              {attentionItems.length > 6 && (
+                <li>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowAllAttention((current) => !current)}>
+                    {showAllAttention ? "Show fewer" : `Show all ${attentionItems.length}`}
+                  </Button>
+                </li>
+              )}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
@@ -560,16 +565,6 @@ export default function Dashboard() {
 
 function formatMonthLabel(monthISO: string): string {
   return format(parseISO(`${monthISO}-01`), "MMMM yyyy");
-}
-
-function AttentionItem({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="rounded-lg border border-warning/15 bg-surface/70 px-3 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-base font-semibold text-foreground">{value}</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
-    </div>
-  );
 }
 
 function RevenueBreakdownStat({
