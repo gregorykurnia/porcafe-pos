@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Porcafe POS
 
-## Getting Started
+Daily close, sales reports, stock, and supplier ordering for the Porcafe team. It runs as a Next.js app (App Router, React 19) on Firebase Firestore, and staff use it on phones as an installable web app. For how the team uses it day to day, see [docs/STAFF_GUIDE.md](docs/STAFF_GUIDE.md).
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+You need Node.js 20.9 or later (the minimum for Next.js 16).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. Install dependencies: `npm install`
+2. Create `.env.local` with the values below. Ask the project owner for them, and never commit this file.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Used for |
+| --- | --- |
+| `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_STORAGE_BUCKET`, `_MESSAGING_SENDER_ID`, `_APP_ID` | Firebase web config (browser) |
+| `NEXT_PUBLIC_INVENTORY_USAGE_GO_LIVE_DATE` | Optional. The first day that counts toward usage |
+| `ANTHROPIC_API_KEY` | Reading the daily ticket sheet photo (`/api/scan-ticket`) |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_SERVICE_ACCOUNT_JSON` | Server-side Firestore access for push and cron jobs |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Web push keys |
+| `CRON_SECRET`, `APP_ORIGIN` | Protects the cron routes and builds links in push messages |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+If you use the Vercel CLI, `vercel env pull` writes these, along with `VERCEL_OIDC_TOKEN`.
 
-## Learn More
+3. Start the dev server: `npm run dev`, then open http://localhost:3000.
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `npm run dev`: development server
+- `npm run build`: production build (also type-checks)
+- `npm start`: serve the production build
+- `npm test`: unit tests for the pure logic in `src/**/*.test.ts` (Node's test runner through `tsx`). These need no browser and no database.
+- `npm run lint`: ESLint
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Layout
 
-## Deploy on Vercel
+- `src/app`: routes. `/` Home, `/items` Daily close and History, `/reports`, `/inventory` Stock, `/setup`. `next.config.ts` holds the redirects for moved pages.
+- `src/lib`: the pure logic (reporting, dates, usage, supplier ordering) and `data.ts`, the Firestore layer. Every write in `data.ts` calls `assertOnline()`, so writes are refused while the device is offline and nothing is queued.
+- `src/components`: UI. `setup/` holds the Setup sections. `inventory/` holds the Stock components.
+- `docs/`: the UX audit and plan, plus deployment notes for push alerts and supplier ordering.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **App:** Vercel. `vercel.json` schedules `/api/cron/reorder-push-reminders` daily at 00:00 UTC (07:00 WIB).
+- **Firestore:** `firebase deploy --only firestore` publishes `firestore.rules` and `firestore.indexes.json`.
+- **Push alerts and supplier ordering:** see [docs/PWA_PUSH_NOTIFICATIONS_DEPLOYMENT.md](docs/PWA_PUSH_NOTIFICATIONS_DEPLOYMENT.md) and [docs/SUPPLIERS_ORDERING_DEPLOYMENT.md](docs/SUPPLIERS_ORDERING_DEPLOYMENT.md).
+
+## Known limits
+
+- **No sign-in.** The Firestore rules allow reads and writes on every collection except the push collections, so anyone with the Firebase web config can change data. Setup is not PIN-protected. Real access control is a separate project.
+- **Usage recalculation** works one day at a time, from Stock → Usage recap. There is no range recalculation yet.
+- **Recurring supplier deliveries** are created when a device opens Stock. `/api/cron/inventory-supplier-deliveries` exists but is not scheduled in `vercel.json`.
