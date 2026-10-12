@@ -1443,7 +1443,6 @@ export async function recordInventoryStockCount(input: InventoryStockCountInput)
   const setup = await getInventoryStockSetup();
   if (!setup?.initialized) throw new Error("Initialize opening stock before recording a stock count.");
   if (!Number.isFinite(input.observedQuantity) || input.observedQuantity < 0) throw new Error("Stock count must be zero or greater.");
-  if (!input.reason.trim()) throw new Error("Add a reason for this stock count.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid count date.");
 
   const balanceBefore = await getInventoryMovementTotal(input.materialId);
@@ -1458,7 +1457,7 @@ export async function recordInventoryStockCount(input: InventoryStockCountInput)
       quantity,
       movementType: "stock_count" satisfies InventoryMovementType,
       occurredOn: input.occurredOn,
-      reason: input.reason.trim(),
+      reason: input.reason.trim() || "Stock count",
       sourceRef: `stock-count:${input.occurredOn}:${ref.id}`,
       observedQuantity: input.observedQuantity,
       balanceBefore,
@@ -1467,6 +1466,51 @@ export async function recordInventoryStockCount(input: InventoryStockCountInput)
     })
   );
   return ref.id;
+}
+
+/**
+ * Records a whole count sheet in one batch. Each material gets one stock_count movement that
+ * brings its balance to the counted quantity, as recordInventoryStockCount does.
+ */
+export async function recordInventoryStockCounts(inputs: InventoryStockCountInput[]): Promise<string[]> {
+  const setup = await getInventoryStockSetup();
+  if (!setup?.initialized) throw new Error("Initialize opening stock before recording a stock count.");
+  if (inputs.length === 0) return [];
+  if (new Set(inputs.map((input) => input.materialId)).size !== inputs.length) {
+    throw new Error("A material appears more than once in this count.");
+  }
+  for (const input of inputs) {
+    if (!Number.isFinite(input.observedQuantity) || input.observedQuantity < 0) throw new Error(`Stock count for ${input.materialName} must be zero or greater.`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn)) throw new Error("Choose a valid count date.");
+  }
+
+  const balances = await getInventoryMovementTotals(inputs.map((input) => input.materialId));
+  const batch = writeBatch(db);
+  const ids: string[] = [];
+  for (const input of inputs) {
+    const balanceBefore = balances[input.materialId] ?? 0;
+    const ref = doc(inventoryMovementsCol);
+    batch.set(
+      ref,
+      omitUndefined({
+        materialId: input.materialId,
+        materialName: input.materialName,
+        unit: input.unit,
+        quantity: input.observedQuantity - balanceBefore,
+        movementType: "stock_count" satisfies InventoryMovementType,
+        occurredOn: input.occurredOn,
+        reason: input.reason.trim() || "Stock count",
+        sourceRef: `stock-count:${input.occurredOn}:${ref.id}`,
+        observedQuantity: input.observedQuantity,
+        balanceBefore,
+        balanceAfter: input.observedQuantity,
+        createdAt: Date.now(),
+      })
+    );
+    ids.push(ref.id);
+  }
+  await batch.commit();
+  return ids;
 }
 
 export type InventoryConsumptionMaterial = {

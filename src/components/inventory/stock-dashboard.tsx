@@ -31,6 +31,9 @@ import { filterCurrentStockBalances, summarizeInventoryBalancesFromTotals, type 
 import { getOpenReceiptsForMaterial } from "@/lib/open-receipts";
 import { buildCurrentStockRows } from "@/lib/current-stock";
 import { CurrentStockCard } from "@/components/inventory/current-stock-card";
+import { CountSheet } from "@/components/inventory/count-sheet";
+import { acceptQuantityInput } from "@/lib/field-input";
+import { countVariance, parseCountQuantity } from "@/lib/stock-count";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -147,7 +150,8 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   const [movementReason, setMovementReason] = useState("");
   const [movementNotes, setMovementNotes] = useState("");
   const [countMaterialId, setCountMaterialId] = useState("");
-  const [countDate, setCountDate] = useState(todayISO());
+  // Counts are recorded for today: the expected balances are current, not historical.
+  const countDate = todayISO();
   const [countQuantity, setCountQuantity] = useState("");
   const [countReason, setCountReason] = useState("");
   const [auditMovementType, setAuditMovementType] = useState<"all" | InventoryMovementType>("all");
@@ -174,6 +178,12 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
+  const selectedCountMaterial = activeMaterials.find((material) => material.id === selectedCountMaterialId);
+  const selectedSystemQuantity = balanceTotals[selectedCountMaterialId] ?? 0;
+  const selectedCounted = parseCountQuantity(countQuantity);
+  const selectedVariance = countQuantity.trim() === "" || selectedCounted === null
+    ? null
+    : countVariance(selectedSystemQuantity, selectedCounted);
   const openReceipts = useMemo(
     () => getOpenReceiptsForMaterial(openOrders, selectedMovementMaterialId),
     [openOrders, selectedMovementMaterialId]
@@ -359,7 +369,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
 
   async function saveStockCount() {
     const material = activeMaterials.find((candidate) => candidate.id === selectedCountMaterialId);
-    const observedQuantity = Number(countQuantity);
+    const observedQuantity = parseCountQuantity(countQuantity) ?? Number.NaN;
     if (!material) {
       toast.error("Choose a material.");
       return;
@@ -368,8 +378,8 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
       toast.error("Enter a stock count of zero or greater.");
       return;
     }
-    if (!countReason.trim()) {
-      toast.error("Add a reason for this count.");
+    if (countVariance(balanceTotals[material.id] ?? 0, observedQuantity).needsReason && !countReason.trim()) {
+      toast.error("This count differs from the system by more than 20 %. Add a reason.");
       return;
     }
     setSaving(true);
@@ -542,10 +552,46 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
             <Card id="stock-count">
               <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="size-4" />Record stock count</CardTitle><CardDescription>Enter the physical quantity. The ledger records the delta needed to reach that count.</CardDescription></CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Material</Label><Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}><SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><Label>Count date</Label><Input type="date" value={countDate} onChange={(event) => setCountDate(event.target.value)} /></div></div>
-                <div className="space-y-1.5"><Label>Observed quantity</Label><Input type="number" min="0" step="0.01" value={countQuantity} onChange={(event) => setCountQuantity(event.target.value)} placeholder="0" /></div>
-                <div className="space-y-1.5"><Label>Reason</Label><Input value={countReason} onChange={(event) => setCountReason(event.target.value)} placeholder="e.g. Weekly physical count" /></div>
-                <Button variant="outline" onClick={() => void saveStockCount()} disabled={saving || activeMaterials.length === 0}><ClipboardCheck className="size-4" />{saving ? "Saving…" : "Record count"}</Button>
+                <div className="space-y-1.5">
+                  <Label>Material</Label>
+                  <Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                    <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="stock-count-quantity">Counted now</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="stock-count-quantity"
+                      inputMode="decimal"
+                      value={countQuantity}
+                      onChange={(event) => {
+                        const next = acceptQuantityInput(event.target.value, true);
+                        if (next !== null) setCountQuantity(next);
+                      }}
+                      placeholder="0"
+                      className="w-36 text-right tabular-nums"
+                    />
+                    <span className="text-sm text-muted-foreground">{selectedCountMaterial?.baseUnit ?? ""}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">System: {formatInventoryUsageQuantity(selectedSystemQuantity)} {selectedCountMaterial?.baseUnit ?? ""}</p>
+                  {selectedVariance && (
+                    <p className={`text-sm tabular-nums ${selectedVariance.needsReason ? "text-warning" : "text-muted-foreground"}`}>
+                      Difference {selectedVariance.difference > 0 ? "+" : selectedVariance.difference < 0 ? "−" : ""}{formatInventoryUsageQuantity(Math.abs(selectedVariance.difference))} {selectedCountMaterial?.baseUnit ?? ""}
+                      {selectedVariance.percent !== null && selectedVariance.difference !== 0 ? ` (${Math.round(Math.abs(selectedVariance.percent))} %)` : ""}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="stock-count-reason">{selectedVariance?.needsReason ? "Reason (required: difference over 20 %)" : "Reason (optional)"}</Label>
+                  <Input id="stock-count-reason" value={countReason} onChange={(event) => setCountReason(event.target.value)} placeholder="e.g. Weekly physical count" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" onClick={() => void saveStockCount()} disabled={saving || activeMaterials.length === 0}><ClipboardCheck className="size-4" />{saving ? "Saving…" : "Record count"}</Button>
+                  <CountSheet materials={activeMaterials} systemTotals={balanceTotals} onSaved={() => void refresh(false)} />
+                </div>
+                <p className="text-xs text-muted-foreground">Counting today: {formatDisplay(countDate)}.</p>
               </CardContent>
             </Card>
           </div>
