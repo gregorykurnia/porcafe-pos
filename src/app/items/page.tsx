@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
+import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import { quantitiesDiffer } from "@/lib/close-draft";
 import {
@@ -1188,17 +1189,6 @@ export default function ItemsPage() {
     setDailyRetryKey((key) => key + 1);
   }
 
-  async function goToDate(next: string) {
-    if (next === date) return;
-    if (dailyDirty && !(await confirmLeave())) return;
-    setDate(next);
-  }
-
-  function shiftDailyDate(amount: number) {
-    const current = parseISO(date);
-    void goToDate(toISODate(amount > 0 ? addDays(current, amount) : subDays(current, Math.abs(amount))));
-  }
-
   async function switchView(view: ItemsView) {
     if (view === activeView) return;
     if (dailyDirty && !(await confirmLeave())) return;
@@ -1827,43 +1817,13 @@ export default function ItemsPage() {
       {activeView === "daily" && (
       <div id="items-panel-daily" role="tabpanel" aria-labelledby="items-tab-daily" tabIndex={0} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-surface px-1 py-1 shadow-sm">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              onClick={() => shiftDailyDate(-1)}
-              aria-label="Previous day"
-            >
-              <ChevronLeft />
-            </Button>
-            <div className="min-w-36 px-2 text-center">
-              <p className="text-sm font-semibold text-foreground">{formatDisplay(date)}</p>
-              {date === todayISO() && <p className="text-xs text-muted-foreground">Today</p>}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              onClick={() => shiftDailyDate(1)}
-              aria-label="Next day"
-            >
-              <ChevronRight />
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={() => void goToDate(todayISO())} disabled={date === todayISO()}>
-              Today
-            </Button>
-            <Input
-              id="daily-log-date"
-              aria-label={`Choose close date: ${formatDisplay(date)}`}
-              type="date"
-              value={date}
-              onChange={(event) => void goToDate(event.target.value || todayISO())}
-              className="h-10 w-[9.5rem] bg-surface"
-            />
-          </div>
+          <DateStepper
+            id="daily-log-date"
+            label="Choose close date"
+            value={date}
+            onChange={setDate}
+            onBeforeChange={async () => !dailyDirty || (await confirmLeave())}
+          />
         </div>
 
         {draftNotice !== null && (
