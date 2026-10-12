@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs } from "@/lib/data";
-import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog } from "@/lib/types";
+import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs, listMenuItems } from "@/lib/data";
+import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
+import { getCanonicalItemRows } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import {
   format,
@@ -51,7 +52,8 @@ const CATEGORY_OTHER_COLOR = "#898781";
 
 export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
-  const [items, setItems] = useState<ItemSale[]>([]);
+  const [legacyItems, setLegacyItems] = useState<ItemSale[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [adjustments, setAdjustments] = useState<MonthlyAdjustment[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,11 +63,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([listSalesEntries(), listItemSales(), listMonthlyAdjustments(), listDailyItemLogs()])
-      .then(([s, i, a, logs]) => {
+    Promise.all([listSalesEntries(), listItemSales(), listMonthlyAdjustments(), listDailyItemLogs(), listMenuItems()])
+      .then(([s, i, a, logs, menu]) => {
         if (cancelled) return;
         setSales(s);
-        setItems(i);
+        setLegacyItems(i);
+        setMenuItems(menu);
         setAdjustments(a);
         setDailyLogs(logs);
         setLoadError(false);
@@ -80,6 +83,9 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [retryKey]);
+
+  // Item figures come from the same source as Items performance and exports (see reporting.ts).
+  const items = useMemo(() => getCanonicalItemRows(dailyLogs, legacyItems, menuItems), [dailyLogs, legacyItems, menuItems]);
 
   const today = todayISO();
   const yesterday = format(subDays(parseISO(today), 1), "yyyy-MM-dd");

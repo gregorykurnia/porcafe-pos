@@ -42,6 +42,7 @@ import {
 import { ConflictError, recordVersion } from "@/lib/concurrency";
 import { getCloseWarnings } from "@/lib/close-checks";
 import { filterSheetItems, moveWithinCategory, parseAliases, sortForSheet } from "@/lib/menu-sheet";
+import { getCanonicalItemRows } from "@/lib/reporting";
 import { CompleteDayReview } from "@/components/close/complete-day-review";
 import { CloseRecap } from "@/components/close/close-recap";
 import { MoneyInput } from "@/components/fields/money-input";
@@ -1106,31 +1107,10 @@ export default function ItemsPage() {
     [menuItems]
   );
 
-  const performanceSales = useMemo(() => {
-    const dailyDates = new Set(dailyLogs.map((log) => log.date));
-    const dailyRows: ItemSale[] = [];
-
-    for (const log of dailyLogs) {
-      for (const [itemId, qty] of Object.entries(log.quantities)) {
-        if (!Number.isFinite(qty) || qty <= 0) continue;
-        const item = menuItems.find((menuItem) => menuItem.id === itemId);
-        if (!item) continue;
-        dailyRows.push({
-          id: `daily-${log.date}-${itemId}`,
-          date: log.date,
-          itemId,
-          itemName: item.name,
-          category: item.category,
-          qty,
-          createdAt: log.updatedAt,
-        });
-      }
-    }
-
-    return [...dailyRows, ...sales.filter((sale) => !dailyDates.has(sale.date))].sort(
-      (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt
-    );
-  }, [dailyLogs, menuItems, sales]);
+  const performanceSales = useMemo(
+    () => getCanonicalItemRows(dailyLogs, sales, menuItems),
+    [dailyLogs, menuItems, sales]
+  );
 
   const dailyLogDates = new Set(dailyLogs.map((log) => log.date));
   const legacyItemSaleDates = new Set(sales.map((sale) => sale.date));
