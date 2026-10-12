@@ -78,7 +78,7 @@ export function ReorderSettings({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Material</TableHead>
+                  <TableHead className="sticky left-0 z-10 min-w-40 bg-card">Material</TableHead>
                   <TableHead className="text-right">On hand</TableHead>
                   <TableHead>Alert at</TableHead>
                   <TableHead>Order quantity</TableHead>
@@ -97,7 +97,7 @@ export function ReorderSettings({
                   const onHand = balanceById.get(material.id)?.currentQuantity;
                   return (
                     <TableRow key={material.id} className={isDirty ? "bg-warning/5" : undefined}>
-                      <TableCell>
+                      <TableCell className="sticky left-0 z-10 min-w-40 bg-card">
                         <span className="font-medium">{material.name}</span>
                         <span className="block text-xs text-muted-foreground">{material.baseUnit}</span>
                       </TableCell>

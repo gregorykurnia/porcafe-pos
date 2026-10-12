@@ -324,7 +324,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Ingredient / component</TableHead>
+                      <TableHead className="sticky left-0 z-10 min-w-40 bg-card">Ingredient / component</TableHead>
                       <TableHead className="w-28">Quantity</TableHead>
                       <TableHead className="w-40">Unit</TableHead>
                       <TableHead>Source</TableHead>
@@ -338,7 +338,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                       const approved = line.reviewStatus === "approved" && !approvalIssue;
                       return (
                         <TableRow key={line.id}>
-                          <TableCell className="p-1">
+                          <TableCell className="sticky left-0 z-10 min-w-40 bg-card p-1">
                             <Select
                               value={`${line.ingredientType}:${line.ingredientId}`}
                               onValueChange={(value) => {

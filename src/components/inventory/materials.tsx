@@ -161,13 +161,13 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
             <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No materials yet. Review the source import or add one above.</p>
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Base unit</TableHead><TableHead>Review</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="sticky left-0 z-10 min-w-40 bg-card">Name</TableHead><TableHead>Type</TableHead><TableHead>Base unit</TableHead><TableHead>Review</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
               <TableBody>
                 {materials.map((material) => {
                   const busy = updatingId === material.id;
                   return (
                     <TableRow key={material.id} className={!material.active ? "bg-surface-elevated" : undefined}>
-                      <TableCell><span className="font-medium">{material.name}</span><span className="block font-mono text-[11px] text-muted-foreground">{material.id}</span></TableCell>
+                      <TableCell className="sticky left-0 z-10 min-w-40 bg-card"><span className="font-medium">{material.name}</span><span className="block font-mono text-[11px] text-muted-foreground">{material.id}</span></TableCell>
                       <TableCell className="text-muted-foreground">{material.type === "raw_ingredient" ? "Raw ingredient" : material.type}</TableCell>
                       <TableCell className="min-w-32">
                         <div className="flex items-center justify-between gap-2">
