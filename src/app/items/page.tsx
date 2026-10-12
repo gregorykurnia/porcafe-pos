@@ -25,6 +25,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
+import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
+import { quantitiesDiffer } from "@/lib/close-draft";
 import {
   listMenuItems,
   upsertMenuItem,
@@ -51,6 +54,7 @@ import {
   formatWeekDisplay,
   formatMonthDisplay,
   formatDateTime,
+  formatTimeOfDay,
 } from "@/lib/dates";
 import { isValid as isValidDate } from "date-fns";
 
@@ -910,6 +914,8 @@ export default function ItemsPage() {
   const [dailyLoadedDate, setDailyLoadedDate] = useState("");
   const [dailyLoadError, setDailyLoadError] = useState(false);
   const [dailyRetryKey, setDailyRetryKey] = useState(0);
+  // Saved-at time of unsaved quantities restored from this browser session, if any.
+  const [draftNotice, setDraftNotice] = useState<number | null>(null);
   const [dailySaving, setDailySaving] = useState(false);
   const [period, setPeriod] = useState<Period>("day");
   const [itemFilter, setItemFilter] = useState<string>("all");
@@ -1012,14 +1018,19 @@ export default function ItemsPage() {
           return;
         }
         const [log, salesEntry] = result;
+        const savedQuantities = log?.quantities ?? {};
+        // Unsaved quantities from earlier in this session win over the saved log.
+        const draft = readSessionDraft<Record<string, string>>(closeDraftKey(date));
+        const restore = draft && quantitiesDiffer(draft.value, savedQuantities) ? draft : null;
         setDailyLog(log);
         setDailySalesEntry(salesEntry);
         setDailyLoadError(false);
         setDailyQuantities(
-          Object.fromEntries(
-            Object.entries(log?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)])
-          )
+          restore
+            ? restore.value
+            : Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
         );
+        setDraftNotice(restore?.savedAt ?? null);
         setDailyLoadedDate(date);
       })
       .catch((err) => {
@@ -1138,20 +1149,58 @@ export default function ItemsPage() {
         ? "border-border bg-muted text-muted-foreground"
         : "border-border bg-surface text-muted-foreground";
 
-  function shiftDailyDate(amount: number) {
-    setDate((current) => {
-      const next = amount > 0 ? addDays(parseISO(current), amount) : subDays(parseISO(current), Math.abs(amount));
-      return toISODate(next);
-    });
+  // Unsaved quantities are guarded: leaving the day, the tab or the app asks first.
+  const dailyDirty = dailyHasChanges && !dailyLoading;
+
+  function discardDailyChanges() {
+    clearSessionDraft(closeDraftKey(date));
+    setDailyQuantities(
+      Object.fromEntries(Object.entries(dailyLog?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)]))
+    );
+    setDraftNotice(null);
   }
 
+  const { confirmLeave } = useUnsavedChangesGuard({
+    dirty: dailyDirty,
+    message: `You have unsaved quantities for ${formatDisplay(date)}.`,
+    onSave: () => saveDailyLog("draft"),
+    onDiscard: discardDailyChanges,
+  });
+
+  async function goToDate(next: string) {
+    if (next === date) return;
+    if (dailyDirty && !(await confirmLeave())) return;
+    setDate(next);
+  }
+
+  function shiftDailyDate(amount: number) {
+    const current = parseISO(date);
+    void goToDate(toISODate(amount > 0 ? addDays(current, amount) : subDays(current, Math.abs(amount))));
+  }
+
+  async function switchView(view: ItemsView) {
+    if (view === activeView) return;
+    if (dailyDirty && !(await confirmLeave())) return;
+    setActiveView(view);
+  }
+
+  // Keep unsaved quantities per date for this browser session, so a reload or an
+  // accidental navigation does not lose them. Cleared once they are saved or discarded.
+  useEffect(() => {
+    if (dailyLoadedDate !== date || dailyLoadError) return;
+    const key = closeDraftKey(date);
+    if (dailyHasChanges) writeSessionDraft(key, dailyQuantities);
+    else clearSessionDraft(key);
+  }, [dailyHasChanges, dailyLoadError, dailyLoadedDate, dailyQuantities, date]);
+
+  // Resolves true only when the day was saved, so guards can decide whether to leave.
   async function saveDailyLog(
     status: "draft" | "complete" | "no_sales",
     quantities = dailyQuantities
-  ) {
+  ): Promise<boolean> {
     if (activeMenuItems.length === 0) {
       toast.error("Add a menu item first");
-      return;
+      return false;
     }
 
     if (status === "no_sales" && dailyTotal > 0) {
@@ -1161,7 +1210,7 @@ export default function ItemsPage() {
         confirmLabel: "Mark no sales",
         tone: "danger",
       });
-      if (!ok) return;
+      if (!ok) return false;
     }
 
     const nextQuantities = { ...(dailyLog?.quantities ?? {}) };
@@ -1197,10 +1246,13 @@ export default function ItemsPage() {
       setDailyQuantities(
         Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
       );
+      setDraftNotice(null);
       toast.success(status === "no_sales" ? "No sales saved" : `Day ${status === "complete" ? "completed" : "saved"}`);
+      return true;
     } catch (err) {
       console.error("Failed to save daily item log:", err);
       toast.error(err instanceof Error ? `Could not save day: ${err.message}` : "Could not save this day");
+      return false;
     } finally {
       setDailySaving(false);
     }
@@ -1703,7 +1755,7 @@ export default function ItemsPage() {
 
       <Tabs
         value={activeView}
-        onValueChange={(value) => setActiveView(value as ItemsView)}
+        onValueChange={(value) => void switchView(value as ItemsView)}
         className="w-full"
       >
         <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[32rem]">
@@ -1779,7 +1831,7 @@ export default function ItemsPage() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" onClick={() => setDate(todayISO())} disabled={date === todayISO()}>
+            <Button type="button" variant="ghost" onClick={() => void goToDate(todayISO())} disabled={date === todayISO()}>
               Today
             </Button>
             <Input
@@ -1787,11 +1839,18 @@ export default function ItemsPage() {
               aria-label={`Choose close date: ${formatDisplay(date)}`}
               type="date"
               value={date}
-              onChange={(event) => setDate(event.target.value || todayISO())}
+              onChange={(event) => void goToDate(event.target.value || todayISO())}
               className="h-10 w-[9.5rem] bg-surface"
             />
           </div>
         </div>
+
+        {draftNotice !== null && (
+          <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/25 bg-warning/10 px-4 py-2 text-sm text-warning">
+            <span>Restored unsaved entries from {formatTimeOfDay(draftNotice)}.</span>
+            <Button type="button" size="sm" variant="ghost" onClick={discardDailyChanges}>Discard them</Button>
+          </div>
+        )}
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
           <Card>
