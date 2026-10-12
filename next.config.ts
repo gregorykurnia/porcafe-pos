@@ -24,6 +24,16 @@ const nextConfig: NextConfig = {
         destination: "/reports?tab=items",
         permanent: false,
       },
+      // Setup holds the menu and the stock setup sections that used to sit on Daily close and Stock.
+      {
+        source: "/items",
+        has: [{ type: "query", key: "view", value: "catalog" }],
+        destination: "/setup?tab=menu",
+        permanent: false,
+      },
+      { source: "/inventory", has: [{ type: "query", key: "tab", value: "materials" }], destination: "/setup?tab=materials", permanent: false },
+      { source: "/inventory", has: [{ type: "query", key: "tab", value: "recipes" }], destination: "/setup?tab=recipes", permanent: false },
+      { source: "/inventory", has: [{ type: "query", key: "tab", value: "import" }], destination: "/setup?tab=import", permanent: false },
     ];
   },
 };

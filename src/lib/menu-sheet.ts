@@ -64,3 +64,5 @@ export function filterSheetItems<T extends SheetItem>(
     return (item.sheetAliases ?? []).some((alias) => alias.toLowerCase().includes(needle));
   });
 }
+
+export const ITEM_CATEGORIES = ["Main", "Add On"] as const;

@@ -19,20 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { useConfirm } from "@/components/confirm-dialog";
 import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { useQueryState } from "@/hooks/use-query-state";
 import { RelativeSavedAt } from "@/components/state/relative-saved-at";
 import { DateStepper } from "@/components/fields/date-stepper";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SortableHead, cmp, toggleSort, type Sort } from "@/components/sortable-head";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import {
   closePaymentsDiffer,
@@ -46,14 +40,13 @@ import {
 } from "@/lib/close-draft";
 import { ConflictError, recordVersion } from "@/lib/concurrency";
 import { getCloseWarnings } from "@/lib/close-checks";
-import { filterSheetItems, moveWithinCategory, parseAliases, sortForSheet } from "@/lib/menu-sheet";
+import { ITEM_CATEGORIES, filterSheetItems, sortForSheet } from "@/lib/menu-sheet";
 import { getCanonicalItemRows } from "@/lib/reporting";
 import { CompleteDayReview } from "@/components/close/complete-day-review";
 import { CloseRecap } from "@/components/close/close-recap";
 import { MoneyInput } from "@/components/fields/money-input";
 import {
   listMenuItems,
-  upsertMenuItem,
   getDailyItemLog,
   listDailyItemLogs,
   saveDailyClose,
@@ -80,19 +73,18 @@ import {
 
 import { downloadCSV } from "@/lib/csv";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
-import { Trash2, Download, Plus, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ArrowUpDown, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
+import { Trash2, Download, ChevronLeft, ChevronRight, Banknote, CreditCard, QrCode, RotateCcw, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from "@/lib/inventory-usage";
 
 type Period = "day" | "week" | "month";
-type ItemsView = "daily" | "catalog" | "history";
+type ItemsView = "daily" | "history";
 
-const ITEMS_VIEWS: ItemsView[] = ["daily", "catalog", "history"];
+const ITEMS_VIEWS: ItemsView[] = ["daily", "history"];
 
 function isItemsView(value: string): boolean {
   return ITEMS_VIEWS.some((view) => view === value);
 }
-type CatalogStatus = "active" | "archived" | "all";
 
 // What a completion replaced, so Undo can put it back.
 type CloseUndo = {
@@ -111,8 +103,6 @@ type CloseRecapState = {
   stockStatus: string;
   undo: CloseUndo;
 };
-
-const ITEM_CATEGORIES = ["Main", "Add On"] as const;
 
 async function calculateSavedDailyUsage(log: DailyItemLog) {
   try {
@@ -147,222 +137,6 @@ const DAILY_PAYMENT_METHODS = [
   { key: "soundbox", label: "Soundbox", icon: QrCode },
   { key: "other", label: "Other", icon: Banknote },
 ] as const;
-
-type SortDir = "asc" | "desc";
-type Sort<K extends string> = { key: K; dir: SortDir } | null;
-
-function SortableHead<K extends string>({
-  label,
-  sortKey,
-  sort,
-  onSort,
-  className,
-}: {
-  label: string;
-  sortKey: K;
-  sort: Sort<K>;
-  onSort: (key: K) => void;
-  className?: string;
-}) {
-  const active = sort?.key === sortKey;
-  const Icon = active ? (sort!.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
-  return (
-    <TableHead
-      className={className}
-      aria-sort={active ? (sort!.dir === "asc" ? "ascending" : "descending") : "none"}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-label={`${label}, ${active ? (sort!.dir === "asc" ? "ascending" : "descending") : "not sorted"}`}
-        className={`inline-flex items-center gap-1 hover:text-foreground ${
-          className?.includes("text-right") ? "flex-row-reverse" : ""
-        } ${active ? "text-foreground" : ""}`}
-      >
-        {label}
-        <Icon className={`size-3 ${active ? "" : "text-muted-foreground"}`} />
-      </button>
-    </TableHead>
-  );
-}
-
-function toggleSort<K extends string>(
-  current: Sort<K>,
-  key: K,
-  setSort: (s: Sort<K>) => void
-) {
-  if (current?.key === key) {
-    setSort(current.dir === "asc" ? { key, dir: "desc" } : null);
-  } else {
-    setSort({ key, dir: "asc" });
-  }
-}
-
-function cmp(a: string | number, b: string | number): number {
-  if (typeof a === "number" && typeof b === "number") return a - b;
-  return String(a).localeCompare(String(b));
-}
-
-type EditableMenuItemField = "name" | "category" | "price";
-type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
-
-// Other names the item is written under on the sheet. Saved when the field loses focus.
-function SheetNamesInput({ item, onSaved }: { item: MenuItem; onSaved: () => void }) {
-  const current = (item.sheetAliases ?? []).join(", ");
-  return (
-    <Input
-      aria-label={`Sheet names for ${item.name}`}
-      placeholder="e.g. Nanban, Nanban ayam"
-      defaultValue={current}
-      onBlur={async (event) => {
-        const aliases = parseAliases(event.target.value);
-        if (aliases.join("|") === (item.sheetAliases ?? []).join("|")) return;
-        try {
-          await upsertMenuItem({ id: item.id, name: item.name, category: item.category, price: item.price, active: item.active, sheetAliases: aliases });
-          toast.success("Sheet names saved");
-          onSaved();
-        } catch (err) {
-          console.error("Failed to save sheet names:", err);
-          toast.error(err instanceof Error ? err.message : "Could not save sheet names");
-        }
-      }}
-      className="h-8 min-w-40 flex-1 text-sm"
-    />
-  );
-}
-
-function EditableMenuItemRow({
-  item,
-  onSaved,
-  onToggleActive,
-  onMove,
-}: {
-  item: MenuItem;
-  onSaved: () => void;
-  onToggleActive: (id: string, active: boolean) => void;
-  onMove: (direction: -1 | 1) => void;
-}) {
-  const [draft, setDraft] = useState<MenuItemDraft>({});
-  const [saving, setSaving] = useState(false);
-
-  function fieldValue(field: EditableMenuItemField): string {
-    if (field in draft) return draft[field] ?? "";
-    if (field === "price") return item.price !== null ? String(item.price) : "";
-    return item[field] ?? "";
-  }
-
-  function setField(field: EditableMenuItemField, value: string) {
-    setDraft((d) => ({ ...d, [field]: value }));
-  }
-
-  async function commit(overrides?: MenuItemDraft) {
-    const merged = { ...draft, ...overrides };
-    if (Object.keys(merged).length === 0) return;
-    const name = (merged.name ?? item.name).trim();
-    if (!name) {
-      toast.error("Name can't be empty");
-      setDraft({});
-      return;
-    }
-    setSaving(true);
-    try {
-      await upsertMenuItem({
-        id: item.id,
-        name,
-        category: (merged.category ?? item.category).trim() || "Uncategorized",
-        price: merged.price !== undefined ? (merged.price ? parseFloat(merged.price) : null) : item.price,
-        active: item.active,
-      });
-      setDraft({});
-      onSaved();
-    } catch (err) {
-      console.error("Failed to save item:", err);
-      toast.error(err instanceof Error ? `Failed to save item: ${err.message}` : "Failed to save item");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function cellInput(field: EditableMenuItemField, type: "text" | "number") {
-    return (
-      <Input
-        type={type}
-        inputMode={type === "number" ? "decimal" : undefined}
-        aria-label={`${field === "name" ? "Menu item name" : field === "category" ? "Category" : "Price"} for ${item.name}`}
-        value={fieldValue(field)}
-        disabled={saving}
-        onChange={(e) => setField(field, e.target.value)}
-        onBlur={() => commit()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        className={`h-8 border-transparent bg-transparent px-1.5 hover:border-border focus:border-ring ${
-          type === "number" ? "text-right" : ""
-        }`}
-      />
-    );
-  }
-
-  return (
-    <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-surface-elevated"}`}>
-      <TableCell className="p-1 font-medium">{cellInput("name", "text")}</TableCell>
-      <TableCell className="p-1">
-        <Select
-          value={fieldValue("category")}
-          disabled={saving}
-          onValueChange={(v) => {
-            setField("category", v);
-            commit({ category: v });
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-          className="h-8 w-full border-transparent bg-transparent hover:border-border"
-            aria-label={`Category for ${item.name}`}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ITEM_CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell className="p-1 text-right">
-        {cellInput("price", "number")}
-        {item.price === null && <p className="px-1.5 text-left text-xs font-medium text-warning">Missing price</p>}
-      </TableCell>
-      <TableCell className="p-1">
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => onMove(-1)} disabled={saving} aria-label={`Move ${item.name} up on the sheet`}>
-            <ChevronUp className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => onMove(1)} disabled={saving} aria-label={`Move ${item.name} down on the sheet`}>
-            <ChevronDown className="size-4" />
-          </Button>
-          <SheetNamesInput key={(item.sheetAliases ?? []).join("|")} item={item} onSaved={onSaved} />
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={item.active ? "default" : "outline"}>{item.active ? "Active" : "Archived"}</Badge>
-      </TableCell>
-      <TableCell>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onToggleActive(item.id, !item.active)}
-          disabled={saving}
-          aria-label={`${item.active ? "Archive" : "Restore"} ${item.name}`}
-        >
-          {item.active ? "Archive" : "Restore"}
-        </Button>
-      </TableCell>
-    </TableRow>
-  );
-}
 
 type EditableSaleField = "date" | "itemId" | "qty";
 type SaleDraft = Partial<Record<EditableSaleField, string>>;
@@ -552,10 +326,6 @@ function ItemsWorkspace() {
   // Saved-at time of unsaved quantities restored from this browser session, if any.
   const [draftNotice, setDraftNotice] = useState<number | null>(null);
   const [dailySaving, setDailySaving] = useState(false);
-  const [catalogQuery, setCatalogQuery] = useState("");
-  const [catalogCategory, setCatalogCategory] = useState("all");
-  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("active");
-  const [menuSort, setMenuSort] = useState<Sort<"name" | "category" | "price">>(null);
   const [saleSort, setSaleSort] = useState<Sort<"date" | "item" | "category" | "qty">>(null);
 
   // Recent item sales filter
@@ -568,12 +338,6 @@ function ItemsWorkspace() {
 
   // quantity entry form
   const [date, setDate] = useQueryState("date", { default: todayISO(), validate: isISODate });
-
-  // manage item dialog
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newCategory, setNewCategory] = useState<string>(ITEM_CATEGORIES[0]);
-  const [newPrice, setNewPrice] = useState("");
 
   function refresh() {
     setLoading(true);
@@ -675,71 +439,6 @@ function ItemsWorkspace() {
       cancelled = true;
     };
   }, [date, dailyRetryKey]);
-
-  async function addMenuItem() {
-    if (!newName.trim()) {
-      toast.error("Item name required");
-      return;
-    }
-    await upsertMenuItem({
-      name: newName.trim(),
-      category: newCategory || "Uncategorized",
-      price: newPrice ? parseFloat(newPrice) : null,
-      active: true,
-    });
-    toast.success("Item added");
-    setNewName("");
-    setNewCategory(ITEM_CATEGORIES[0]);
-    setNewPrice("");
-    setDialogOpen(false);
-    refresh();
-  }
-
-  // Renumbers the item's category so the sheet order is 1, 2, 3… with the item one place along.
-  async function moveMenuItem(item: MenuItem, direction: -1 | 1) {
-    const orders = moveWithinCategory(menuItems, item.id, direction);
-    if (orders.size === 0) return;
-    try {
-      await Promise.all(
-        [...orders].map(([id, sheetOrder]) => {
-          const menuItem = menuItems.find((candidate) => candidate.id === id);
-          if (!menuItem) return Promise.resolve();
-          return upsertMenuItem({ id, name: menuItem.name, category: menuItem.category, price: menuItem.price, active: menuItem.active, sheetOrder });
-        })
-      );
-      refresh();
-    } catch (err) {
-      console.error("Failed to reorder menu items:", err);
-      toast.error(err instanceof Error ? `Could not change the order: ${err.message}` : "Could not change the order");
-    }
-  }
-
-  async function toggleMenuItemActive(id: string, active: boolean) {
-    const item = menuItems.find((menuItem) => menuItem.id === id);
-    if (!item) return;
-    if (!active) {
-      const ok = await confirm({
-        title: `Archive ${item.name}?`,
-        body: "Archived items disappear from Daily close and scanning. Past sales stay in History.",
-        confirmLabel: "Archive",
-      });
-      if (!ok) return;
-    }
-    try {
-      await upsertMenuItem({
-        id: item.id,
-        name: item.name,
-        category: item.category,
-        price: item.price,
-        active,
-      });
-      toast.success(active ? `${item.name} restored` : `${item.name} archived`);
-      refresh();
-    } catch (err) {
-      console.error("Failed to update item status:", err);
-      toast.error(err instanceof Error ? `Could not update item: ${err.message}` : "Could not update item");
-    }
-  }
 
   const activeMenuItems = useMemo(
     () => menuItems.filter((item) => item.active !== false),
@@ -1117,42 +816,6 @@ function ItemsWorkspace() {
         : formatMonthDisplay(key);
   }, [recentFilter, recentCursor]);
 
-  const catalogCategories = useMemo(() => {
-    const categories = new Set(menuItems.map((item) => item.category).filter(Boolean));
-    const standard = ITEM_CATEGORIES.filter((category) => categories.has(category));
-    const other = [...categories].filter((category) => !ITEM_CATEGORIES.includes(category as (typeof ITEM_CATEGORIES)[number])).sort();
-    return [...standard, ...other];
-  }, [menuItems]);
-
-  const catalogMissingPriceCount = useMemo(
-    () => menuItems.filter((item) => item.active !== false && item.price === null).length,
-    [menuItems]
-  );
-
-  const sortedMenuItems = useMemo(() => {
-    const normalizedQuery = catalogQuery.trim().toLocaleLowerCase();
-    const filtered = menuItems.filter((item) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        item.name.toLocaleLowerCase().includes(normalizedQuery) ||
-        item.category.toLocaleLowerCase().includes(normalizedQuery);
-      const matchesCategory = catalogCategory === "all" || item.category === catalogCategory;
-      const matchesStatus =
-        catalogStatus === "all" ||
-        (catalogStatus === "active" ? item.active !== false : item.active === false);
-      return matchesQuery && matchesCategory && matchesStatus;
-    });
-
-    if (!menuSort) return filtered;
-    const { key, dir } = menuSort;
-    const sorted = [...filtered].sort((a, b) => {
-      const va = key === "price" ? (a.price ?? -Infinity) : a[key];
-      const vb = key === "price" ? (b.price ?? -Infinity) : b[key];
-      return cmp(va, vb);
-    });
-    return dir === "asc" ? sorted : sorted.reverse();
-  }, [catalogCategory, catalogQuery, catalogStatus, menuItems, menuSort]);
-
   const sortedRecentSales = useMemo(() => {
     if (!saleSort) return recentFilteredSales;
     const { key, dir } = saleSort;
@@ -1182,7 +845,7 @@ function ItemsWorkspace() {
     <div className="space-y-6">
       <PageHeader
         title="Daily close"
-        description={activeView === "daily" ? "Record portions and confirm revenue for one operating day." : "Manage the menu and review recorded item sales."}
+        description={activeView === "daily" ? "Record portions and confirm revenue for one operating day." : "Review recorded item sales."}
         actions={
           <>
         <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary />
@@ -1193,49 +856,6 @@ function ItemsWorkspace() {
             </Link>
           </Button>
         )}
-        {activeView !== "daily" && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="bg-primary shadow-sm shadow-primary/20 hover:bg-primary-hover">
-              <Plus className="size-4" /> New item
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add menu item</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="new-item-name">Name</Label>
-                <Input id="new-item-name" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Iced Latte" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="new-item-category">Category</Label>
-                <Select value={newCategory} onValueChange={setNewCategory}>
-                  <SelectTrigger id="new-item-category" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ITEM_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="new-item-price">Price (optional)</Label>
-                <Input id="new-item-price" type="number" inputMode="decimal" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="0" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button onClick={addMenuItem} className="bg-primary hover:bg-primary-hover">
-                Add item
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-        }
           </>
         }
       />
@@ -1257,9 +877,8 @@ function ItemsWorkspace() {
         onValueChange={(value) => void switchView(value as ItemsView)}
         className="w-full"
       >
-        <TabsList className="grid h-10 w-full grid-cols-4 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[32rem]">
+        <TabsList className="grid h-10 w-full grid-cols-2 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[20rem]">
           <TabsTrigger id="items-tab-daily" aria-controls="items-panel-daily" value="daily" className="rounded-lg px-3">Daily close</TabsTrigger>
-          <TabsTrigger id="items-tab-catalog" aria-controls="items-panel-catalog" value="catalog" className="rounded-lg px-3">Catalog</TabsTrigger>
           <TabsTrigger id="items-tab-history" aria-controls="items-panel-history" value="history" className="rounded-lg px-3">History</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -1336,9 +955,9 @@ function ItemsWorkspace() {
               ) : activeMenuItems.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-6 text-center">
                   <p className="font-medium text-foreground">No active menu items</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Add an active menu item in Catalog to start logging sales.</p>
-                  <Button type="button" variant="outline" className="mt-4" onClick={() => setActiveView("catalog")}>
-                    Open Catalog
+                  <p className="mt-1 text-sm text-muted-foreground">Add an active menu item in Setup to start logging sales.</p>
+                  <Button asChild variant="outline" className="mt-4">
+                    <Link href="/setup?tab=menu">Open Menu setup</Link>
                   </Button>
                 </div>
               ) : (
@@ -1539,96 +1158,6 @@ function ItemsWorkspace() {
       </div>
       )}
 
-      {activeView === "catalog" && (
-      /* Menu items management */
-      <Card id="items-panel-catalog" role="tabpanel" aria-labelledby="items-tab-catalog" tabIndex={0}>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle>Catalog</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Manage the items available in daily entry and scanning.</p>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Badge variant="outline">{menuItems.filter((item) => item.active !== false).length} active</Badge>
-            {catalogMissingPriceCount > 0 && (
-              <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
-                {catalogMissingPriceCount} missing price{catalogMissingPriceCount === 1 ? "" : "s"}
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_8rem]">
-            <Input
-              aria-label="Search menu items"
-              placeholder="Search by item or category…"
-              value={catalogQuery}
-              onChange={(event) => setCatalogQuery(event.target.value)}
-            />
-            <Select value={catalogCategory} onValueChange={setCatalogCategory}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="All categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {catalogCategories.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {category}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={catalogStatus} onValueChange={(value) => setCatalogStatus(value as CatalogStatus)}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-                <SelectItem value="all">All statuses</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {loading ? (
-            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground" aria-live="polite">
-              Loading menu catalog…
-            </div>
-          ) : (
-          <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Menu catalog">
-            <Table className="min-w-[42rem]">
-              <TableHeader>
-                <TableRow>
-                  <SortableHead label="Name" sortKey="name" sort={menuSort} onSort={(k) => toggleSort(menuSort, k, setMenuSort)} />
-                  <SortableHead label="Category" sortKey="category" sort={menuSort} onSort={(k) => toggleSort(menuSort, k, setMenuSort)} />
-                  <SortableHead
-                    label="Price"
-                    sortKey="price"
-                    sort={menuSort}
-                    onSort={(k) => toggleSort(menuSort, k, setMenuSort)}
-                    className="text-right"
-                  />
-                  <TableHead>Sheet</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedMenuItems.map((m) => (
-                  <EditableMenuItemRow key={m.id} item={m} onSaved={refresh} onToggleActive={toggleMenuItemActive} onMove={(direction) => void moveMenuItem(m, direction)} />
-                ))}
-              </TableBody>
-            </Table>
-            {sortedMenuItems.length === 0 && (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                {menuItems.length === 0 ? "No menu items yet — use New item to create your catalog." : "No items match these filters."}
-              </p>
-            )}
-          </div>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
       {activeView === "history" && (
       /* Recent item sales */
       <Card id="items-panel-history" role="tabpanel" aria-labelledby="items-tab-history" tabIndex={0}>
@@ -1638,20 +1167,20 @@ function ItemsWorkspace() {
             <p className="mt-1 text-sm text-muted-foreground">{legacyEditable ? "Legacy rows can be edited until their dates are copied into Daily close. Daily close records are read-only here." : "Read-only. To change a day, open it in Daily close."}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Tabs
+            <SegmentedControl
+              label="History period"
               value={recentFilter}
-              onValueChange={(v) => {
-                setRecentFilter(v as "all" | Period);
+              options={[
+                { value: "all", label: "All" },
+                { value: "day", label: "Day" },
+                { value: "week", label: "Week" },
+                { value: "month", label: "Month" },
+              ]}
+              onChange={(value) => {
+                setRecentFilter(value);
                 setRecentCursor(todayISO());
               }}
-            >
-              <TabsList>
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="day">Day</TabsTrigger>
-                <TabsTrigger value="week">Week</TabsTrigger>
-                <TabsTrigger value="month">Month</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            />
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

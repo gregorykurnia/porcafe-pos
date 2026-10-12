@@ -513,7 +513,7 @@ export function ImportReview({
                     <TableCell>{row.ingredientName}</TableCell>
                     <TableCell className="min-w-64">
                       <Select value={choice} onValueChange={(value) => setMaterialSelections((current) => ({ ...current, [sourceLabel]: value }))}>
-                        <SelectTrigger className="w-full"><SelectValue placeholder="Choose or create" /></SelectTrigger>
+                        <SelectTrigger aria-label={`Material for ${sourceLabel}`} className="w-full"><SelectValue placeholder="Choose or create" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value={`${CREATE_PREFIX}${inventoryMaterialId(row.ingredientName)}`}>Create: {row.ingredientName}</SelectItem>
                           {materials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} ({material.baseUnit})</SelectItem>)}

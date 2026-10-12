@@ -1,52 +1,40 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
-import { Stat } from "@/components/state/stat";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Handshake, Loader2, Scale } from "lucide-react";
+import { BookOpen, Boxes, Handshake, Loader2, Scale, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsageRecap } from "@/components/inventory/usage-recap";
 import { PushAlertsChip } from "@/components/push-notifications-settings";
 import {
-  listInventoryAliasMappings,
   listInventoryMaterials,
-  listInventoryRecipeLines,
-  listInventoryRecipeVersions,
-  listMenuItems,
-  listInventorySuppliers,
+  listInventorySupplierDeliverySchedules,
   listInventorySupplierItems,
   listInventorySupplierOrders,
-  listInventorySupplierDeliverySchedules,
+  listInventorySuppliers,
   runDueInventorySupplierDeliverySchedules,
 } from "@/lib/data";
 import { todayISO } from "@/lib/dates";
 import { isOffline } from "@/lib/connection";
+import { stockTabFromParam, type StockTab } from "@/lib/workspace-tabs";
 import type {
-  InventoryAliasMapping,
   InventoryMaterial,
-  InventoryRecipeLine,
-  InventoryRecipeVersion,
   InventorySupplier,
-  InventorySupplierOrder,
   InventorySupplierDeliverySchedule,
   InventorySupplierItem,
-  MenuItem,
+  InventorySupplierOrder,
 } from "@/lib/types";
 
-type InventoryTab = "stock" | "usage" | "import" | "materials" | "recipes" | "suppliers";
-// Views inside the Suppliers tab. The URL tabs "to-order" and "orders" open the matching view.
-type SuppliersView = "to-order" | "orders" | "setup";
+type DataTab = Exclude<StockTab, "usage">;
+type SupplierView = "to-order" | "orders";
 
-function suppliersViewFromTab(tab: string | null): SuppliersView | null {
-  if (tab === "to-order" || tab === "suppliers") return "to-order";
-  if (tab === "orders") return "orders";
-  return null;
-}
-type DataTab = Exclude<InventoryTab, "usage">;
 const INVENTORY_MATERIALS_CACHE_KEY = "porcafe.inventory.materials.v1";
+const TAB_CLASS =
+  "min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm";
+const TAB_ICON_CLASS = "hidden size-4 shrink-0 lg:block";
 
 function readCachedMaterials(): InventoryMaterial[] | null {
   try {
@@ -73,25 +61,13 @@ function writeCachedMaterials(materials: InventoryMaterial[]) {
   }
 }
 
-function isInventoryTab(value: string | null): value is InventoryTab {
-  return value === "stock" || value === "usage" || value === "import" || value === "materials" || value === "recipes" || value === "suppliers";
-}
-
 function preloadInventoryTab(tab: DataTab) {
   switch (tab) {
     case "stock":
       void import("@/components/inventory/stock-dashboard");
       break;
-    case "import":
-      void import("@/components/inventory/import-review");
-      break;
-    case "materials":
-      void import("@/components/inventory/materials");
-      break;
-    case "recipes":
-      void import("@/components/inventory/recipes");
-      break;
-    case "suppliers":
+    case "to-order":
+    case "orders":
       void import("@/components/inventory/suppliers");
       break;
   }
@@ -121,18 +97,6 @@ function InventoryTabError({ message, onRetry }: { message: string; onRetry: () 
   );
 }
 
-const ImportReview = dynamic(
-  () => import("@/components/inventory/import-review").then((module) => module.ImportReview),
-  { loading: InventoryTabLoading }
-);
-const Materials = dynamic(
-  () => import("@/components/inventory/materials").then((module) => module.Materials),
-  { loading: InventoryTabLoading }
-);
-const Recipes = dynamic(
-  () => import("@/components/inventory/recipes").then((module) => module.Recipes),
-  { loading: InventoryTabLoading }
-);
 const StockDashboard = dynamic(
   () => import("@/components/inventory/stock-dashboard").then((module) => module.StockDashboard),
   { loading: InventoryTabLoading }
@@ -143,34 +107,28 @@ const Suppliers = dynamic(
 );
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<InventoryTab>("stock");
+  const [activeTab, setActiveTab] = useState<StockTab>("stock");
   const [tabPreferencesLoaded, setTabPreferencesLoaded] = useState(false);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [materials, setMaterials] = useState<InventoryMaterial[]>([]);
-  const [aliases, setAliases] = useState<InventoryAliasMapping[]>([]);
-  const [recipes, setRecipes] = useState<InventoryRecipeVersion[]>([]);
-  const [recipeLines, setRecipeLines] = useState<InventoryRecipeLine[]>([]);
   const [suppliers, setSuppliers] = useState<InventorySupplier[]>([]);
   const [supplierItems, setSupplierItems] = useState<InventorySupplierItem[]>([]);
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
   const [receiveRequest, setReceiveRequest] = useState<{ orderId: string; requestId: number } | null>(null);
-  const [suppliersView, setSuppliersView] = useState<SuppliersView>("to-order");
   const [orderRequest, setOrderRequest] = useState<{ materialId: string; requestId: number } | null>(null);
-  const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
-  const [visitedTabs, setVisitedTabs] = useState<Set<InventoryTab>>(() => new Set(["stock"]));
+  const [loadedTabs, setLoadedTabs] = useState<Set<StockTab>>(() => new Set());
+  const [visitedTabs, setVisitedTabs] = useState<Set<StockTab>>(() => new Set(["stock"]));
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
   const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
 
   const materialsLoadedRef = useRef(false);
-  const foundationLoadedRef = useRef(false);
   const suppliersLoadedRef = useRef(false);
   const cachedMaterialsLoadedRef = useRef(false);
   const cachedDataRefreshStartedRef = useRef(false);
   const scheduleRunRef = useRef<Promise<void>>(Promise.resolve());
   const inFlightTabsRef = useRef<Partial<Record<DataTab, Promise<void>>>>({});
 
-  const refresh = useCallback(async (requestedTab: InventoryTab = activeTab, force = true) => {
+  const refresh = useCallback(async (requestedTab: StockTab = activeTab, force = true) => {
     if (requestedTab === "usage") return;
     const tab = requestedTab;
     const existingRequest = inFlightTabsRef.current[tab];
@@ -197,31 +155,6 @@ export default function InventoryPage() {
           }
           // Open orders let a receipt be recorded against the order it belongs to.
           setSupplierOrders(await listInventorySupplierOrders());
-        } else if (tab === "materials") {
-          if (force || !materialsLoadedRef.current) {
-            const loadedMaterials = await listInventoryMaterials();
-            setMaterials(loadedMaterials);
-            materialsLoadedRef.current = true;
-            writeCachedMaterials(loadedMaterials);
-          }
-        } else if (tab === "import" || tab === "recipes") {
-          if (force || !foundationLoadedRef.current) {
-            const [items, loadedMaterials, loadedAliases, loadedRecipes, loadedLines] = await Promise.all([
-              listMenuItems(),
-              listInventoryMaterials(),
-              listInventoryAliasMappings(),
-              listInventoryRecipeVersions(),
-              listInventoryRecipeLines(),
-            ]);
-            setMenuItems(items);
-            setMaterials(loadedMaterials);
-            setAliases(loadedAliases);
-            setRecipes(loadedRecipes);
-            setRecipeLines(loadedLines);
-            materialsLoadedRef.current = true;
-            writeCachedMaterials(loadedMaterials);
-            foundationLoadedRef.current = true;
-          }
         } else {
           await scheduleRunRef.current;
           if (force || !suppliersLoadedRef.current || !materialsLoadedRef.current) {
@@ -278,10 +211,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const requestedTab = params.get("tab");
-    const initialTab: InventoryTab = requestedTab === "to-order" || requestedTab === "orders" ? "suppliers" : isInventoryTab(requestedTab) ? requestedTab : "stock";
-    const requestedSuppliersView = suppliersViewFromTab(requestedTab);
-    if (requestedSuppliersView) setSuppliersView(requestedSuppliersView);
+    const initialTab = stockTabFromParam(params.get("tab"));
     const requestedReceiveOrderId = params.get("receive");
     const cachedMaterials = readCachedMaterials();
     setActiveTab(initialTab);
@@ -291,7 +221,7 @@ export default function InventoryPage() {
       setMaterials(cachedMaterials);
       materialsLoadedRef.current = true;
       cachedMaterialsLoadedRef.current = true;
-      setLoadedTabs((current) => new Set(current).add("stock").add("materials"));
+      setLoadedTabs((current) => new Set(current).add("stock"));
     }
     if (initialTab !== "usage") preloadInventoryTab(initialTab);
     setTabPreferencesLoaded(true);
@@ -310,14 +240,14 @@ export default function InventoryPage() {
   }, [activeTab, loadedTabs, refresh, tabPreferencesLoaded]);
 
   useEffect(() => {
-    if (!loadedTabs.has("suppliers") || activeTab !== "suppliers" || suppliersView !== "to-order" || window.location.hash !== "#reorder-overview") return;
+    if (!loadedTabs.has("to-order") || activeTab !== "to-order" || window.location.hash !== "#reorder-overview") return;
     window.requestAnimationFrame(() => {
       document.getElementById("reorder-overview")?.scrollIntoView({ block: "start" });
     });
-  }, [activeTab, loadedTabs, suppliersView]);
+  }, [activeTab, loadedTabs]);
 
   const handleTabChange = useCallback((value: string) => {
-    const nextTab = value as InventoryTab;
+    const nextTab = value as StockTab;
     if (nextTab !== "usage") {
       preloadInventoryTab(nextTab);
       void refresh(nextTab, false);
@@ -326,17 +256,14 @@ export default function InventoryPage() {
     setActiveTab(nextTab);
   }, [refresh]);
 
-  // Receiving against an order lives in the Suppliers tab for now (WP-3.7 moves it to Orders).
-  // "Order" on a material in the Stock tab opens a new order for it on the Suppliers tab.
+  // Receiving against an order and ordering a material both happen on the Orders tab.
   const openOrderFor = useCallback((materialId: string) => {
-    handleTabChange("suppliers");
-    setSuppliersView("orders");
+    handleTabChange("orders");
     setOrderRequest({ materialId, requestId: Date.now() });
   }, [handleTabChange]);
 
   const openReceiveAgainst = useCallback((orderId: string) => {
-    handleTabChange("suppliers");
-    setSuppliersView("orders");
+    handleTabChange("orders");
     setReceiveRequest({ orderId, requestId: Date.now() });
     window.history.replaceState(null, "", `/inventory?tab=orders&receive=${encodeURIComponent(orderId)}`);
   }, [handleTabChange]);
@@ -347,6 +274,9 @@ export default function InventoryPage() {
     return <InventoryTabLoading />;
   };
 
+  // To order and Orders share one Suppliers panel, so an order being drafted survives a switch between them.
+  const supplierView: SupplierView = activeTab === "orders" ? "orders" : "to-order";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -356,20 +286,12 @@ export default function InventoryPage() {
         actions={<PushAlertsChip />}
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat variant="card" size="sm" icon={<FileSpreadsheet className="size-5 text-info" />} label="Source preview" value="Rows 1–75 only" />
-        <Stat variant="card" size="sm" icon={<BookOpen className="size-5 text-success" />} label="Recipe versions" value={loadedTabs.has("recipes") || loadedTabs.has("import") ? recipes.length : "—"} />
-        <Stat variant="card" size="sm" icon={<AlertTriangle className="size-5 text-warning" />} label="Stock balance" value="Opening stock gated" />
-      </div>
-
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList aria-label="Inventory sections" className="grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto lg:inline-flex lg:w-auto lg:gap-0 lg:group-data-horizontal/tabs:h-8">
-          <TabsTrigger value="stock" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Scale className="hidden size-4 shrink-0 lg:block" /><span>Stock</span></TabsTrigger>
-          <TabsTrigger value="usage" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><BookOpen className="hidden size-4 shrink-0 lg:block" /><span>Usage recap</span></TabsTrigger>
-          <TabsTrigger value="import" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><FileSpreadsheet className="hidden size-4 shrink-0 lg:block" /><span>Import review</span></TabsTrigger>
-          <TabsTrigger value="materials" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Boxes className="hidden size-4 shrink-0 lg:block" /><span>Materials</span></TabsTrigger>
-          <TabsTrigger value="recipes" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><BookOpen className="hidden size-4 shrink-0 lg:block" /><span>Recipes</span></TabsTrigger>
-          <TabsTrigger value="suppliers" className="min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm"><Handshake className="hidden size-4 shrink-0 lg:block" /><span>Suppliers &amp; ordering</span></TabsTrigger>
+          <TabsTrigger value="stock" className={TAB_CLASS}><Scale className={TAB_ICON_CLASS} /><span>Stock</span></TabsTrigger>
+          <TabsTrigger value="to-order" className={TAB_CLASS}><Handshake className={TAB_ICON_CLASS} /><span>To order</span></TabsTrigger>
+          <TabsTrigger value="orders" className={TAB_CLASS}><Truck className={TAB_ICON_CLASS} /><span>Orders</span></TabsTrigger>
+          <TabsTrigger value="usage" className={TAB_CLASS}><BookOpen className={TAB_ICON_CLASS} /><span>Usage recap</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
@@ -378,28 +300,8 @@ export default function InventoryPage() {
         <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("usage") && <UsageRecap />}
         </TabsContent>
-        <TabsContent value="import" forceMount={visitedTabs.has("import") ? true : undefined} className={activeTab === "import" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("import") && section("import", <ImportReview menuItems={menuItems} materials={materials} aliases={aliases} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
-        </TabsContent>
-        <TabsContent value="materials" forceMount={visitedTabs.has("materials") ? true : undefined} className={activeTab === "materials" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("materials") && section("materials", <Materials materials={materials} onChanged={refresh} />)}
-        </TabsContent>
-        <TabsContent value="recipes" forceMount={visitedTabs.has("recipes") ? true : undefined} className={activeTab === "recipes" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
-        </TabsContent>
-        <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className={activeTab === "suppliers" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("suppliers") && (
-            <div className="space-y-5">
-              <div role="group" aria-label="Suppliers and ordering view" className="flex flex-wrap gap-2">
-                {([["to-order", "To order"], ["orders", "Orders"], ["setup", "Supplier setup"]] as const).map(([view, label]) => (
-                  <Button key={view} type="button" size="sm" variant={suppliersView === view ? "default" : "outline"} aria-pressed={suppliersView === view} onClick={() => setSuppliersView(view)} className="min-h-11 sm:min-h-8">
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              {section("suppliers", <Suppliers view={suppliersView} onViewChange={setSuppliersView} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
-            </div>
-          )}
+        <TabsContent key="suppliers" value={supplierView} className="mt-5">
+          {section(supplierView, <Suppliers view={supplierView} onViewChange={handleTabChange} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
         </TabsContent>
       </Tabs>
     </div>
