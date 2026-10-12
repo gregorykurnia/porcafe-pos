@@ -29,6 +29,8 @@ import {
 import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
 import { filterCurrentStockBalances, summarizeInventoryBalancesFromTotals, type InventoryBalance } from "@/lib/inventory-ledger";
 import { getOpenReceiptsForMaterial } from "@/lib/open-receipts";
+import { buildCurrentStockRows } from "@/lib/current-stock";
+import { CurrentStockCard } from "@/components/inventory/current-stock-card";
 import type {
   InventoryMaterial,
   InventoryMovement,
@@ -44,6 +46,8 @@ type StockDashboardProps = {
   openOrders?: InventorySupplierOrder[];
   /** Opens the order so its receipt is recorded against it, not as an unplanned delivery. */
   onReceiveAgainst?: (orderId: string) => void;
+  /** Opens a new order for the material on the Suppliers tab. */
+  onOrderMaterial?: (materialId: string) => void;
 };
 
 type ManualMovementType = "receiving" | "waste_spoilage" | "manual_adjustment" | "correction";
@@ -124,7 +128,7 @@ function sortMovementsByDate(movements: InventoryMovement[]): InventoryMovement[
   });
 }
 
-export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openOrders = [], onReceiveAgainst }: StockDashboardProps) {
+export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openOrders = [], onReceiveAgainst, onOrderMaterial }: StockDashboardProps) {
   const [setup, setSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [balanceTotals, setBalanceTotals] = useState<Record<string, number>>({});
@@ -159,6 +163,14 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
   const activeMaterialIds = useMemo(() => activeMaterials.map((material) => material.id), [activeMaterials]);
   const balances = useMemo(() => summarizeInventoryBalancesFromTotals(materials, balanceTotals, setup), [materials, balanceTotals, setup]);
   const currentStockBalances = useMemo(() => filterCurrentStockBalances(balances), [balances]);
+  const stockRows = useMemo(
+    () => buildCurrentStockRows({ materials, balances: currentStockBalances, openOrders }),
+    [materials, currentStockBalances, openOrders]
+  );
+  function focusCount(materialId: string) {
+    setCountMaterialId(materialId);
+    document.getElementById("stock-count")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
   const selectedCountMaterialId = countMaterialId || activeMaterials[0]?.id || "";
@@ -443,10 +455,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
 
           {lowStockBalances.length > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><TriangleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">Low or negative stock needs attention</p><p className="mt-1 text-sm text-muted-foreground">{lowStockBalances.map((balance) => `${balance.materialName} (${materialBalanceLabel(balance)})`).join(" · ")}. You can keep recording movements while the balance is negative.</p></div></CardContent></Card>}
 
-          <Card>
-            <CardHeader><CardTitle>Current stock</CardTitle><CardDescription>Balances are the sum of opening stock, manual movements, stock-count corrections, recipe consumption, and reversals.</CardDescription></CardHeader>
-            <CardContent>{currentStockBalances.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Unit</TableHead><TableHead className="text-right">Current balance</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{currentStockBalances.map((balance) => <TableRow key={balance.materialId}><TableCell className="font-medium">{balance.materialName}</TableCell><TableCell className="text-muted-foreground">{balance.unit}</TableCell><TableCell className={`text-right font-semibold tabular-nums ${balance.isNegative ? "text-danger" : ""}`}>{materialBalanceLabel(balance)}</TableCell><TableCell>{balance.isNegative ? <Badge variant="destructive">Negative</Badge> : balance.currentQuantity === 0 ? <Badge variant="destructive">Low stock</Badge> : <Badge variant="secondary">Available</Badge>}</TableCell></TableRow>)}</TableBody></Table>}</CardContent>
-          </Card>
+          <CurrentStockCard rows={stockRows} onOrder={(materialId) => onOrderMaterial?.(materialId)} onCount={focusCount} />
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Card>
@@ -530,7 +539,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
               </CardContent>
             </Card>
 
-            <Card>
+            <Card id="stock-count">
               <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="size-4" />Record stock count</CardTitle><CardDescription>Enter the physical quantity. The ledger records the delta needed to reach that count.</CardDescription></CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><Label>Material</Label><Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}><SelectTrigger className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger><SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-1.5"><Label>Count date</Label><Input type="date" value={countDate} onChange={(event) => setCountDate(event.target.value)} /></div></div>

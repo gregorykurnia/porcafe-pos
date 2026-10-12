@@ -145,6 +145,7 @@ export default function InventoryPage() {
   const [supplierOrders, setSupplierOrders] = useState<InventorySupplierOrder[]>([]);
   const [supplierSchedules, setSupplierSchedules] = useState<InventorySupplierDeliverySchedule[]>([]);
   const [receiveRequest, setReceiveRequest] = useState<{ orderId: string; requestId: number } | null>(null);
+  const [orderRequest, setOrderRequest] = useState<{ materialId: string; requestId: number } | null>(null);
   const [loadedTabs, setLoadedTabs] = useState<Set<InventoryTab>>(() => new Set());
   const [visitedTabs, setVisitedTabs] = useState<Set<InventoryTab>>(() => new Set(["stock"]));
   const [tabErrors, setTabErrors] = useState<Partial<Record<DataTab, string>>>({});
@@ -311,6 +312,12 @@ export default function InventoryPage() {
   }, [refresh]);
 
   // Receiving against an order lives in the Suppliers tab for now (WP-3.7 moves it to Orders).
+  // "Order" on a material in the Stock tab opens a new order for it on the Suppliers tab.
+  const openOrderFor = useCallback((materialId: string) => {
+    handleTabChange("suppliers");
+    setOrderRequest({ materialId, requestId: Date.now() });
+  }, [handleTabChange]);
+
   const openReceiveAgainst = useCallback((orderId: string) => {
     handleTabChange("suppliers");
     setReceiveRequest({ orderId, requestId: Date.now() });
@@ -353,7 +360,7 @@ export default function InventoryPage() {
         </TabsList>
 
         <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} />)}
+          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} onOrderMaterial={openOrderFor} />)}
         </TabsContent>
         <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
           {visitedTabs.has("usage") && <UsageRecap />}
@@ -368,7 +375,7 @@ export default function InventoryPage() {
           {visitedTabs.has("recipes") && section("recipes", <Recipes menuItems={menuItems} materials={materials} recipes={recipes} recipeLines={recipeLines} onChanged={refresh} />)}
         </TabsContent>
         <TabsContent value="suppliers" forceMount={visitedTabs.has("suppliers") ? true : undefined} className={activeTab === "suppliers" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} onChanged={refresh} />)}
+          {visitedTabs.has("suppliers") && section("suppliers", <Suppliers materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
         </TabsContent>
       </Tabs>
     </div>

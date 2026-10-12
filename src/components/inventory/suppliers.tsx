@@ -49,6 +49,8 @@ type SuppliersProps = {
   orders: InventorySupplierOrder[];
   schedules: InventorySupplierDeliverySchedule[];
   receiveRequest?: { orderId: string; requestId: number } | null;
+  /** A new order for a material, requested from the Stock tab. */
+  orderRequest?: { materialId: string; requestId: number } | null;
   onChanged: () => Promise<void>;
 };
 
@@ -366,7 +368,7 @@ function ReorderSettings({ materials, suppliers, supplierItems, balances, onChan
   );
 }
 
-export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, receiveRequest, onChanged }: SuppliersProps) {
+export function Suppliers({ materials, suppliers, supplierItems, orders, schedules, receiveRequest, orderRequest, onChanged }: SuppliersProps) {
   const confirm = useConfirm();
   const supplierFormRef = useRef<HTMLDivElement>(null);
   const supplierItemFormRef = useRef<HTMLDivElement>(null);
@@ -390,6 +392,16 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
   const [supplierItemSaving, setSupplierItemSaving] = useState(false);
   const [supplierPricingSort, setSupplierPricingSort] = useState<SupplierPricingSort>(null);
   const [orderPrefillRequest, setOrderPrefillRequest] = useState<{ materialId: string; requestId: number } | null>(null);
+  const handledOrderRequestId = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!orderRequest || handledOrderRequestId.current === orderRequest.requestId) return;
+    handledOrderRequestId.current = orderRequest.requestId;
+    // Deferred, like the other page effects, so the state update is not made during the effect.
+    void Promise.resolve().then(() =>
+      setOrderPrefillRequest({ materialId: orderRequest.materialId, requestId: orderRequest.requestId })
+    );
+  }, [orderRequest]);
   const orderPrefillRequestId = useRef(0);
   const [stockSetup, setStockSetup] = useState<InventoryStockSetup | null>(null);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
