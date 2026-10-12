@@ -287,6 +287,97 @@ export async function upsertDailyItemLog(
   return id;
 }
 
+export type DailyCloseSaveInput = {
+  date: string;
+  status: DailyItemLog["status"];
+  source: DailyItemLog["source"];
+  quantities: Record<string, number>;
+  /** Omit to leave the day's revenue record untouched. */
+  payments?: { cash: number; bca: number; soundbox: number; other: number };
+  /**
+   * Versions the caller loaded (see recordVersion). null means "expect no record yet".
+   * undefined skips the check.
+   */
+  expected: { logUpdatedAt?: number | null; salesUpdatedAt?: number | null };
+  /** The revenue record the caller loaded for this date, so payments update that record and never a second one. */
+  salesEntryId?: string | null;
+};
+
+/**
+ * Saves a day's item quantities and, when given, its payments in one transaction,
+ * so a close is never half-saved. The log is replaced as a whole. A merge write
+ * would keep items removed from the day in the stored map.
+ */
+export async function saveDailyClose(input: DailyCloseSaveInput): Promise<{ log: DailyItemLog; salesEntry: SalesEntry | null }> {
+  const logRef = doc(db, "dailyItemLogs", input.date);
+  // Without a loaded record, look the date up first, so payments never create a second record
+  // for a date that already has one. If that record appeared since the load, the check below refuses the save.
+  let salesId = input.salesEntryId || undefined;
+  if (!salesId && input.payments) {
+    salesId = (await listSalesEntriesByDate(input.date))[0]?.id;
+  }
+  const salesRef = doc(db, "salesEntries", salesId || `sales-${input.date}`);
+
+  return runTransaction(db, async (transaction) => {
+    // All reads come before any write, as Firestore transactions require.
+    const logSnapshot = await transaction.get(logRef);
+    const salesSnapshot = input.payments ? await transaction.get(salesRef) : null;
+    const currentLog = logSnapshot.exists() ? (logSnapshot.data() as DailyItemLog) : null;
+    const currentSales = salesSnapshot?.exists()
+      ? ({ id: salesRef.id, ...(salesSnapshot.data() as Omit<SalesEntry, "id">) } as SalesEntry)
+      : null;
+
+    if (input.expected.logUpdatedAt !== undefined && isStale(input.expected.logUpdatedAt, currentLog ? currentLog.updatedAt : null)) {
+      throw new ConflictError();
+    }
+    if (input.payments && input.expected.salesUpdatedAt !== undefined && isStale(input.expected.salesUpdatedAt, currentSales ? recordVersion(currentSales) : null)) {
+      throw new ConflictError();
+    }
+
+    const now = Date.now();
+    const quantities = Object.fromEntries(Object.entries(input.quantities).filter(([, qty]) => Number.isFinite(qty) && qty > 0));
+    const log: DailyItemLog = {
+      id: input.date,
+      date: input.date,
+      quantities,
+      totalQty: Object.values(quantities).reduce((total, qty) => total + qty, 0),
+      status: input.status,
+      source: input.source,
+      createdAt: currentLog?.createdAt ?? now,
+      updatedAt: now,
+    };
+    transaction.set(logRef, log);
+
+    let salesEntry: SalesEntry | null = currentSales;
+    if (input.payments) {
+      const { cash, bca, soundbox, other } = input.payments;
+      // Payments for a day with no revenue record create one only when there is revenue to record.
+      if (currentSales || cash + bca + soundbox + other > 0) {
+        const total = cash + bca + soundbox + other;
+        transaction.set(
+          salesRef,
+          { date: input.date, cash, bca, soundbox, other, total, updatedAt: now, ...(currentSales ? {} : { createdAt: now }) },
+          { merge: true }
+        );
+        salesEntry = {
+          id: salesRef.id,
+          date: input.date,
+          cash,
+          bca,
+          soundbox,
+          other,
+          total,
+          note: currentSales?.note,
+          createdAt: currentSales?.createdAt ?? now,
+          updatedAt: now,
+        };
+      }
+    }
+
+    return { log, salesEntry };
+  });
+}
+
 export async function listItemSales(): Promise<ItemSale[]> {
   const snap = await getDocs(query(itemSalesCol, orderBy("date", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ItemSale, "id">) }));

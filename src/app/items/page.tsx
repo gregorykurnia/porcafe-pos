@@ -28,13 +28,25 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
-import { quantitiesDiffer } from "@/lib/close-draft";
+import {
+  closePaymentsDiffer,
+  closePaymentsText,
+  normalizeCloseDraft,
+  parseClosePayments,
+  quantitiesDiffer,
+  savedClosePayments,
+  type ClosePaymentsText,
+  EMPTY_CLOSE_PAYMENTS_TEXT,
+} from "@/lib/close-draft";
+import { ConflictError, recordVersion } from "@/lib/concurrency";
+import { MoneyInput } from "@/components/fields/money-input";
 import {
   listMenuItems,
   upsertMenuItem,
   getDailyItemLog,
   listDailyItemLogs,
   upsertDailyItemLog,
+  saveDailyClose,
   listItemSales,
   listItemSalesByDate,
   upsertItemSale,
@@ -914,6 +926,9 @@ export default function ItemsPage() {
   const [dailyLog, setDailyLog] = useState<DailyItemLog | null>(null);
   const [dailySalesEntry, setDailySalesEntry] = useState<SalesEntry | null>(null);
   const [dailyQuantities, setDailyQuantities] = useState<Record<string, string>>({});
+  const [dailyPayments, setDailyPayments] = useState<ClosePaymentsText>(EMPTY_CLOSE_PAYMENTS_TEXT);
+  // The day changed on another device since it was loaded. Saving is refused until it is reloaded.
+  const [dailyConflict, setDailyConflict] = useState(false);
   const [dailyLoadedDate, setDailyLoadedDate] = useState("");
   const [dailyLoadError, setDailyLoadError] = useState(false);
   const [dailyRetryKey, setDailyRetryKey] = useState(0);
@@ -1022,17 +1037,23 @@ export default function ItemsPage() {
         }
         const [log, salesEntry] = result;
         const savedQuantities = log?.quantities ?? {};
-        // Unsaved quantities from earlier in this session win over the saved log.
-        const draft = readSessionDraft<Record<string, string>>(closeDraftKey(date));
-        const restore = draft && quantitiesDiffer(draft.value, savedQuantities) ? draft : null;
+        const savedPayments = savedClosePayments(salesEntry);
+        // Unsaved entries from earlier in this session win over the saved day.
+        const draft = readSessionDraft<unknown>(closeDraftKey(date));
+        const draftValue = normalizeCloseDraft(draft?.value);
+        const restore = draft && draftValue && (quantitiesDiffer(draftValue.quantities, savedQuantities) || closePaymentsDiffer(draftValue.payments, savedPayments))
+          ? { ...draftValue, savedAt: draft.savedAt }
+          : null;
         setDailyLog(log);
         setDailySalesEntry(salesEntry);
         setDailyLoadError(false);
         setDailyQuantities(
           restore
-            ? restore.value
+            ? restore.quantities
             : Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
         );
+        setDailyPayments(restore ? restore.payments : closePaymentsText(salesEntry));
+        setDailyConflict(false);
         setDraftNotice(restore?.savedAt ?? null);
         setDailyLoadedDate(date);
       })
@@ -1137,10 +1158,16 @@ export default function ItemsPage() {
   const dailyLoading = dailyLoadedDate !== date;
 
   const dailyHasChanges = useMemo(() => {
-    return activeMenuItems.some(
+    const quantitiesChanged = activeMenuItems.some(
       (item) => (parseFloat(dailyQuantities[item.id] ?? "") || 0) !== (dailyLog?.quantities[item.id] ?? 0)
     );
-  }, [activeMenuItems, dailyLog, dailyQuantities]);
+    return quantitiesChanged || closePaymentsDiffer(dailyPayments, savedClosePayments(dailySalesEntry));
+  }, [activeMenuItems, dailyLog, dailyQuantities, dailyPayments, dailySalesEntry]);
+
+  const dailyPaymentsTotal = useMemo(() => {
+    const parsed = parseClosePayments(dailyPayments);
+    return parsed ? parsed.cash + parsed.bca + parsed.soundbox + parsed.other : 0;
+  }, [dailyPayments]);
 
   const dailyStatus = dailyHasChanges
     ? "Unsaved changes"
@@ -1168,6 +1195,7 @@ export default function ItemsPage() {
     setDailyQuantities(
       Object.fromEntries(Object.entries(dailyLog?.quantities ?? {}).map(([itemId, value]) => [itemId, String(value)]))
     );
+    setDailyPayments(closePaymentsText(dailySalesEntry));
     setDraftNotice(null);
   }
 
@@ -1200,9 +1228,31 @@ export default function ItemsPage() {
   useEffect(() => {
     if (dailyLoadedDate !== date || dailyLoadError) return;
     const key = closeDraftKey(date);
-    if (dailyHasChanges) writeSessionDraft(key, dailyQuantities);
+    if (dailyHasChanges) writeSessionDraft(key, { quantities: dailyQuantities, payments: dailyPayments });
     else clearSessionDraft(key);
-  }, [dailyHasChanges, dailyLoadError, dailyLoadedDate, dailyQuantities, date]);
+  }, [dailyHasChanges, dailyLoadError, dailyLoadedDate, dailyPayments, dailyQuantities, date]);
+
+  function setDailyPayment(key: keyof ClosePaymentsText, value: string) {
+    setDailyPayments((current) => ({ ...current, [key]: value }));
+  }
+
+  // The day moved on another device. Reloading replaces the screen's values with the
+  // saved day, so the next save is checked against the version now on screen.
+  async function reloadLatestDaily() {
+    if (dailyHasChanges) {
+      const ok = await confirm({
+        title: "Load the latest saved day?",
+        body: "Your unsaved entries for this day will be replaced with the saved version.",
+        confirmLabel: "Load latest",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
+    clearSessionDraft(closeDraftKey(date));
+    setDailyConflict(false);
+    setDailyLoadedDate("");
+    setDailyRetryKey((key) => key + 1);
+  }
 
   // Resolves true only when the day was saved, so guards can decide whether to leave.
   async function saveDailyLog(
@@ -1235,34 +1285,52 @@ export default function ItemsPage() {
     }
 
     const savedQuantities = status === "no_sales" ? {} : nextQuantities;
-    const totalQty = Object.values(savedQuantities).reduce((total, value) => total + value, 0);
-    const now = Date.now();
-    const savedLog: DailyItemLog = {
-      id: date,
-      date,
-      quantities: savedQuantities,
-      totalQty,
-      status,
-      source: "manual",
-      createdAt: dailyLog?.createdAt ?? now,
-      updatedAt: now,
-    };
+
+    // Payments are written only when they changed, so an untouched day keeps its revenue record as is.
+    const paymentsChanged = closePaymentsDiffer(dailyPayments, savedClosePayments(dailySalesEntry));
+    const parsedPayments = paymentsChanged ? parseClosePayments(dailyPayments) : null;
+    if (paymentsChanged && !parsedPayments) {
+      toast.error("Check the payment amounts. Use digits, for example 1.500.000 or 1,5jt.");
+      return false;
+    }
+    const payments = parsedPayments ?? undefined;
 
     setDailySaving(true);
     try {
-      await upsertDailyItemLog(savedLog);
-      await calculateSavedDailyUsage(savedLog);
-      setDailyLog(savedLog);
-      setDailyLogs((current) => [savedLog, ...current.filter((log) => log.date !== date)].sort((a, b) => b.date.localeCompare(a.date)));
+      const result = await saveDailyClose({
+        date,
+        status,
+        source: "manual",
+        quantities: savedQuantities,
+        payments,
+        expected: {
+          logUpdatedAt: dailyLog ? dailyLog.updatedAt : null,
+          salesUpdatedAt: dailySalesEntry ? recordVersion(dailySalesEntry) : null,
+        },
+        salesEntryId: dailySalesEntry?.id ?? null,
+      });
+      await calculateSavedDailyUsage(result.log);
+      setDailyLog(result.log);
+      setDailyLogs((current) => [result.log, ...current.filter((log) => log.date !== date)].sort((a, b) => b.date.localeCompare(a.date)));
       setDailyQuantities(
-        Object.fromEntries(Object.entries(savedQuantities).map(([itemId, value]) => [itemId, String(value)]))
+        Object.fromEntries(Object.entries(result.log.quantities).map(([itemId, value]) => [itemId, String(value)]))
       );
+      if (payments) {
+        setDailySalesEntry(result.salesEntry);
+        setDailyPayments(closePaymentsText(result.salesEntry));
+      }
+      setDailyConflict(false);
       setDraftNotice(null);
       toast.success(status === "no_sales" ? "No sales saved" : `Day ${status === "complete" ? "completed" : "saved"}`);
       return true;
     } catch (err) {
-      console.error("Failed to save daily item log:", err);
-      toast.error(err instanceof Error ? `Could not save day: ${err.message}` : "Could not save this day");
+      if (err instanceof ConflictError) {
+        setDailyConflict(true);
+        toast.error(err.message);
+      } else {
+        console.error("Failed to save daily item log:", err);
+        toast.error(err instanceof Error ? `Could not save day: ${err.message}` : "Could not save this day");
+      }
       return false;
     } finally {
       setDailySaving(false);
@@ -1826,6 +1894,13 @@ export default function ItemsPage() {
           />
         </div>
 
+        {dailyConflict && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/25 bg-warning/10 px-4 py-2 text-sm text-warning">
+            <span>This day was changed on another device — reload to see the latest. Nothing was saved.</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void reloadLatestDaily()}>Load latest</Button>
+          </div>
+        )}
+
         {draftNotice !== null && (
           <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/25 bg-warning/10 px-4 py-2 text-sm text-warning">
             <span>Restored unsaved entries from {formatTimeOfDay(draftNotice)}.</span>
@@ -1977,18 +2052,22 @@ export default function ItemsPage() {
                 <p className="text-sm text-muted-foreground">Close status</p>
                 <Badge className={`mt-2 ${dailyStatusClass}`}>{dailyStatus}</Badge>
               </div>
-              <div className="border-t border-primary/10 pt-4">
-                <p className="text-sm text-muted-foreground">Revenue logged</p>
-                <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">{idr(dailySalesEntry?.total ?? 0)}</p>
-              </div>
               <div className="space-y-3 border-t border-primary/10 pt-4">
-                <p className="text-sm font-medium text-foreground">Payment split</p>
-                {DAILY_PAYMENT_METHODS.map(({ key, label, icon: Icon }) => (
-                  <div key={key} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="flex items-center gap-2 text-muted-foreground"><Icon className="size-4" /> {label}</span>
-                    <span className="font-medium text-foreground tabular-nums">{idr(dailySalesEntry?.[key] ?? 0)}</span>
-                  </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground">Payments</p>
+                  <p className="text-sm font-semibold tabular-nums text-foreground">{idr(dailyPaymentsTotal)}</p>
+                </div>
+                {DAILY_PAYMENT_METHODS.map(({ key, label }) => (
+                  <MoneyInput
+                    key={key}
+                    id={`daily-payment-${key}`}
+                    label={label}
+                    value={dailyPayments[key]}
+                    onChange={(value) => setDailyPayment(key, value)}
+                    disabled={dailyLoading}
+                  />
                 ))}
+                <p className="text-xs text-muted-foreground">Leave a method blank for zero. Saved together with the items.</p>
               </div>
               <div className="border-t border-primary/10 pt-4 text-sm">
                 <div className="flex items-center justify-between gap-3">
