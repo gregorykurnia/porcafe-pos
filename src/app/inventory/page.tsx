@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
+import { Stat } from "@/components/state/stat";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, BookOpen, Boxes, FileSpreadsheet, Handshake, Loader2, Scale } from "lucide-react";
@@ -345,19 +347,17 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Boxes className="size-4" />Inventory foundation</div>
-          <h1 className="mt-1 font-heading text-3xl font-semibold tracking-tight">Stock</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning.</p>
-        </div>
-        <Badge variant="outline">Phase 3 · Ledger</Badge>
-      </div>
+      <PageHeader
+        eyebrow={<><Boxes className="size-4" />Inventory foundation</>}
+        title="Stock"
+        description={"Track opening stock, auditable movements, and calculated recipe consumption from new daily logs. Negative stock remains visible as a warning."}
+        actions={<Badge variant="outline">Phase 3 · Ledger</Badge>}
+      />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><FileSpreadsheet className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Source preview</p><p className="font-semibold">Rows 1–75 only</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><BookOpen className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Recipe versions</p><p className="font-semibold tabular-nums">{loadedTabs.has("recipes") || loadedTabs.has("import") ? recipes.length : "—"}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><AlertTriangle className="size-5 text-warning" /><div><p className="text-xs text-muted-foreground">Stock balance</p><p className="font-semibold">Opening stock gated</p></div></CardContent></Card>
+        <Stat variant="card" size="sm" icon={<FileSpreadsheet className="size-5 text-info" />} label="Source preview" value="Rows 1–75 only" />
+        <Stat variant="card" size="sm" icon={<BookOpen className="size-5 text-success" />} label="Recipe versions" value={loadedTabs.has("recipes") || loadedTabs.has("import") ? recipes.length : "—"} />
+        <Stat variant="card" size="sm" icon={<AlertTriangle className="size-5 text-warning" />} label="Stock balance" value="Opening stock gated" />
       </div>
 
       <PushNotificationsSettings />

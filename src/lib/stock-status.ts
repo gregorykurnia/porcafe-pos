@@ -37,6 +37,12 @@ const FROM_REORDER: Record<InventoryReorderStatus, StockStatus> = {
   "not-initialized": "not-initialized",
 };
 
+// The stock status for a reorder state. Screens that list by reorder state use the stock labels,
+// so one material reads the same on every screen.
+export function stockStatusFromReorder(reorder: InventoryReorderStatus): StockStatus {
+  return FROM_REORDER[reorder];
+}
+
 export function getStockStatus(
   material: InventoryMaterial,
   currentQuantity: number | null | undefined,

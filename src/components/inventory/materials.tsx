@@ -1,5 +1,7 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { reviewStatusView } from "@/lib/status";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Archive, Check, Plus, RotateCcw } from "lucide-react";
@@ -175,7 +177,7 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell>{material.reviewStatus === "approved" ? <Badge variant="default">Approved</Badge> : <Badge variant="destructive">Needs review</Badge>}</TableCell>
+                      <TableCell><StatusBadge view={reviewStatusView(material.reviewStatus)} /></TableCell>
                       <TableCell><Badge variant={material.active ? "secondary" : "outline"}>{material.active ? "Active" : "Archived"}</Badge></TableCell>
                       <TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy} onClick={() => void toggleMaterialActive(material)}>{material.active ? <><Archive className="size-3.5" />Archive</> : <><RotateCcw className="size-3.5" />Restore</>}</Button></TableCell>
                     </TableRow>

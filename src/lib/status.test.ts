@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   closeStatusView,
+  importRowStatusView,
   orderStatusView,
   recipeStatusView,
+  reorderStatusView,
   reviewStatusView,
   stockStatusView,
   usageStatusView,
@@ -40,4 +42,14 @@ test("order, recipe, usage and review statuses keep their existing labels", () =
   assert.deepEqual(usageStatusView("calculated-with-exclusions"), { label: "Calculated with exclusions", tone: "info" });
   assert.deepEqual(reviewStatusView("approved"), { label: "Approved", tone: "success" });
   assert.deepEqual(reviewStatusView("needs-review"), { label: "Needs review", tone: "warning" });
+});
+
+test("import rows and reorder states read with the same labels as elsewhere", () => {
+  assert.deepEqual(importRowStatusView("needs-review"), { label: "Needs review", tone: "warning" });
+  assert.deepEqual(importRowStatusView("mapping"), { label: "Map first", tone: "info" });
+  assert.deepEqual(reorderStatusView("to-order"), { label: "To order", tone: "warning" });
+  assert.deepEqual(reorderStatusView("on-way"), { label: "On order", tone: "info" });
+  assert.deepEqual(reorderStatusView("stock-high"), { label: "OK", tone: "success" });
+  assert.deepEqual(reorderStatusView("not-configured"), { label: "No alert level", tone: "neutral" });
+  assert.deepEqual(reorderStatusView("not-initialized"), { label: "Not set up", tone: "neutral" });
 });

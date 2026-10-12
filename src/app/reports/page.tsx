@@ -1,7 +1,8 @@
 "use client";
 
+import { AsyncSection } from "@/components/state/async-section";
+import { PageHeader } from "@/components/page-header";
 import { Suspense, useCallback, useMemo } from "react";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ItemsReport } from "@/components/reports/items-report";
@@ -65,10 +66,7 @@ function ReportsWorkspace() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Reports</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Revenue, items and weekday patterns for one period.</p>
-      </div>
+      <PageHeader title="Reports" description="Revenue, items and weekday patterns for one period." />
 
       <PeriodSelector period={period} today={today} onChange={setPeriod} />
 
@@ -76,14 +74,6 @@ function ReportsWorkspace() {
         <Card className="border-warning/25 bg-warning/5">
           <CardContent className="p-5 text-sm text-foreground">
             The start date must be on or before the end date.
-          </CardContent>
-        </Card>
-      ) : data.status === "error" ? (
-        <Card>
-          <CardContent className="space-y-3 p-5 text-center">
-            <p className="font-medium text-foreground">Couldn&apos;t load reports</p>
-            <p className="text-sm text-muted-foreground">Check the connection and try again.</p>
-            <Button type="button" variant="outline" onClick={() => void data.reload()}>Retry</Button>
           </CardContent>
         </Card>
       ) : (
@@ -96,11 +86,7 @@ function ReportsWorkspace() {
             </TabsList>
           </Tabs>
 
-          {data.status === "loading" ? (
-            <div className="space-y-3 rounded-xl border border-border p-4" aria-label="Loading reports">
-              {[1, 2, 3].map((row) => <div key={row} className="h-10 animate-pulse rounded bg-muted" />)}
-            </div>
-          ) : (
+          <AsyncSection status={data.status} label="Loading reports" errorTitle="Couldn't load reports" onRetry={() => void data.reload()}>
             <div id={`reports-panel-${tab}`} role="tabpanel" aria-labelledby={`reports-tab-${tab}`} tabIndex={0}>
               {tab === "revenue" && (
                 <RevenueReport
@@ -126,7 +112,7 @@ function ReportsWorkspace() {
                 <WeekdayReport period={period} entries={data.salesEntries} itemRows={itemRows} isMain={isMain} />
               )}
             </div>
-          )}
+          </AsyncSection>
         </>
       )}
     </div>

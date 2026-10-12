@@ -1,9 +1,11 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { usageStatusView } from "@/lib/status";
+import { Stat } from "@/components/state/stat";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calculator, ChevronDown, ChevronRight, CircleCheck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,12 +25,7 @@ import {
 import type { InventoryUsageEvent } from "@/lib/types";
 
 function statusBadge(event: InventoryUsageEvent) {
-  // A review is a warning to act on, not a failure, so it uses the warning tone.
-  if (event.status === "needs-review") return <Badge variant="outline" className="border-warning/25 bg-warning/10 text-warning">Needs review</Badge>;
-  if (event.status === "no-sales") return <Badge variant="outline">No sales</Badge>;
-  if (event.status === "pending-draft") return <Badge variant="outline">Waiting for close</Badge>;
-  if (event.status === "calculated-with-exclusions") return <Badge variant="secondary">Calculated with exclusions</Badge>;
-  return <Badge variant="default">Calculated</Badge>;
+  return <StatusBadge view={usageStatusView(event.status)} />;
 }
 
 function safeEndDate(): string {
@@ -187,10 +184,10 @@ export function UsageRecap() {
           {error && <div className="rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm text-danger">{error}</div>}
 
           <div className="grid gap-3 sm:grid-cols-4">
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Days calculated</p><p className="mt-1 text-xl font-semibold tabular-nums">{events.length}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Recorded portions</p><p className="mt-1 text-xl font-semibold tabular-nums">{formatInventoryUsageQuantity(totalPortions)}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Material totals</p><p className="mt-1 text-xl font-semibold tabular-nums">{materialSummary.length}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Review issues</p><p className="mt-1 text-xl font-semibold tabular-nums">{issueCount}{(reviewEvents > 0 || exclusionEvents > 0) && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} review · {exclusionEvents} with exclusions)</span>}</p></CardContent></Card>
+            <Stat variant="card" size="sm" label="Days calculated" value={events.length} />
+            <Stat variant="card" size="sm" label="Recorded portions" value={formatInventoryUsageQuantity(totalPortions)} />
+            <Stat variant="card" size="sm" label="Material totals" value={materialSummary.length} />
+            <Stat variant="card" size="sm" label="Review issues" value={<>{issueCount}{(reviewEvents > 0 || exclusionEvents > 0) && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} review · {exclusionEvents} with exclusions)</span>}</>} />
           </div>
 
           {loading ? (

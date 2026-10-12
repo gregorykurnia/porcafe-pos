@@ -1,9 +1,10 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { recipeStatusView, reviewStatusView } from "@/lib/status";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Check, Copy, Plus, Save, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { saveInventoryRecipeVersion } from "@/lib/data";
-import { INVENTORY_UNITS, normalizeRecipeBoxLines, recipeStatusLabel, validateRecipe } from "@/lib/inventory";
+import { INVENTORY_UNITS, normalizeRecipeBoxLines, validateRecipe } from "@/lib/inventory";
 import {
   INVENTORY_COMPONENT_TARGET_NAMES,
   inventoryComponentId,
@@ -72,7 +73,7 @@ function newRecipe(menuItems: MenuItem[], recipes: InventoryRecipeVersion[]): In
 }
 
 function recipeBadge(status: InventoryRecipeVersion["status"]) {
-  return <Badge variant={status === "active" ? "default" : status === "needs-review" ? "destructive" : "secondary"}>{recipeStatusLabel(status)}</Badge>;
+  return <StatusBadge view={recipeStatusView(status)} />;
 }
 
 function recipeLineApprovalIssue(
@@ -306,7 +307,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5"><Label>Target type</Label><Select value={draftRecipe.targetType} onValueChange={(value) => setTargetType(value as RecipeTargetType)}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="menu_item">Menu item</SelectItem><SelectItem value="prepared_component">Prepared component</SelectItem></SelectContent></Select></div>
                 <div className="space-y-1.5"><Label>Target</Label><Select value={draftRecipe.targetId} onValueChange={setTargetId}><SelectTrigger className="w-full"><SelectValue placeholder="Choose a target" /></SelectTrigger><SelectContent>{draftRecipe.targetType === "menu_item" ? menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>) : componentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Status</Label><Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => <SelectItem key={status} value={status}>{recipeStatusLabel(status)}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-1.5"><Label>Status</Label><Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => <SelectItem key={status} value={status}>{recipeStatusView(status).label}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-1.5"><Label>Effective from</Label><Input type="date" value={draftRecipe.effectiveFrom ?? ""} onChange={(event) => updateRecipe({ effectiveFrom: event.target.value || null })} /></div>
               </div>
 
@@ -386,7 +387,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                           </TableCell>
                           <TableCell>
                             {approved ? (
-                              <Badge variant="default">Approved</Badge>
+                              <StatusBadge view={reviewStatusView("approved")} />
                             ) : (
                               <div className="space-y-1">
                                 <Button size="sm" variant="outline" onClick={() => approveLine(line)}>

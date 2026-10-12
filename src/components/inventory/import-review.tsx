@@ -1,5 +1,8 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { importRowStatusView } from "@/lib/status";
+import { Stat } from "@/components/state/stat";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Check, FileSpreadsheet, Save, Upload } from "lucide-react";
@@ -63,11 +66,8 @@ function matchingMenuItem(menuItems: MenuItem[], sourceLabel: string, canonicalN
   });
 }
 
-function statusBadge(status: InventorySourceRow["status"] | "approved" | "mapping") {
-  if (status === "excluded") return <Badge variant="outline">Excluded</Badge>;
-  if (status === "needs-review") return <Badge variant="destructive">Needs review</Badge>;
-  if (status === "approved") return <Badge variant="default">Approved</Badge>;
-  return <Badge variant="secondary">Map first</Badge>;
+function statusBadge(status: "excluded" | "needs-review" | "approved" | "mapping") {
+  return <StatusBadge view={importRowStatusView(status)} />;
 }
 
 function sourceRowsForGroup(groupId: string): InventorySourceRow[] {
@@ -438,10 +438,10 @@ export function ImportReview({
       </Card>
 
       <div className="grid gap-3 sm:grid-cols-4">
-        <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Source rows</p><p className="mt-1 text-xl font-semibold tabular-nums">{INVENTORY_SOURCE_ROWS.length}</p></CardContent></Card>
-        <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Ready after mapping</p><p className="mt-1 text-xl font-semibold tabular-nums text-success">{approvedRows.length}</p></CardContent></Card>
-        <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Source review</p><p className="mt-1 text-xl font-semibold tabular-nums text-warning">{sourceNeedsReview}</p></CardContent></Card>
-        <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Excluded by policy</p><p className="mt-1 text-xl font-semibold tabular-nums">{excludedRows}</p></CardContent></Card>
+        <Stat variant="card" size="sm" label="Source rows" value={INVENTORY_SOURCE_ROWS.length} />
+        <Stat variant="card" size="sm" label="Ready after mapping" value={approvedRows.length} tone="success" />
+        <Stat variant="card" size="sm" label="Source review" value={sourceNeedsReview} tone="warning" />
+        <Stat variant="card" size="sm" label="Excluded by policy" value={excludedRows} />
       </div>
 
       <Card>

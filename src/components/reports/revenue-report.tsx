@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { downloadCSV } from "@/lib/csv";
+import { Stat } from "@/components/state/stat";
 import { deleteSalesEntry, findDuplicateSalesDates } from "@/lib/data";
 import { formatDayDisplay, formatDisplay, formatMonthDisplay, idr } from "@/lib/dates";
 import { chartLabel } from "@/lib/item-report";
@@ -130,20 +131,20 @@ export function RevenueReport({
               Recorded sales come from Daily close. Selisih is added for whole months only.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={exportDailyRows} disabled={rows.length === 0}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            <Button variant="outline" size="sm" onClick={exportDailyRows} disabled={rows.length === 0} className="h-auto min-h-8 justify-start whitespace-normal py-1.5 text-left">
               <Download className="size-3.5" /> Daily rows (with payment split) · {rangeLabel}
             </Button>
-            <Button variant="outline" size="sm" onClick={exportGroupedTotals}>
+            <Button variant="outline" size="sm" onClick={exportGroupedTotals} className="h-auto min-h-8 justify-start whitespace-normal py-1.5 text-left">
               <Download className="size-3.5" /> Grouped totals by month · {rangeLabel}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-3">
-            <RevenueStat label="Recorded sales" value={idr(recorded)} detail={`${rows.length} ${rows.length === 1 ? "entry" : "entries"}`} />
-            <RevenueStat label="Selisih" value={idr(selisih.amount)} detail={selisihNote} />
-            <RevenueStat label="Reported total" value={idr(reported)} detail="Recorded sales plus selisih" emphasized />
+            <Stat label="Recorded sales" value={idr(recorded)} sub={`${rows.length} ${rows.length === 1 ? "entry" : "entries"}`} />
+            <Stat label="Selisih" value={idr(selisih.amount)} sub={selisihNote} />
+            <Stat label="Reported total" value={idr(reported)} sub="Recorded sales plus selisih" emphasized />
           </div>
           {selisih.partialMonths.length > 0 && (
             <p className="text-xs text-muted-foreground">
@@ -164,9 +165,9 @@ export function RevenueReport({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
-            <StatTile label="Average" value={stats.average} />
-            <StatTile label="Lowest" value={stats.lowest} />
-            <StatTile label="Highest" value={stats.highest} />
+            <Stat label="Average" value={stats.average === null ? "—" : idr(stats.average)} />
+            <Stat label="Lowest" value={stats.lowest === null ? "—" : idr(stats.lowest)} />
+            <Stat label="Highest" value={stats.highest === null ? "—" : idr(stats.highest)} />
           </div>
           {rows.length === 0 ? (
             <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
@@ -273,37 +274,6 @@ export function RevenueReport({
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function RevenueStat({
-  label,
-  value,
-  detail,
-  emphasized = false,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  emphasized?: boolean;
-}) {
-  return (
-    <div className={emphasized ? "rounded-lg bg-accent px-3 py-2" : "px-3 py-2"}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-1 tabular-nums ${emphasized ? "text-lg font-bold text-primary" : "text-base font-semibold text-foreground"}`}>
-        {value}
-      </p>
-      {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
-    </div>
-  );
-}
-
-function StatTile({ label, value }: { label: string; value: number | null }) {
-  return (
-    <div className="rounded-lg bg-muted px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground tabular-nums">{value === null ? "—" : idr(value)}</p>
     </div>
   );
 }

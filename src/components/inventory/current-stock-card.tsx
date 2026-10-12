@@ -1,14 +1,15 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { stockStatusView } from "@/lib/status";
 import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
 import { filterCurrentStockRows, type CurrentStockFilter, type CurrentStockRow } from "@/lib/current-stock";
-import { STOCK_STATUS_META, type StockStatus } from "@/lib/stock-status";
+import type { StockStatus } from "@/lib/stock-status";
 
 const FILTERS: { value: CurrentStockFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -21,10 +22,6 @@ const FILTERS: { value: CurrentStockFilter; label: string }[] = [
 
 const NEEDS_ORDER: StockStatus[] = ["negative", "out", "to-order"];
 
-function StatusBadge({ status }: { status: StockStatus }) {
-  const { label, tone } = STOCK_STATUS_META[status];
-  return <Badge variant={tone === "danger" ? "destructive" : tone === "success" ? "default" : "secondary"}>{label}</Badge>;
-}
 
 function quantity(value: number | null, unit: string): string {
   return value === null ? "—" : `${formatInventoryUsageQuantity(value)} ${unit}`;
@@ -119,7 +116,7 @@ export function CurrentStockCard({
                           <TableCell className={`text-right tabular-nums ${row.onHand !== null && row.onHand < 0 ? "text-danger" : ""}`}>{quantity(row.onHand, row.unit)}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{quantity(row.alertAt, row.unit)}</TableCell>
                           <TableCell className="text-right tabular-nums text-muted-foreground">{row.onOrder > 0 ? quantity(row.onOrder, row.unit) : "—"}</TableCell>
-                          <TableCell><StatusBadge status={row.status} /></TableCell>
+                          <TableCell><StatusBadge view={stockStatusView(row.status)} /></TableCell>
                           <TableCell className="text-right">{actions(row)}</TableCell>
                         </TableRow>
                       ))}
@@ -132,7 +129,7 @@ export function CurrentStockCard({
                     <li key={row.materialId} className="space-y-2 rounded-xl border border-border bg-surface p-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="min-w-0 truncate font-medium">{row.name}</p>
-                        <StatusBadge status={row.status} />
+                        <StatusBadge view={stockStatusView(row.status)} />
                       </div>
                       <p className="text-sm tabular-nums text-muted-foreground">
                         {quantity(row.onHand, row.unit)}

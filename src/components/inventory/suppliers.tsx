@@ -1,5 +1,8 @@
 "use client";
 
+import { StatusBadge } from "@/components/state/status-badge";
+import { reorderStatusView } from "@/lib/status";
+import { Stat } from "@/components/state/stat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
 import { toast } from "sonner";
@@ -105,20 +108,7 @@ function SupplierPricingHead({
   );
 }
 
-function reorderStatusLabel(status: ReorderStatus): string {
-  if (status === "to-order") return "To Order";
-  if (status === "on-way") return "Ordered / On the Way";
-  if (status === "stock-high") return "Stock Still High";
-  if (status === "not-configured") return "Needs setup";
-  if (status === "alerts-off") return "Alerts off";
-  return "Stock not initialized";
-}
 
-function reorderStatusVariant(status: ReorderStatus): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "to-order") return "destructive";
-  if (status === "stock-high") return "secondary";
-  return "outline";
-}
 
 function ReorderGap({ gap, thresholdConfigured, unit, status }: { gap?: number; thresholdConfigured: boolean; unit: string; status: ReorderStatus }) {
   if (!thresholdConfigured) return <span className="text-muted-foreground">No alert level</span>;
@@ -238,7 +228,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
         {stockLoading ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Loading current stock and reorder statuses…</p> : materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <>
           <div className="flex flex-wrap gap-2" aria-label="Filter reorder materials by status">
             <Button type="button" size="sm" variant={statusFilter === "all" ? "default" : "outline"} aria-pressed={statusFilter === "all"} onClick={() => setStatusFilter("all")}>All <span className="ml-1 tabular-nums opacity-75">{counts.get("all") ?? 0}</span></Button>
-            {reorderStatusFilters.map((status) => <Button key={status} type="button" size="sm" variant={statusFilter === status ? "default" : "outline"} aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}>{reorderStatusLabel(status)} <span className="ml-1 tabular-nums opacity-75">{counts.get(status) ?? 0}</span></Button>)}
+            {reorderStatusFilters.map((status) => <Button key={status} type="button" size="sm" variant={statusFilter === status ? "default" : "outline"} aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}>{reorderStatusView(status).label} <span className="ml-1 tabular-nums opacity-75">{counts.get(status) ?? 0}</span></Button>)}
           </div>
           {filteredRows.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No materials match this status.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow>
             <ReorderOverviewHead label="Material" sortKey="material" sort={sort} onSort={toggleSort} />
@@ -256,7 +246,7 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell><ReorderGap gap={gapToAlert} thresholdConfigured={material.reorderThreshold !== undefined} unit={material.baseUnit} status={status} /></TableCell>
             <TableCell className="tabular-nums">{Number.isFinite(material.reorderQuantity) && material.reorderQuantity! > 0 ? material.reorderQuantity!.toLocaleString("id-ID", { maximumFractionDigits: 2 }) : <>{status === "to-order" ? <span className="text-warning">Set a valid order quantity to enable push alerts.</span> : "—"}</>}</TableCell>
             <TableCell>{supplierName}</TableCell>
-            <TableCell><Badge variant={reorderStatusVariant(status)}>{reorderStatusLabel(status)}</Badge></TableCell>
+            <TableCell><StatusBadge view={reorderStatusView(status)} /></TableCell>
             <TableCell className="text-right">{status === "to-order" ? <Button type="button" size="sm" variant="outline" onClick={() => onCreateOrder(material.id)} aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</Button> : "—"}</TableCell>
           </TableRow>)}</TableBody></Table></div>}
         </>}
@@ -604,10 +594,10 @@ export function Suppliers({ materials, suppliers, supplierItems, orders, schedul
       {view === "to-order" && (
         <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} /><div><p className="text-xs text-muted-foreground">Items to order</p><p className="text-xl font-semibold tabular-nums">{stockLoading ? "—" : toOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><Truck className="size-5 text-primary" /><div><p className="text-xs text-muted-foreground">Orders on the way</p><p className="text-xl font-semibold tabular-nums">{activeOrderCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><CalendarClock className="size-5 text-info" /><div><p className="text-xs text-muted-foreground">Scheduled stock-ins</p><p className="text-xl font-semibold tabular-nums">{activeScheduleCount}</p></div></CardContent></Card>
-        <Card size="sm"><CardContent className="flex items-center gap-3 p-3"><ClipboardList className="size-5 text-success" /><div><p className="text-xs text-muted-foreground">Orders in the last 7 days</p><p className="text-xl font-semibold tabular-nums">{recentOrderCount}</p></div></CardContent></Card>
+        <Stat variant="card" size="sm" icon={<CircleAlert className={`size-5 ${toOrderCount > 0 ? "text-danger" : "text-success"}`} />} label="Items to order" value={stockLoading ? "—" : toOrderCount} />
+        <Stat variant="card" size="sm" icon={<Truck className="size-5 text-primary" />} label="Orders on the way" value={activeOrderCount} />
+        <Stat variant="card" size="sm" icon={<CalendarClock className="size-5 text-info" />} label="Scheduled stock-ins" value={activeScheduleCount} />
+        <Stat variant="card" size="sm" icon={<ClipboardList className="size-5 text-success" />} label="Orders in the last 7 days" value={recentOrderCount} />
       </div>
 
       <ReorderOverview materials={activeMaterials} suppliers={suppliers} balances={balances} stockInitialized={Boolean(stockSetup?.initialized)} stockLoading={stockLoading} openOrderMaterialIds={openOrderMaterialIds} onCreateOrder={(materialId) => { setOrderPrefillRequest({ materialId, requestId: ++orderPrefillRequestId.current }); onViewChange("orders"); }} />

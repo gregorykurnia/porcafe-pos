@@ -1,5 +1,8 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/state/status-badge";
+import { closeStatusView } from "@/lib/status";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +31,8 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { useQueryState } from "@/hooks/use-query-state";
+import { Stat } from "@/components/state/stat";
+import { RelativeSavedAt } from "@/components/state/relative-saved-at";
 import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import {
@@ -71,7 +76,6 @@ import {
   formatDayDisplay,
   formatWeekDisplay,
   formatMonthDisplay,
-  formatDateTime,
   formatTimeOfDay,
   isISODate,
 } from "@/lib/dates";
@@ -189,15 +193,6 @@ function SortableHead<K extends string>({
         <Icon className={`size-3 ${active ? "" : "text-muted-foreground"}`} />
       </button>
     </TableHead>
-  );
-}
-
-function SourceAuditStat({ label, value, warning = false }: { label: string; value: string; warning?: boolean }) {
-  return (
-    <div className={`rounded-lg border px-3 py-3 ${warning ? "border-warning/20 bg-warning/10" : "border-border bg-surface/70"}`}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-lg font-semibold tabular-nums ${warning ? "text-warning" : "text-foreground"}`}>{value}</p>
-    </div>
   );
 }
 
@@ -874,24 +869,6 @@ function ItemsWorkspace() {
     }
   }
 
-  const dailyStatus = dailyHasChanges
-    ? "Unsaved changes"
-    : dailyLog?.status === "no_sales"
-      ? "No sales"
-      : dailyLog?.status === "complete"
-        ? "Complete"
-        : dailyLog
-          ? "Draft"
-          : "Not started";
-
-  const dailyStatusClass = dailyHasChanges
-    ? "border-warning/25 bg-warning/10 text-warning"
-    : dailyLog?.status === "complete"
-      ? "border-success/25 bg-success/10 text-success"
-      : dailyLog?.status === "no_sales"
-        ? "border-border bg-muted text-muted-foreground"
-        : "border-border bg-surface text-muted-foreground";
-
   // Unsaved quantities are guarded: leaving the day, the tab or the app asks first.
   const dailyDirty = dailyHasChanges && !dailyLoading;
 
@@ -1258,16 +1235,11 @@ function ItemsWorkspace() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Daily close</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-          {activeView === "daily"
-              ? "Record portions and confirm revenue for one operating day."
-              : "Manage the menu and review recorded item sales."}
-          </p>
-        </div>
-        <div className="flex w-full items-center gap-2 sm:w-auto">
+      <PageHeader
+        title="Daily close"
+        description={activeView === "daily" ? "Record portions and confirm revenue for one operating day." : "Manage the menu and review recorded item sales."}
+        actions={
+          <>
         <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary />
         {activeView === "daily" && (
           <Button asChild variant="outline" className="flex-1 sm:flex-none">
@@ -1319,8 +1291,9 @@ function ItemsWorkspace() {
           </DialogContent>
         </Dialog>
         }
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {loadError && (
         <Card className="border-danger/20 bg-danger/5">
@@ -1356,9 +1329,9 @@ function ItemsWorkspace() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-2 sm:grid-cols-3">
-              <SourceAuditStat label="Daily-log dates" value={String(dailyLogDates.size)} />
-              <SourceAuditStat label="Legacy-only dates" value={String(legacyOnlyDates.length)} warning={legacyOnlyDates.length > 0} />
-              <SourceAuditStat label="Daily-only dates" value={String(dailyOnlyDates.length)} />
+              <Stat label="Daily-log dates" value={String(dailyLogDates.size)} />
+              <Stat label="Legacy-only dates" value={String(legacyOnlyDates.length)} tone={legacyOnlyDates.length > 0 ? "warning" : "default"} />
+              <Stat label="Daily-only dates" value={String(dailyOnlyDates.length)} />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Button type="button" variant="outline" onClick={previewLegacyMigration} disabled={migrationPreviewLoading}>
@@ -1416,7 +1389,7 @@ function ItemsWorkspace() {
                 <CardTitle className="text-lg">Items sold</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">Enter every item sold for this operating day.</p>
               </div>
-              <Badge className={dailyStatusClass}>{dailyStatus}</Badge>
+              <StatusBadge view={closeStatusView(dailyLog?.status ?? null, { unsaved: dailyHasChanges })} />
             </CardHeader>
             <CardContent className="space-y-6 pt-5">
               {dailyLoading ? (
@@ -1593,7 +1566,7 @@ function ItemsWorkspace() {
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Last saved</span>
-                  <span className="font-medium text-foreground">{dailyLog ? formatDateTime(dailyLog.updatedAt) : "Not saved yet"}</span>
+                  {dailyLog ? <RelativeSavedAt savedAt={dailyLog.updatedAt} prefix="" className="font-medium text-foreground" /> : <span className="font-medium text-foreground">Not saved yet</span>}
                 </div>
               </div>
               <Button asChild variant="outline" className="w-full border-primary/20 bg-surface text-primary hover:bg-surface-elevated">

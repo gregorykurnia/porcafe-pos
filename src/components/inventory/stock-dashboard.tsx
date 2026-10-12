@@ -1,5 +1,6 @@
 "use client";
 
+import { Stat } from "@/components/state/stat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -487,9 +488,9 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Stock status</p><p className="mt-1 font-semibold text-success">Initialized</p><p className="mt-1 text-xs text-muted-foreground">{setup.openingDate ? `From ${formatDisplay(setup.openingDate)}` : "Opening date not recorded"}</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Active materials</p><p className="mt-1 text-xl font-semibold tabular-nums">{currentStockBalances.length}</p><p className="mt-1 text-xs text-muted-foreground">Numeric balances enabled</p></CardContent></Card>
-            <Card size="sm"><CardContent className="p-3"><p className="text-xs text-muted-foreground">Low / negative</p><p className={`mt-1 text-xl font-semibold tabular-nums ${lowStockBalances.length > 0 ? "text-danger" : "text-success"}`}>{lowStockBalances.length}</p><p className="mt-1 text-xs text-muted-foreground">At or below zero; warnings only</p></CardContent></Card>
+            <Stat variant="card" size="sm" label="Stock status" value="Initialized" tone="success" sub={setup.openingDate ? `From ${formatDisplay(setup.openingDate)}` : "Opening date not recorded"} />
+            <Stat variant="card" size="sm" label="Active materials" value={currentStockBalances.length} sub="Numeric balances enabled" />
+            <Stat variant="card" size="sm" label="Low / negative" value={lowStockBalances.length} tone={lowStockBalances.length > 0 ? "danger" : "success"} sub="At or below zero; warnings only" />
           </div>
 
           {lowStockBalances.length > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><TriangleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">Low or negative stock needs attention</p><p className="mt-1 text-sm text-muted-foreground">{lowStockBalances.map((balance) => `${balance.materialName} (${materialBalanceLabel(balance)})`).join(" · ")}. You can keep recording movements while the balance is negative.</p></div></CardContent></Card>}

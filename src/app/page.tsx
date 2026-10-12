@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/page-header";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } 
 import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
 import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import { chartColors } from "@/lib/chart-colors";
+import { Stat } from "@/components/state/stat";
 import {
   format,
   parseISO,
@@ -32,8 +34,6 @@ import {
   CalendarDays,
   UtensilsCrossed,
   ArrowRight,
-  ArrowUp,
-  ArrowDown,
   Trophy,
   Package,
 } from "lucide-react";
@@ -205,10 +205,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">Home</h1>
-        <p className="mt-1 text-sm text-muted-foreground">What needs closing today, and what has been recorded.</p>
-      </div>
+      <PageHeader title="Home" description="What needs closing today, and what has been recorded." />
 
       {loadError && (
         <Card className="border-danger/20 bg-danger/5">
@@ -292,21 +289,25 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
-              <RecapStat label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
-              <RecapStat label="Reported month total" value={idr(monthTotalWithAdjustment)} sub="Recorded sales + selisih" />
-              <RecapStat label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
-              <RecapStat label="Avg revenue per Main portion" value={idr(avgOrderValue)} />
-              <RecapStat
+              <Stat variant="plain" tone="primary" label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
+              <Stat variant="plain" tone="primary" label="Reported month total" value={idr(monthTotalWithAdjustment)} sub="Recorded sales + selisih" />
+              <Stat variant="plain" tone="primary" label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
+              <Stat variant="plain" tone="primary" label="Avg revenue per Main portion" value={idr(avgOrderValue)} />
+              <Stat
+                variant="plain"
+                tone="primary"
                 label="Best day"
                 value={bestDay ? idr(bestDay.total) : "—"}
                 sub={bestDay ? formatDayLabel(bestDay.date) : undefined}
               />
-              <RecapStat
+              <Stat
+                variant="plain"
+                tone="primary"
                 label="Best seller"
                 value={topItems[0]?.name ?? "—"}
                 sub={topItems[0] ? `${topItems[0].qty} sold` : undefined}
               />
-              <RecapStat label="Days logged" value={`${monthDaysLogged} / ${daysElapsed}`} />
+              <Stat variant="plain" tone="primary" label="Days logged" value={`${monthDaysLogged} / ${daysElapsed}`} />
             </div>
           )}
         </CardContent>
@@ -318,50 +319,55 @@ export default function Dashboard() {
           <p className="text-sm text-muted-foreground">Reported total is recorded sales plus the monthly reconciliation adjustment.</p>
         </CardHeader>
         <CardContent className="grid gap-2 sm:grid-cols-3">
-          <RevenueBreakdownStat label="Recorded sales" value={idr(monthTotal)} />
-          <RevenueBreakdownStat label="Reconciliation adjustment" value={idr(monthAdjustment)} detail="Selisih" />
-          <RevenueBreakdownStat label="Reported total" value={idr(monthTotalWithAdjustment)} emphasized />
+          <Stat label="Recorded sales" value={idr(monthTotal)} />
+          <Stat label="Reconciliation adjustment" value={idr(monthAdjustment)} sub="Selisih" />
+          <Stat label="Reported total" value={idr(monthTotalWithAdjustment)} emphasized />
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard
+        <Stat
+          variant="card"
           icon={<Wallet className="size-4" />}
+          iconClassName="bg-primary"
           label="Today"
           value={idr(todayTotal)}
-          color="bg-primary"
           delta={pctDelta(todayTotal, yesterdayTotal)}
           deltaLabel="vs yesterday"
         />
-        <StatCard
+        <Stat
+          variant="card"
           icon={<TrendingUp className="size-4" />}
+          iconClassName="bg-primary-hover"
           label="This week"
           range={weekRangeLabel}
           value={idr(weekTotal)}
-          color="bg-primary-hover"
           delta={pctDelta(weekTotal, lastWeekTotal)}
           deltaLabel="vs last week"
         />
-        <StatCard
+        <Stat
+          variant="card"
           icon={<TrendingUp className="size-4" />}
+          iconClassName="bg-warning"
           label="Reported month total"
           range={formatMonthLabel(thisMonth)}
           value={idr(monthTotalWithAdjustment)}
-          color="bg-warning"
           delta={monthComparison.deltaPct}
           deltaLabel={`vs ${monthComparison.label}`}
         />
-        <StatCard
+        <Stat
+          variant="card"
           icon={<CalendarDays className="size-4" />}
+          iconClassName="bg-info"
           label="Avg / day selected month"
           value={idr(avgPerDay)}
-          color="bg-info"
         />
-        <StatCard
+        <Stat
+          variant="card"
           icon={<Package className="size-4" />}
+          iconClassName="bg-primary"
           label="Portions selected month"
           value={monthQty.toLocaleString("id-ID")}
-          color="bg-primary"
         />
       </div>
 
@@ -566,26 +572,6 @@ function formatMonthLabel(monthISO: string): string {
   return format(parseISO(`${monthISO}-01`), "MMMM yyyy");
 }
 
-function RevenueBreakdownStat({
-  label,
-  value,
-  detail,
-  emphasized = false,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  emphasized?: boolean;
-}) {
-  return (
-    <div className={emphasized ? "rounded-lg bg-accent px-3 py-3" : "rounded-lg border border-border px-3 py-3"}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-lg tabular-nums ${emphasized ? "font-bold text-primary" : "font-semibold text-foreground"}`}>{value}</p>
-      {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
-    </div>
-  );
-}
-
 function formatDayLabel(dateISO: string): string {
   return format(parseISO(dateISO), "EEEE, d MMM");
 }
@@ -594,63 +580,9 @@ function formatWeekLabel(dateISO: string): string {
   return `${formatDayLabel(dateISO)} – ${format(addDays(parseISO(dateISO), 6), "EEEE, d MMM")}`;
 }
 
-function RecapStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="truncate text-base font-semibold text-primary">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  );
-}
-
 function pctDelta(current: number, previous: number): number | null {
   if (previous === 0) return current > 0 ? null : 0;
   return (current - previous) / previous;
-}
-
-function StatCard({
-  icon,
-  label,
-  range,
-  value,
-  color,
-  delta,
-  deltaLabel,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  range?: string;
-  value: string;
-  color: string;
-  delta?: number | null;
-  deltaLabel?: string;
-}) {
-  return (
-    <Card className="gap-2 py-4">
-      <CardContent className="px-4">
-        <div className={`mb-2 flex size-7 items-center justify-center rounded-full ${color} text-white`}>
-          {icon}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {label}
-          {range && <span className="text-muted-foreground"> · {range}</span>}
-        </p>
-        <p className="text-lg font-semibold text-foreground sm:text-xl">{value}</p>
-        {delta !== undefined && delta !== null && (
-          <div
-            className={`mt-1 flex items-center gap-0.5 text-xs font-medium ${
-              delta >= 0 ? "text-success" : "text-danger"
-            }`}
-          >
-            {delta >= 0 ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-            <span>{Math.abs(Math.round(delta * 100))}%</span>
-            {deltaLabel && <span className="font-normal text-muted-foreground">{deltaLabel}</span>}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 function EmptyChart({ label }: { label: string }) {

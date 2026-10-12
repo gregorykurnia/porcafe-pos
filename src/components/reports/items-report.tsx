@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Stat } from "@/components/state/stat";
 import { downloadCSV } from "@/lib/csv";
 import { formatDisplay } from "@/lib/dates";
 import {
@@ -204,11 +205,11 @@ export function ItemsReport({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <DetailStat label="Total sold" value={formatQuantity(detailSummary.totalQty)} />
-                <DetailStat label="Average / logged day" value={detailSummary.averageQty === null ? "—" : detailSummary.averageQty.toFixed(1)} />
-                <DetailStat label="Sales days" value={String(detailSummary.salesDays)} />
-                <DetailStat label="No-sales days" value={String(detailSummary.noSalesDays)} />
-                <DetailStat label="Unlogged days" value={String(detailSummary.unloggedDays)} />
+                <Stat label="Total sold" value={formatQuantity(detailSummary.totalQty)} />
+                <Stat label="Average / logged day" value={detailSummary.averageQty === null ? "—" : detailSummary.averageQty.toFixed(1)} />
+                <Stat label="Sales days" value={String(detailSummary.salesDays)} />
+                <Stat label="No-sales days" value={String(detailSummary.noSalesDays)} />
+                <Stat label="Unlogged days" value={String(detailSummary.unloggedDays)} />
               </div>
               <ResponsiveContainer width="100%" height={190}>
                 <BarChart data={detailRows.map((row) => ({ label: chartLabel(row.date, "day"), qty: row.qty }))}>
@@ -366,15 +367,6 @@ export function ItemsReport({
           </p>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function DetailStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl bg-muted p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
     </div>
   );
 }

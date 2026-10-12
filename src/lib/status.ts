@@ -2,7 +2,8 @@
 // so a status reads the same on every screen. The labels are the ones the screens already show.
 // Changing the wording belongs to the copy work (WP-5.3).
 
-import { STOCK_STATUS_META, type StockStatus } from "./stock-status";
+import type { InventoryReorderStatus } from "./reorder-status";
+import { STOCK_STATUS_META, stockStatusFromReorder, type StockStatus } from "./stock-status";
 import type {
   DailyItemLogStatus,
   InventoryRecipeVersion,
@@ -43,6 +44,13 @@ const USAGE: Record<InventoryUsageStatus, StatusView> = {
   "pending-draft": { label: "Waiting for close", tone: "neutral" },
 };
 
+const IMPORT_ROW: Record<"excluded" | "needs-review" | "approved" | "mapping", StatusView> = {
+  excluded: { label: "Excluded", tone: "neutral" },
+  "needs-review": { label: "Needs review", tone: "warning" },
+  approved: { label: "Approved", tone: "success" },
+  mapping: { label: "Map first", tone: "info" },
+};
+
 const REVIEW: Record<InventoryReviewStatus, StatusView> = {
   approved: { label: "Approved", tone: "success" },
   "needs-review": { label: "Needs review", tone: "warning" },
@@ -76,4 +84,14 @@ export function usageStatusView(status: InventoryUsageStatus): StatusView {
 
 export function reviewStatusView(status: InventoryReviewStatus): StatusView {
   return REVIEW[status];
+}
+
+/** A row in the import review: excluded, needs review, approved, or still waiting for a mapping. */
+export function importRowStatusView(status: keyof typeof IMPORT_ROW): StatusView {
+  return IMPORT_ROW[status];
+}
+
+/** A material's reorder state. The label is the stock label, so a material reads the same on every screen. */
+export function reorderStatusView(reorder: InventoryReorderStatus): StatusView {
+  return stockStatusView(stockStatusFromReorder(reorder));
 }
