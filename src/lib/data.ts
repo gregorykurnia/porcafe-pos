@@ -379,6 +379,45 @@ export async function saveDailyClose(input: DailyCloseSaveInput): Promise<{ log:
   });
 }
 
+export type DailyCloseUndoInput = {
+  date: string;
+  /** The version written by the completion being undone. Undo is refused if the day changed since. */
+  expectedUpdatedAt: number;
+  /** The saved day before that completion, or null if the day had never been saved. */
+  previousLog: DailyItemLog | null;
+  /** Set when that completion wrote revenue. `previous` is the revenue before it, or null if there was no record. */
+  revenue: { salesId: string; previous: { cash: number; bca: number; soundbox: number; other: number } | null } | null;
+};
+
+/** Puts a completed day back the way it was just before completion, if nothing changed since. */
+export async function undoDailyClose(input: DailyCloseUndoInput): Promise<void> {
+  const logRef = doc(db, "dailyItemLogs", input.date);
+  await runTransaction(db, async (transaction) => {
+    const logSnapshot = await transaction.get(logRef);
+    const current = logSnapshot.exists() ? (logSnapshot.data() as DailyItemLog) : null;
+    if (!current || current.updatedAt !== input.expectedUpdatedAt) {
+      throw new ConflictError("This day changed after it was completed, so it cannot be undone.");
+    }
+
+    if (input.previousLog) transaction.set(logRef, input.previousLog);
+    else transaction.delete(logRef);
+
+    if (input.revenue) {
+      const salesRef = doc(db, "salesEntries", input.revenue.salesId);
+      if (input.revenue.previous) {
+        const { cash, bca, soundbox, other } = input.revenue.previous;
+        transaction.set(
+          salesRef,
+          { cash, bca, soundbox, other, total: cash + bca + soundbox + other, updatedAt: Date.now() },
+          { merge: true }
+        );
+      } else {
+        transaction.delete(salesRef);
+      }
+    }
+  });
+}
+
 export async function listItemSales(): Promise<ItemSale[]> {
   const snap = await getDocs(query(itemSalesCol, orderBy("date", "desc")));
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ItemSale, "id">) }));

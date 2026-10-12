@@ -40,6 +40,9 @@ import {
   EMPTY_CLOSE_PAYMENTS_TEXT,
 } from "@/lib/close-draft";
 import { ConflictError, recordVersion } from "@/lib/concurrency";
+import { getCloseWarnings } from "@/lib/close-checks";
+import { CompleteDayReview } from "@/components/close/complete-day-review";
+import { CloseRecap } from "@/components/close/close-recap";
 import { MoneyInput } from "@/components/fields/money-input";
 import {
   listMenuItems,
@@ -47,6 +50,7 @@ import {
   getDailyItemLog,
   listDailyItemLogs,
   saveDailyClose,
+  undoDailyClose,
   listItemSales,
   upsertItemSale,
   deleteItemSale,
@@ -89,6 +93,24 @@ import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
 type CatalogStatus = "active" | "archived" | "all";
+
+// What a completion replaced, so Undo can put it back.
+type CloseUndo = {
+  completedVersion: number;
+  previousLog: DailyItemLog | null;
+  previousQuantities: Record<string, string>;
+  previousPayments: ClosePaymentsText;
+  previousSales: SalesEntry | null;
+  revenue: { salesId: string; previous: { cash: number; bca: number; soundbox: number; other: number } | null } | null;
+};
+
+type CloseRecapState = {
+  date: string;
+  portions: number;
+  revenue: number;
+  stockStatus: string;
+  undo: CloseUndo;
+};
 
 type MigrationPreview = {
   datesFound: number;
@@ -510,6 +532,16 @@ export default function ItemsPage() {
   const [dailyPayments, setDailyPayments] = useState<ClosePaymentsText>(EMPTY_CLOSE_PAYMENTS_TEXT);
   // The day changed on another device since it was loaded. Saving is refused until it is reloaded.
   const [dailyConflict, setDailyConflict] = useState(false);
+  const [completeReviewOpen, setCompleteReviewOpen] = useState(false);
+  const [closeRecap, setCloseRecap] = useState<CloseRecapState | null>(null);
+  const [undoing, setUndoing] = useState(false);
+
+  // The completion recap disappears after 10 seconds. Undo is offered for the same window.
+  useEffect(() => {
+    if (!closeRecap) return;
+    const timer = setTimeout(() => setCloseRecap(null), 10_000);
+    return () => clearTimeout(timer);
+  }, [closeRecap]);
   const [dailyLoadedDate, setDailyLoadedDate] = useState("");
   const [dailyLoadError, setDailyLoadError] = useState(false);
   const [dailyRetryKey, setDailyRetryKey] = useState(0);
@@ -750,6 +782,64 @@ export default function ItemsPage() {
     return parsed ? parsed.cash + parsed.bca + parsed.soundbox + parsed.other : 0;
   }, [dailyPayments]);
 
+  const completeWarnings = useMemo(() => {
+    const quantities = Object.fromEntries(Object.entries(dailyQuantities).map(([itemId, value]) => [itemId, parseFloat(value) || 0]));
+    const parsed = parseClosePayments(dailyPayments);
+    return getCloseWarnings({
+      date,
+      today: todayISO(),
+      quantities,
+      items: activeMenuItems.map((item) => ({ id: item.id, price: item.price })),
+      payments: parsed ? parsed.cash + parsed.bca + parsed.soundbox + parsed.other : 0,
+      previous: dailyLog ? { status: dailyLog.status, source: dailyLog.source, updatedAt: dailyLog.updatedAt } : null,
+    });
+  }, [activeMenuItems, dailyLog, dailyPayments, dailyQuantities, date]);
+
+  async function undoClose() {
+    if (!closeRecap) return;
+    const { date: completedDate, undo } = closeRecap;
+    setUndoing(true);
+    try {
+      await undoDailyClose({
+        date: completedDate,
+        expectedUpdatedAt: undo.completedVersion,
+        previousLog: undo.previousLog,
+        revenue: undo.revenue,
+      });
+      // A day with no saved log counts as an empty draft for stock: its earlier deduction is reversed.
+      const restored: DailyItemLog = undo.previousLog ?? {
+        id: completedDate,
+        date: completedDate,
+        quantities: {},
+        totalQty: 0,
+        status: "draft",
+        source: "manual",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      void calculateSavedDailyUsage(restored);
+      setDailyLog(undo.previousLog);
+      setDailyQuantities(undo.previousQuantities);
+      setDailyPayments(undo.previousPayments);
+      setDailySalesEntry(undo.previousSales);
+      setDailyLogs((current) =>
+        (undo.previousLog ? [undo.previousLog, ...current.filter((log) => log.date !== completedDate)] : current.filter((log) => log.date !== completedDate))
+          .sort((a, b) => b.date.localeCompare(a.date))
+      );
+      setCloseRecap(null);
+      toast.success("Completion undone. The day is back as it was.");
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        toast.error(err.message);
+      } else {
+        console.error("Failed to undo the completed day:", err);
+        toast.error("Could not undo this completion.");
+      }
+    } finally {
+      setUndoing(false);
+    }
+  }
+
   const dailyStatus = dailyHasChanges
     ? "Unsaved changes"
     : dailyLog?.status === "no_sales"
@@ -877,6 +967,7 @@ export default function ItemsPage() {
     }
     const payments = parsedPayments ?? undefined;
 
+    const beforeSave = { previousLog: dailyLog, previousQuantities: dailyQuantities, previousPayments: dailyPayments, previousSales: dailySalesEntry };
     setDailySaving(true);
     try {
       const result = await saveDailyClose({
@@ -891,7 +982,7 @@ export default function ItemsPage() {
         },
         salesEntryId: dailySalesEntry?.id ?? null,
       });
-      await calculateSavedDailyUsage(result.log);
+      const usage = await calculateSavedDailyUsage(result.log);
       setDailyLog(result.log);
       setDailyLogs((current) => [result.log, ...current.filter((log) => log.date !== date)].sort((a, b) => b.date.localeCompare(a.date)));
       setDailyQuantities(
@@ -903,6 +994,29 @@ export default function ItemsPage() {
       }
       setDailyConflict(false);
       setDraftNotice(null);
+      if (status === "complete") {
+        const revenue = payments
+          ? payments.cash + payments.bca + payments.soundbox + payments.other
+          : (beforeSave.previousSales?.total ?? 0);
+        setCloseRecap({
+          date,
+          portions: result.log.totalQty,
+          revenue,
+          stockStatus: usage?.status === "needs-review"
+            ? "stock needs review"
+            : usage && usageStatusDeductsStock(usage.status) ? "stock updated" : "stock unchanged",
+          undo: {
+            completedVersion: result.log.updatedAt,
+            previousLog: beforeSave.previousLog,
+            previousQuantities: beforeSave.previousQuantities,
+            previousPayments: beforeSave.previousPayments,
+            previousSales: beforeSave.previousSales,
+            revenue: payments && result.salesEntry
+              ? { salesId: result.salesEntry.id, previous: beforeSave.previousSales ? savedClosePayments(beforeSave.previousSales) : null }
+              : null,
+          },
+        });
+      }
       toast.success(status === "no_sales" ? "No sales saved" : `Day ${status === "complete" ? "completed" : "saved"}`);
       return true;
     } catch (err) {
@@ -1673,21 +1787,43 @@ export default function ItemsPage() {
         {activeMenuItems.length > 0 && !dailyLoading && !dailyLoadError && (
           <div className="sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-20 -mx-4 border-y border-border bg-surface/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgb(31_58_47_/_50%)] backdrop-blur sm:bottom-0 sm:mx-0 sm:rounded-xl sm:border">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">{dailySaving ? "Saving changes…" : dailyHasChanges ? "Unsaved changes" : dailyLog ? "Saved for this day" : "Ready to close"}</p>
-                <p className="text-xs text-muted-foreground">Blank or 0 means this item did not sell.</p>
-              </div>
-              <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
-                <Button variant="outline" onClick={() => saveDailyLog("no_sales")} disabled={dailySaving} className="min-h-11">
-                  No sales
-                </Button>
-                <Button variant="secondary" onClick={() => saveDailyLog("draft")} disabled={dailySaving} className="min-h-11">
-                  {dailySaving ? "Saving…" : "Save draft"}
-                </Button>
-                <Button onClick={() => saveDailyLog("complete")} disabled={dailySaving} className="min-h-11 bg-primary hover:bg-primary-hover">
-                  {dailySaving ? "Saving…" : "Complete day"}
-                </Button>
-              </div>
+              {closeRecap?.date === date ? (
+                <CloseRecap
+                  date={closeRecap.date}
+                  portions={closeRecap.portions}
+                  revenue={closeRecap.revenue}
+                  stockStatus={closeRecap.stockStatus}
+                  undoing={undoing}
+                  onUndo={() => void undoClose()}
+                />
+              ) : (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{dailySaving ? "Saving changes…" : dailyHasChanges ? "Unsaved changes" : dailyLog ? "Saved for this day" : "Ready to close"}</p>
+                    <p className="text-xs text-muted-foreground">Blank or 0 means this item did not sell.</p>
+                  </div>
+                  <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
+                    <Button variant="outline" onClick={() => saveDailyLog("no_sales")} disabled={dailySaving} className="min-h-11">
+                      No sales
+                    </Button>
+                    <Button variant="secondary" onClick={() => saveDailyLog("draft")} disabled={dailySaving} className="min-h-11">
+                      {dailySaving ? "Saving…" : "Save draft"}
+                    </Button>
+                    <Button onClick={() => setCompleteReviewOpen(true)} disabled={dailySaving} className="min-h-11 bg-primary hover:bg-primary-hover">
+                      {dailySaving ? "Saving…" : "Complete day"}
+                    </Button>
+                  </div>
+                </>
+              )}
+              <CompleteDayReview
+                open={completeReviewOpen}
+                onOpenChange={setCompleteReviewOpen}
+                warnings={completeWarnings}
+                busy={dailySaving}
+                onConfirm={async () => {
+                  if (await saveDailyLog("complete")) setCompleteReviewOpen(false);
+                }}
+              />
             </div>
           </div>
         )}
