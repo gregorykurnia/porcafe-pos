@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +27,7 @@ import {
 import { useConfirm } from "@/components/confirm-dialog";
 import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
+import { useQueryState } from "@/hooks/use-query-state";
 import { DateStepper } from "@/components/fields/date-stepper";
 import { clearSessionDraft, closeDraftKey, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
 import {
@@ -72,6 +73,7 @@ import {
   formatMonthDisplay,
   formatDateTime,
   formatTimeOfDay,
+  isISODate,
 } from "@/lib/dates";
 import { isValid as isValidDate } from "date-fns";
 
@@ -94,6 +96,12 @@ import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from 
 
 type Period = "day" | "week" | "month";
 type ItemsView = "daily" | "performance" | "catalog" | "history";
+
+const ITEMS_VIEWS: ItemsView[] = ["daily", "performance", "catalog", "history"];
+
+function isItemsView(value: string): boolean {
+  return ITEMS_VIEWS.some((view) => view === value);
+}
 type CatalogStatus = "active" | "archived" | "all";
 
 // What a completion replaced, so Undo can put it back.
@@ -558,14 +566,23 @@ function EditableItemSaleRow({
   );
 }
 
+// The view and the close date live in the URL, so a reload or a shared link opens the same screen.
 export default function ItemsPage() {
+  return (
+    <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-muted" aria-busy="true" />}>
+      <ItemsWorkspace />
+    </Suspense>
+  );
+}
+
+function ItemsWorkspace() {
   const confirm = useConfirm();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [sales, setSales] = useState<ItemSale[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyItemLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [activeView, setActiveView] = useState<ItemsView>("daily");
+  const [activeView, setActiveView] = useQueryState<ItemsView>("view", { default: "daily", validate: isItemsView });
   const [dailyLog, setDailyLog] = useState<DailyItemLog | null>(null);
   const [dailySalesEntry, setDailySalesEntry] = useState<SalesEntry | null>(null);
   const [dailyQuantities, setDailyQuantities] = useState<Record<string, string>>({});
@@ -617,7 +634,7 @@ export default function ItemsPage() {
   const [historyTo, setHistoryTo] = useState("");
 
   // quantity entry form
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useQueryState("date", { default: todayISO(), validate: isISODate });
 
   // manage item dialog
   const [dialogOpen, setDialogOpen] = useState(false);

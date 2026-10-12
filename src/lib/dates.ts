@@ -1,6 +1,7 @@
 import {
   addDays,
   format,
+  isValid,
   startOfWeek,
   startOfMonth,
   parseISO,
@@ -12,6 +13,13 @@ export function toISODate(d: Date): string {
 
 export function todayISO(): string {
   return toISODate(new Date());
+}
+
+/** True for a YYYY-MM-DD string that is a real calendar date. Used to validate URL values. */
+export function isISODate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = parseISO(value);
+  return isValid(parsed) && toISODate(parsed) === value;
 }
 
 export function addDaysISO(dateISO: string, days: number): string {
