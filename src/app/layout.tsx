@@ -5,6 +5,7 @@ import { Nav } from "@/components/nav";
 import { Toaster } from "@/components/ui/sonner";
 import { SwRegister } from "@/components/sw-register";
 import { ConfirmProvider } from "@/components/confirm-dialog";
+import { NavigationGuardProvider } from "@/components/navigation-guard";
 
 const inter = Inter({
   variable: "--font-app-sans",
@@ -42,12 +43,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-dvh w-full min-w-0 flex flex-col bg-background text-foreground">
         <ConfirmProvider>
-          <SwRegister />
-          <Nav />
-          <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-8">
-            {children}
-          </main>
-          <Toaster />
+          <NavigationGuardProvider>
+            <SwRegister />
+            <Nav />
+            <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-8">
+              {children}
+            </main>
+            <Toaster />
+          </NavigationGuardProvider>
         </ConfirmProvider>
       </body>
     </html>

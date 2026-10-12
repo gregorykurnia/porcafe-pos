@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useNavigationGuard } from "@/components/navigation-guard";
 import { Boxes, LayoutDashboard, Wallet, UtensilsCrossed } from "lucide-react";
 
 const links = [
@@ -16,7 +17,19 @@ const links = [
 
 export function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const guard = useNavigationGuard();
   const [isOffline, setIsOffline] = useState(false);
+
+  // Unsaved work asks first. The guarded link is cancelled and navigation runs
+  // only if the user chooses to leave.
+  function guardedNavigate(event: { preventDefault: () => void }, href: string) {
+    if (href === pathname || !guard.isDirty()) return;
+    event.preventDefault();
+    void guard.confirmLeave().then((leave) => {
+      if (leave) router.push(href);
+    });
+  }
 
   useEffect(() => {
     const updateConnection = () => setIsOffline(!navigator.onLine);
@@ -44,6 +57,7 @@ export function Nav() {
                 <Link
                   key={l.href}
                   href={l.href}
+                  onNavigate={(event) => guardedNavigate(event, l.href)}
                   className={cn(
                     "flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
                     active
@@ -75,6 +89,7 @@ export function Nav() {
               <Link
                 key={l.href}
                 href={l.href}
+                onNavigate={(event) => guardedNavigate(event, l.href)}
                 aria-current={active ? "page" : undefined}
                 className="flex min-h-11 min-w-0 flex-1 flex-col items-center gap-1 py-1.5"
               >
