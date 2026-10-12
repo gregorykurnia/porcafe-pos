@@ -39,6 +39,7 @@ import { normalizeInventoryName } from "@/lib/inventory";
 import { summarizeInventoryBalances, type InventoryBalance } from "@/lib/inventory-ledger";
 import { getInventoryReorderStatus, type InventoryReorderStatus } from "@/lib/reorder-status";
 import { SupplierOrders } from "@/components/inventory/supplier-orders";
+import { ReorderSettings } from "@/components/inventory/reorder-settings";
 import { SupplierSchedules } from "@/components/inventory/supplier-schedules";
 import type { InventoryMaterial, InventoryMovement, InventoryStockSetup, InventorySupplier, InventorySupplierDeliverySchedule, InventorySupplierItem, InventorySupplierOrder } from "@/lib/types";
 
@@ -266,103 +267,6 @@ function ReorderOverview({ materials, suppliers, balances, stockInitialized, sto
             <TableCell className="text-right">{status === "to-order" ? <Button type="button" size="sm" variant="outline" onClick={() => onCreateOrder(material.id)} aria-label={`Create supplier order for ${material.name}`}><Plus />Create order</Button> : "—"}</TableCell>
           </TableRow>)}</TableBody></Table></div>}
         </>}
-      </CardContent>
-    </Card>
-  );
-}
-
-type ReorderSettingsProps = {
-  materials: InventoryMaterial[];
-  suppliers: InventorySupplier[];
-  supplierItems: InventorySupplierItem[];
-  balances: InventoryBalance[];
-  onChanged: () => Promise<void>;
-};
-
-type ReorderSettingRowProps = {
-  material: InventoryMaterial;
-  suppliers: InventorySupplier[];
-  supplierItems: InventorySupplierItem[];
-  balance?: InventoryBalance;
-  onChanged: () => Promise<void>;
-};
-
-function ReorderSettingRow({
-  material,
-  suppliers,
-  supplierItems,
-  balance,
-  onChanged,
-}: ReorderSettingRowProps) {
-  const [threshold, setThreshold] = useState(material.reorderThreshold === undefined ? "" : String(material.reorderThreshold));
-  const [quantity, setQuantity] = useState(material.reorderQuantity === undefined ? "" : String(material.reorderQuantity));
-  const [preferredSupplierId, setPreferredSupplierId] = useState(material.preferredSupplierId ?? "");
-  const [alertEnabled, setAlertEnabled] = useState(material.lowStockAlertEnabled ?? false);
-  const [saving, setSaving] = useState(false);
-  const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
-  const linkedSuppliers = useMemo(() => supplierItems
-    .filter((item) => item.materialId === material.id)
-    .map((item) => supplierById.get(item.supplierId))
-    .filter((supplier): supplier is InventorySupplier => Boolean(supplier)), [material.id, supplierById, supplierItems]);
-  async function save() {
-    const nextThreshold = threshold.trim() ? Number(threshold) : undefined;
-    const nextQuantity = quantity.trim() ? Number(quantity) : undefined;
-    if (nextThreshold !== undefined && (!Number.isFinite(nextThreshold) || nextThreshold < 0)) {
-      toast.error("Reorder threshold must be zero or greater.");
-      return;
-    }
-    if (nextQuantity !== undefined && (!Number.isFinite(nextQuantity) || nextQuantity <= 0)) {
-      toast.error("Suggested reorder quantity must be greater than zero.");
-      return;
-    }
-    if (alertEnabled && nextThreshold === undefined) {
-      toast.error("Set a reorder threshold before enabling the alert.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await upsertInventoryMaterial({
-        ...material,
-        id: material.id,
-        createdAt: material.createdAt,
-        reorderThreshold: nextThreshold,
-        reorderQuantity: nextQuantity,
-        preferredSupplierId,
-        lowStockAlertEnabled: alertEnabled,
-      });
-      toast.success("Reorder settings saved");
-      await onChanged();
-    } catch (error) {
-      console.error("Failed to save reorder settings", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save reorder settings");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <TableRow>
-      <TableCell><span className="font-medium">{material.name}</span><span className="block text-xs text-muted-foreground">{material.baseUnit}</span></TableCell>
-      <TableCell className="tabular-nums">{balance?.currentQuantity === null || balance?.currentQuantity === undefined ? "—" : balance.currentQuantity.toLocaleString("id-ID", { maximumFractionDigits: 2 })}</TableCell>
-      <TableCell className="min-w-28"><Input aria-label={`Reorder threshold for ${material.name}`} type="number" min="0" step="0.01" value={threshold} onChange={(event) => setThreshold(event.target.value)} placeholder="—" /></TableCell>
-      <TableCell className="min-w-28"><Input aria-label={`Reorder quantity for ${material.name}`} type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="—" /></TableCell>
-      <TableCell className="min-w-44"><Select value={preferredSupplierId || "none"} onValueChange={(value) => setPreferredSupplierId(value === "none" ? "" : value)}><SelectTrigger size="sm" className="w-full"><SelectValue placeholder="Optional" /></SelectTrigger><SelectContent><SelectItem value="none">No preferred supplier</SelectItem>{linkedSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></TableCell>
-      <TableCell><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={alertEnabled} onChange={(event) => setAlertEnabled(event.target.checked)} className="size-4 accent-primary" /><span className="sr-only">Enable low-stock alert for {material.name}</span><Bell className="size-4 text-muted-foreground" /></label></TableCell>
-      <TableCell className="text-right"><Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</Button></TableCell>
-    </TableRow>
-  );
-}
-
-function ReorderSettings({ materials, suppliers, supplierItems, balances, onChanged }: ReorderSettingsProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Reorder settings</CardTitle>
-        <CardDescription>Configure alert thresholds, suggested quantities, and preferred suppliers for each material.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {materials.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No active materials yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Current stock</TableHead><TableHead>Alert at</TableHead><TableHead>Order quantity</TableHead><TableHead>Preferred supplier</TableHead><TableHead>Alert</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{materials.map((material) => <ReorderSettingRow key={`${material.id}-${material.updatedAt}`} material={material} suppliers={suppliers} supplierItems={supplierItems} balance={balances.find((candidate) => candidate.materialId === material.id)} onChanged={onChanged} />)}</TableBody></Table></div>}
       </CardContent>
     </Card>
   );

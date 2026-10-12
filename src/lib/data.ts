@@ -629,6 +629,24 @@ export async function upsertInventoryMaterial(
   return ref.id;
 }
 
+/**
+ * Writes reorder settings for many materials in one batch. A null field is removed, so a
+ * cleared threshold does not keep its old value through the merge.
+ */
+export async function saveReorderSettings(
+  changes: { materialId: string; patch: Record<string, number | string | boolean | null> }[]
+): Promise<void> {
+  if (changes.length === 0) return;
+  const batch = writeBatch(db);
+  const now = Date.now();
+  for (const change of changes) {
+    const data: Record<string, unknown> = { updatedAt: now };
+    for (const [key, value] of Object.entries(change.patch)) data[key] = value === null ? deleteField() : value;
+    batch.set(doc(db, "inventoryMaterials", change.materialId), data, { merge: true });
+  }
+  await batch.commit();
+}
+
 export async function listInventorySuppliers(): Promise<InventorySupplier[]> {
   const snap = await getDocs(query(inventorySuppliersCol, orderBy("name", "asc")));
   return snap.docs.map((d) => mapInventorySupplier(d.id, d.data()));
