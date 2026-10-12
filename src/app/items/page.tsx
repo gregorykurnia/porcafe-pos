@@ -415,7 +415,7 @@ function EditableItemSaleRow({
         <TableCell>{sale.itemName}</TableCell>
         <TableCell className="text-muted-foreground">{category}</TableCell>
         <TableCell className="text-right font-medium tabular-nums">{sale.qty}</TableCell>
-        <TableCell className="text-right"><Badge variant="secondary">Daily close</Badge></TableCell>
+        <TableCell className="text-right"><div className="flex items-center justify-end gap-2"><Badge variant="secondary">Daily close</Badge><Button asChild variant="ghost" size="sm"><Link href={`/items?date=${sale.date}`}>Open day</Link></Button></div></TableCell>
       </TableRow>
     );
   }
@@ -1059,6 +1059,8 @@ function ItemsWorkspace() {
   const legacyOnlyDates = [...legacyItemSaleDates].filter((date) => !dailyLogDates.has(date));
   const dailyOnlyDates = [...dailyLogDates].filter((date) => !legacyItemSaleDates.has(date));
   const sourceMismatch = legacyOnlyDates.length > 0;
+  // Legacy rows stay editable only until their dates are copied into Daily close (D5).
+  const legacyEditable = legacyOnlyDates.length > 0;
 
   async function previewLegacyMigration() {
     setMigrationPreviewLoading(true);
@@ -1720,7 +1722,7 @@ function ItemsWorkspace() {
         <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <div>
             <CardTitle>History</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Review quantities. Daily close records are read-only here; legacy rows remain editable.</p>
+            <p className="mt-1 text-sm text-muted-foreground">{legacyEditable ? "Legacy rows can be edited until their dates are copied into Daily close. Daily close records are read-only here." : "Read-only. To change a day, open it in Daily close."}</p>
           </div>
           <div className="flex items-center gap-2">
             <Tabs
@@ -1855,7 +1857,7 @@ function ItemsWorkspace() {
                     onSort={(k) => toggleSort(saleSort, k, setSaleSort)}
                     className="text-right"
                   />
-                  <TableHead>Source / action</TableHead>
+                  <TableHead>Source</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1867,7 +1869,7 @@ function ItemsWorkspace() {
                     menuItems={menuItems}
                     onSaved={refresh}
                     onDelete={removeSale}
-                    readOnly={s.id.startsWith("daily-")}
+                    readOnly={s.id.startsWith("daily-") || !legacyEditable}
                   />
                 ))}
               </TableBody>
