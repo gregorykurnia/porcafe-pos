@@ -205,3 +205,19 @@
     background: var(--color-danger-tint);
   }
 }
+
+/*
+ * prefers-reduced-motion (DESIGN_SYSTEM §12): menus, dialogs, sheets and value changes switch at once instead of
+ * moving. The Undo countdown bar is hidden under motion-reduce and the button shows the seconds as a number.
+ * Loading indicators (spinners and skeleton pulses) keep running, because they are the only sign that work is in progress.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *:not(.animate-spin):not(.animate-pulse),
+  *:not(.animate-spin):not(.animate-pulse)::before,
+  *:not(.animate-spin):not(.animate-pulse)::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

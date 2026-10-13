@@ -98,7 +98,7 @@ export function ReorderSettings({
   };
 
   const alertCheckbox = (material: InventoryMaterial, draft: ReorderDraft) => (
-    <label className="inline-flex min-h-11 items-center gap-2.5 text-body text-ink tablet:min-h-0">
+    <label className="inline-flex min-h-11 items-center gap-2.5 text-body text-ink desk:min-h-0">
       <input
         type="checkbox"
         aria-label={`Alert for ${material.name}`}
