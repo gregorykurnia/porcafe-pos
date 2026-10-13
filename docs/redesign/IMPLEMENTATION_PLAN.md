@@ -27,6 +27,8 @@ A from-scratch visual redesign of the whole app in the Canopy direction. This ch
 
 Goal: settle Canopy's known weak spots before writing code. All work is in mockups; no app code.
 
+Optional: run `HANDOFF_CANOPY_REVIEW.md` with a stronger model. It covers R0.1–R0.5 and drafts R1.3 (`DESIGN_SYSTEM.md`), and writes its critique to `CANOPY_REVIEW.md`.
+
 - [ ] **R0.1 Sidebar options.** Mock two variants side by side: (a) solid forest-green sidebar as in Direction B, (b) light cream sidebar with green accents and active states. Owner picks one.
 - [ ] **R0.2 Dense-screen stress test.** Mock one data-heavy screen (Reports → Items, plus Stock → Usage recap or Setup → Menu) in Canopy. It must show how lists stay readable and fit enough rows at desktop and phone widths. Decide on a "compact" density for lists inside cards.
 - [ ] **R0.3 Status colours.** Cut the honey, mint and terra tints down to a fixed, small status palette (success, warning, danger, info, neutral, plus honey for highlights only). Write down which meaning each colour has.
