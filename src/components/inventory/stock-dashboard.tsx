@@ -643,7 +643,7 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
                   </Button>
                 }
               >
-                Add active materials in the Materials tab first.
+                Add active materials in Setup first.
               </EmptyState>
             ) : (
               <>

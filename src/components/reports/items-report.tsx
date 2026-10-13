@@ -313,7 +313,7 @@ export function ItemsReport({
                         axisLine={false}
                         interval="preserveStartEnd"
                         minTickGap={12}
-                        fontSize={11.5}
+                        fontSize={12}
                         stroke={chartColors.other}
                         tick={{ fill: "var(--color-ink-muted)" }}
                       />
@@ -322,7 +322,7 @@ export function ItemsReport({
                         axisLine={false}
                         width={32}
                         allowDecimals={false}
-                        fontSize={11.5}
+                        fontSize={12}
                         stroke={chartColors.other}
                         tick={{ fill: "var(--color-ink-muted)" }}
                       />

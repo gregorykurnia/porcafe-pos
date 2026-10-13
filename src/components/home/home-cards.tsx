@@ -237,7 +237,7 @@ function DaySlot(props: unknown) {
     return (
       <g>
         <rect x={x} y={y} width={width} height={height} rx={6} fill={chartColors.highlight} />
-        <text x={x + width / 2} y={y - 8} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={chartColors.highlight}>
+        <text x={x + width / 2} y={y - 8} textAnchor="middle" fontSize={12} fontWeight={600} fill={chartColors.highlight}>
           {shortRupiah(payload.total)}
         </text>
       </g>
@@ -298,8 +298,8 @@ export function TrendCard({
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={points} margin={{ top: 22, right: 4, bottom: 0, left: 0 }}>
                 <CartesianGrid vertical={false} stroke={chartColors.grid} />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} interval="preserveStartEnd" fontSize={11.5} stroke={chartColors.other} tick={{ fill: "var(--color-ink-muted)" }} />
-                <YAxis tickLine={false} axisLine={false} width={52} fontSize={11.5} stroke={chartColors.other} tickFormatter={(v: number) => shortRupiah(v)} tick={{ fill: "var(--color-ink-muted)" }} />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} interval="preserveStartEnd" fontSize={12} stroke={chartColors.other} tick={{ fill: "var(--color-ink-muted)" }} />
+                <YAxis tickLine={false} axisLine={false} width={52} fontSize={12} stroke={chartColors.other} tickFormatter={(v: number) => shortRupiah(v)} tick={{ fill: "var(--color-ink-muted)" }} />
                 <Tooltip formatter={(value) => formatRp(Number(value))} labelFormatter={(day) => `Day ${day}`} />
                 {average > 0 ? <ReferenceLine y={average} stroke={chartColors.average} strokeDasharray="4 3" strokeWidth={1.5} /> : null}
                 <Bar dataKey="total" shape={DaySlot} isAnimationActive={false} />

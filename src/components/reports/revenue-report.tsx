@@ -101,7 +101,7 @@ function DaySlot(props: unknown) {
     return (
       <g>
         <rect x={x} y={y} width={width} height={height} rx={6} fill={chartColors.highlight} />
-        <text x={x + width / 2} y={y - 8} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={chartColors.highlight}>
+        <text x={x + width / 2} y={y - 8} textAnchor="middle" fontSize={12} fontWeight={600} fill={chartColors.highlight}>
           {shortJt(payload.total)}
         </text>
       </g>
@@ -407,7 +407,7 @@ export function RevenueReport({
                         axisLine={false}
                         interval="preserveStartEnd"
                         minTickGap={12}
-                        fontSize={11.5}
+                        fontSize={12}
                         stroke={chartColors.other}
                         tick={{ fill: "var(--color-ink-muted)" }}
                       />
@@ -415,7 +415,7 @@ export function RevenueReport({
                         tickLine={false}
                         axisLine={false}
                         width={56}
-                        fontSize={11.5}
+                        fontSize={12}
                         stroke={chartColors.other}
                         tickFormatter={(value) => shortJt(Number(value))}
                         tick={{ fill: "var(--color-ink-muted)" }}
@@ -431,7 +431,7 @@ export function RevenueReport({
                           stroke={chartColors.average}
                           strokeDasharray="4 3"
                           strokeWidth={1.5}
-                          label={{ value: `avg ${shortJt(stats.average)}`, position: "insideTopRight", fontSize: 11, fill: "var(--color-ink)" }}
+                          label={{ value: `avg ${shortJt(stats.average)}`, position: "insideTopRight", fontSize: 12, fill: "var(--color-ink)" }}
                         />
                       ) : null}
                       <Bar dataKey="total" shape={DaySlot} isAnimationActive={false} />
