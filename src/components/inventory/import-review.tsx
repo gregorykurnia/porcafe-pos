@@ -1,18 +1,16 @@
 "use client";
 
-import { StatusBadge } from "@/components/state/status-badge";
-import { importRowStatusView } from "@/lib/status";
-import { Stat } from "@/components/state/stat";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
-import { Check, FileSpreadsheet, Save, Upload } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Save, Upload } from "lucide-react";
+import { Banner } from "@/components/patterns/banner";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { EmptyState } from "@/components/patterns/states";
+import { StatStrip } from "@/components/patterns/stat-strip";
+import { StatusChip, ToneShape, type StatusTone } from "@/components/patterns/status-chip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   commitInventoryFoundation,
   type InventoryFoundationCommit,
@@ -31,6 +29,7 @@ import {
   type InventorySourceRow,
 } from "@/lib/inventory-source";
 import { normalizeInventoryName, normalizeRecipeBoxLines, RECIPE_BOX_MATERIAL_ID, RECIPE_BOX_NAME, validateRecipe } from "@/lib/inventory";
+import { importRowStatusView } from "@/lib/status";
 import type {
   InventoryAliasMapping,
   InventoryMaterial,
@@ -66,9 +65,18 @@ function matchingMenuItem(menuItems: MenuItem[], sourceLabel: string, canonicalN
   });
 }
 
-function statusBadge(status: "excluded" | "needs-review" | "approved" | "mapping") {
-  return <StatusBadge view={importRowStatusView(status)} />;
+type ImportRowStatus = "excluded" | "needs-review" | "approved" | "mapping";
+type SourceGroup = (typeof INVENTORY_SOURCE_GROUPS)[number];
+
+const SECTION_CLASS = "overflow-hidden rounded-xl border border-line bg-surface shadow-card";
+
+/** An import row status with its word, shape and tone (DESIGN_SYSTEM §6, the Import row set). */
+function importChip(status: ImportRowStatus) {
+  const view = importRowStatusView(status);
+  const tone: StatusTone = view.tone === "success" ? "ok" : view.tone === "warning" ? "warn" : view.tone === "info" ? "info" : "neutral";
+  return <StatusChip tone={tone}>{view.label}</StatusChip>;
 }
+
 
 function sourceRowsForGroup(groupId: string): InventorySourceRow[] {
   return INVENTORY_SOURCE_ROWS.filter((row) => row.sourceGroup === groupId);
@@ -420,153 +428,249 @@ export function ImportReview({
     }
   }
 
+  const blockedCount = unresolvedRows + sourceNeedsReview;
+  const createBlocked = saving !== null || blockedCount > 0;
+  const aliasRows = rawSourceLabels.map((sourceLabel) => ({
+    sourceLabel,
+    row: INVENTORY_SOURCE_ROWS.find((candidate) => candidate.ingredientSourceLabel === sourceLabel)!,
+  }));
+
+  function chooseMenuItem(groupId: string, value: string) {
+    const conflictsWithAnotherGroup = INVENTORY_SOURCE_GROUPS.some(
+      (candidate) => candidate.id !== groupId && candidate.targetType === "menu_item" && menuSelections[candidate.id] === value
+    );
+    if (conflictsWithAnotherGroup) {
+      toast.error("Each source menu group must map to a different live menu item.");
+      return;
+    }
+    setMenuSelections((current) => ({ ...current, [groupId]: value }));
+  }
+
+  const targetColumns: Column<SourceGroup>[] = [
+    {
+      key: "label",
+      label: "Source label",
+      phone: "title",
+      cell: (group) => (
+        <>
+          <span className="font-medium">{group.targetLabel}</span>
+          <span className="text-small text-ink-muted"> · group {group.id}</span>
+        </>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      phone: "figure",
+      cell: (group) => {
+        const selected = targetIdForRow(sourceRowsForGroup(group.id)[0]);
+        return importChip(conflictingMenuGroups.has(group.id) ? "needs-review" : selected ? "approved" : "mapping");
+      },
+    },
+    {
+      key: "planned",
+      label: "Planned target",
+      phone: "meta",
+      cell: (group) => (group.targetName !== group.targetLabel ? group.targetName : "—"),
+    },
+    {
+      key: "target",
+      label: "Live menu item",
+      phone: "detail",
+      cellClassName: "min-w-56 whitespace-normal",
+      cell: (group) =>
+        group.targetType === "prepared_component" ? (
+          <p className="text-small text-ink-muted">
+            Prepared component ID: <span className="font-mono text-micro">{inventoryComponentId(group.targetName)}</span>
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            <Select value={menuSelections[group.id] ?? ""} onValueChange={(value) => chooseMenuItem(group.id, value)}>
+              <SelectTrigger aria-label={`Live menu item for ${group.targetLabel}`} className="w-full">
+                <SelectValue placeholder="Choose a live menu item" />
+              </SelectTrigger>
+              <SelectContent>
+                {menuItems.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {conflictingMenuGroups.has(group.id) ? <p className="text-small text-danger">This menu item is already assigned to another source group.</p> : null}
+          </div>
+        ),
+    },
+  ];
+
+  const aliasColumns: Column<(typeof aliasRows)[number]>[] = [
+    {
+      key: "source",
+      label: "Source label",
+      phone: "title",
+      cell: ({ sourceLabel, row }) => (
+        <>
+          <span className="font-medium">{sourceLabel}</span>
+          <span className="text-small text-ink-muted"> · {row.sourceRef}</span>
+        </>
+      ),
+    },
+    { key: "canonical", label: "Canonical target", phone: "meta", cell: ({ row }) => row.ingredientName },
+    {
+      key: "material",
+      label: "Material",
+      phone: "detail",
+      cellClassName: "min-w-64",
+      cell: ({ sourceLabel, row }) => {
+        const choice = materialSelections[sourceLabel] ?? "";
+        return (
+          <Select value={choice} onValueChange={(value) => setMaterialSelections((current) => ({ ...current, [sourceLabel]: value }))}>
+            <SelectTrigger aria-label={`Material for ${sourceLabel}`} className="w-full">
+              <SelectValue placeholder="Choose or create" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={`${CREATE_PREFIX}${inventoryMaterialId(row.ingredientName)}`}>Create: {row.ingredientName}</SelectItem>
+              {materials.map((material) => (
+                <SelectItem key={material.id} value={material.id}>{material.name} ({material.baseUnit})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      },
+    },
+  ];
+
+  const lineColumns: Column<InventorySourceRow>[] = [
+    {
+      key: "source",
+      label: "Source",
+      phone: "detail",
+      cell: (row) => (
+        <>
+          <span className="font-mono text-micro">{row.sourceRef}</span>
+          <span className="text-ink-muted"> · {row.ingredientSourceLabel}</span>
+        </>
+      ),
+    },
+    { key: "target", label: "Recipe target", phone: "meta", cell: (row) => row.targetLabel },
+    {
+      key: "ingredient",
+      label: "Ingredient mapping",
+      phone: "title",
+      cell: (row) => (
+        <>
+          <span className="font-medium">{row.ingredientName}</span>
+          <span className="text-small text-ink-muted"> · {row.ingredientType === "component" ? "prepared component" : "material"}</span>
+        </>
+      ),
+    },
+    {
+      key: "qty",
+      label: "Qty / unit",
+      align: "right",
+      phone: "figure",
+      cell: (row) => (
+        <>
+          {row.amount === null ? "—" : row.amount} <span className="text-ink-muted">{row.sourceUnit ?? "—"}</span>
+          {row.unit && row.sourceUnit !== row.unit ? <span className="block text-small text-ink-muted">→ {row.unit}</span> : null}
+        </>
+      ),
+    },
+    {
+      key: "status",
+      label: "Status",
+      phone: "detail",
+      cell: (row) => (
+        <>
+          {row.status === "ready" ? importChip(rowIsApproved(row) ? "approved" : "mapping") : importChip(row.status)}
+          {row.reviewReason ? <span className="mt-1 block max-w-52 whitespace-normal text-small text-ink-muted">{row.reviewReason}</span> : null}
+        </>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-5">
-      <Card className="border-info/20 bg-info/5">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex gap-3">
-            <FileSpreadsheet className="mt-0.5 size-5 shrink-0 text-info" />
-            <div>
-              <p className="font-medium">Reviewed source preview only</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                This preview is bounded to {INVENTORY_SOURCE_BOUNDARY}. Blank quantities are review issues; packaging and the two explicitly ignored ingredients stay excluded.
-              </p>
-            </div>
-          </div>
-          <Badge variant="outline">No inventory deductions</Badge>
-        </CardContent>
-      </Card>
+      <Banner tone="info">
+        <p className="font-medium">Reviewed source preview only</p>
+        <p className="mt-1 text-small">
+          This preview is bounded to {INVENTORY_SOURCE_BOUNDARY}. Blank quantities are review issues; packaging and the two explicitly ignored ingredients stay excluded.
+        </p>
+        <p className="mt-1 text-small font-medium">No inventory deductions.</p>
+      </Banner>
 
-      <div className="grid gap-3 sm:grid-cols-4">
-        <Stat variant="card" size="sm" label="Source rows" value={INVENTORY_SOURCE_ROWS.length} />
-        <Stat variant="card" size="sm" label="Ready after mapping" value={approvedRows.length} tone="success" />
-        <Stat variant="card" size="sm" label="Source review" value={sourceNeedsReview} tone="warning" />
-        <Stat variant="card" size="sm" label="Excluded by policy" value={excludedRows} />
-      </div>
+      <StatStrip
+        label="Import summary"
+        cells={[
+          { label: "Source rows", value: INVENTORY_SOURCE_ROWS.length },
+          { label: "Ready after mapping", value: approvedRows.length },
+          { label: "Source review", value: sourceNeedsReview },
+          { label: "Excluded by policy", value: excludedRows },
+        ]}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>1. Confirm menu and component targets</CardTitle>
-          <CardDescription>Source labels remain visible in the alias mapping so the import can be audited later.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {INVENTORY_SOURCE_GROUPS.map((group) => {
-              const rows = sourceRowsForGroup(group.id);
-              const selected = targetIdForRow(rows[0]);
-              const hasTargetConflict = conflictingMenuGroups.has(group.id);
-              return (
-                <div key={group.id} className="rounded-xl border border-border/70 bg-surface/50 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Source group {group.id}</p>
-                      <p className="font-medium">{group.targetLabel}</p>
-                      {group.targetName !== group.targetLabel && <p className="text-xs text-muted-foreground">Planned target: {group.targetName}</p>}
-                    </div>
-                    {hasTargetConflict ? statusBadge("needs-review") : selected ? statusBadge("approved") : statusBadge("mapping")}
-                  </div>
-                  {group.targetType === "prepared_component" ? (
-                    <p className="mt-3 text-sm text-muted-foreground">Prepared component ID: <span className="font-mono text-xs">{inventoryComponentId(group.targetName)}</span></p>
-                  ) : (
-                    <div className="mt-3 space-y-1.5">
-                      <Label htmlFor={`menu-map-${group.id}`} className="text-xs">Live menu item</Label>
-                      <Select value={menuSelections[group.id] ?? ""} onValueChange={(value) => {
-                        const conflictsWithAnotherGroup = INVENTORY_SOURCE_GROUPS.some(
-                          (candidate) => candidate.id !== group.id && candidate.targetType === "menu_item" && menuSelections[candidate.id] === value
-                        );
-                        if (conflictsWithAnotherGroup) {
-                          toast.error("Each source menu group must map to a different live menu item.");
-                          return;
-                        }
-                        setMenuSelections((current) => ({ ...current, [group.id]: value }));
-                      }}>
-                        <SelectTrigger id={`menu-map-${group.id}`} className="w-full"><SelectValue placeholder="Choose a live menu item" /></SelectTrigger>
-                        <SelectContent>
-                          {menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                      {hasTargetConflict && <p className="mt-1 text-xs text-destructive">This menu item is already assigned to another source group.</p>}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>2. Confirm material aliases</CardTitle>
-          <CardDescription>New materials are listed here and can be edited in Materials before use.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader><TableRow><TableHead>Source label</TableHead><TableHead>Canonical target</TableHead><TableHead>Material</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {rawSourceLabels.map((sourceLabel) => {
-                const row = INVENTORY_SOURCE_ROWS.find((candidate) => candidate.ingredientSourceLabel === sourceLabel)!;
-                const choice = materialSelections[sourceLabel] ?? "";
-                return (
-                  <TableRow key={sourceLabel}>
-                    <TableCell><span className="font-medium">{sourceLabel}</span><span className="block text-xs text-muted-foreground">{row.sourceRef}</span></TableCell>
-                    <TableCell>{row.ingredientName}</TableCell>
-                    <TableCell className="min-w-64">
-                      <Select value={choice} onValueChange={(value) => setMaterialSelections((current) => ({ ...current, [sourceLabel]: value }))}>
-                        <SelectTrigger aria-label={`Material for ${sourceLabel}`} className="w-full"><SelectValue placeholder="Choose or create" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={`${CREATE_PREFIX}${inventoryMaterialId(row.ingredientName)}`}>Create: {row.ingredientName}</SelectItem>
-                          {materials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} ({material.baseUnit})</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div><CardTitle>3. Review source lines</CardTitle><CardDescription>Every row carries its original source reference; imported recipe lines are never inferred from blank cells.</CardDescription></div>
-          <div className="w-full sm:w-64"><Label htmlFor="inventory-import-search" className="sr-only">Search source preview</Label><Input id="inventory-import-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search source rows" /></div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-hidden rounded-xl border">
-            <Table>
-              <TableHeader><TableRow><TableHead>Source</TableHead><TableHead>Recipe target</TableHead><TableHead>Ingredient mapping</TableHead><TableHead>Qty / unit</TableHead><TableHead>Status</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {rowsWithQuery.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell><span className="font-mono text-xs">{row.sourceRef}</span><span className="block text-xs text-muted-foreground">{row.ingredientSourceLabel}</span></TableCell>
-                    <TableCell>{row.targetLabel}</TableCell>
-                    <TableCell><span className="font-medium">{row.ingredientName}</span><span className="block text-xs text-muted-foreground">{row.ingredientType === "component" ? "prepared component" : "material"}</span></TableCell>
-                    <TableCell className="tabular-nums">{row.amount === null ? "—" : row.amount} <span className="text-muted-foreground">{row.sourceUnit ?? "—"}</span>{row.unit && row.sourceUnit !== row.unit && <span className="block text-xs text-success">→ {row.unit}</span>}</TableCell>
-                    <TableCell>{row.status === "ready" ? (rowIsApproved(row) ? statusBadge("approved") : statusBadge("mapping")) : statusBadge(row.status)}{row.reviewReason && <span className="mt-1 block max-w-52 whitespace-normal text-xs text-muted-foreground">{row.reviewReason}</span>}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="font-medium">{unresolvedRows + sourceNeedsReview === 0 ? "All importable rows are ready for a draft recipe import." : `${unresolvedRows + sourceNeedsReview} row${unresolvedRows + sourceNeedsReview === 1 ? "" : "s"} still need review.`}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Saving mappings is safe to do first. Creating draft recipes never changes stock.</p>
+      <section aria-labelledby="import-step-1" className={SECTION_CLASS}>
+        <div className="p-4 desk:px-6">
+          <h2 id="import-step-1" className="font-display text-title-2 text-ink">1. Confirm menu and component targets</h2>
+          <p className="mt-1 text-small text-ink-muted">Source labels stay visible in the alias mapping so the import can be audited later.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button variant="outline" onClick={saveMappings} disabled={saving !== null}><Save className="size-4" />{saving === "mappings" ? "Saving…" : "Save mappings"}</Button>
-          <Button onClick={commitFoundation} disabled={saving !== null || unresolvedRows > 0 || sourceNeedsReview > 0}><Upload className="size-4" />{saving === "foundation" ? "Creating drafts…" : "Create draft recipes"}</Button>
+        <DataTable caption="Menu and component targets" columns={targetColumns} rows={[...INVENTORY_SOURCE_GROUPS]} getKey={(group) => group.id} density="comfortable" />
+      </section>
+
+      <section aria-labelledby="import-step-2" className={SECTION_CLASS}>
+        <div className="p-4 desk:px-6">
+          <h2 id="import-step-2" className="font-display text-title-2 text-ink">2. Confirm material aliases</h2>
+          <p className="mt-1 text-small text-ink-muted">New materials are listed here and can be edited in Materials before use.</p>
+        </div>
+        <DataTable caption="Material aliases" columns={aliasColumns} rows={aliasRows} getKey={(entry) => entry.sourceLabel} density="comfortable" />
+      </section>
+
+      <section aria-labelledby="import-step-3" className={SECTION_CLASS}>
+        <div className="flex flex-col gap-3 p-4 desk:flex-row desk:items-end desk:justify-between desk:px-6">
+          <div>
+            <h2 id="import-step-3" className="font-display text-title-2 text-ink">3. Review source lines</h2>
+            <p className="mt-1 text-small text-ink-muted">Every row carries its original source reference. Imported recipe lines are never inferred from blank cells.</p>
+          </div>
+          <div className="w-full desk:w-72">
+            <label htmlFor="inventory-import-search" className="sr-only">Search source rows</label>
+            <Input id="inventory-import-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search source rows" />
+          </div>
+        </div>
+        <DataTable
+          caption="Source lines"
+          columns={lineColumns}
+          rows={rowsWithQuery}
+          getKey={(row) => row.id}
+          density="comfortable"
+          empty={<EmptyState title="No source rows match">Try a material, a menu item or a source reference.</EmptyState>}
+        />
+      </section>
+
+      <div className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4 shadow-card desk:flex-row desk:items-center desk:justify-between desk:p-6">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 font-medium text-ink">
+            {blockedCount === 0 ? <ToneShape tone="ok" className="text-ok" /> : <ToneShape tone="warn" className="text-warn-mark" />}
+            {blockedCount === 0 ? "All importable rows are ready for a draft recipe import." : `${blockedCount} row${blockedCount === 1 ? "" : "s"} still need review.`}
+          </p>
+          <p className="mt-1 text-small text-ink-muted">Saving mappings is safe to do first. Creating draft recipes never changes stock.</p>
+        </div>
+        <div className="flex flex-col gap-2 tablet:flex-row tablet:items-center tablet:justify-end">
+          {blockedCount > 0 ? <p className="text-small text-ink-muted tablet:mr-2">Blocked until every row is ready.</p> : null}
+          <Button variant="secondary" onClick={saveMappings} loading={saving === "mappings"} disabled={saving !== null}>
+            <Save strokeWidth={1.5} aria-hidden="true" />
+            {saving === "mappings" ? "Saving…" : "Save mappings"}
+          </Button>
+          <Button onClick={commitFoundation} loading={saving === "foundation"} disabled={createBlocked}>
+            <Upload strokeWidth={1.5} aria-hidden="true" />
+            {saving === "foundation" ? "Creating drafts…" : "Create draft recipes"}
+          </Button>
         </div>
       </div>
 
-      {approvedRows.length > 0 && unresolvedRows + sourceNeedsReview === 0 && (
-        <p className="flex items-center gap-2 text-sm text-success"><Check className="size-4" />{approvedRows.length} importable source lines are mapped and validated for Phase 1.</p>
-      )}
+      {approvedRows.length > 0 && blockedCount === 0 ? (
+        <p className="flex items-center gap-2 text-small text-ink-muted">
+          <ToneShape tone="ok" className="text-ok" />
+          {approvedRows.length} importable source lines are mapped and validated for Phase 1.
+        </p>
+      ) : null}
     </div>
   );
 }

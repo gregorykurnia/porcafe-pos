@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Bell, BellOff, Loader2 } from "lucide-react";
+import { Bell } from "lucide-react";
+import { Banner } from "@/components/patterns/banner";
+import { StatusChip, ToneShape, type StatusTone } from "@/components/patterns/status-chip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { shouldShowIosHint } from "@/lib/push-alerts";
-import { StatusChip, type StatusTone } from "@/components/patterns/status-chip";
 
 export type PushState = "loading" | "ready" | "enabled" | "unsupported" | "not-configured" | "denied";
 
@@ -77,11 +77,23 @@ export function PushAlertsChip() {
   );
 }
 
+type MessageTone = "ok" | "neutral" | "danger";
+
+// Device states (inventory §3.12) with the Push chip set (DESIGN_SYSTEM §6): word, shape and tone together.
+const DEVICE_STATE: Record<PushState, { label: string; tone: StatusTone; text: string }> = {
+  loading: { label: "Checking", tone: "info", text: "Checking this device." },
+  enabled: { label: "On", tone: "ok", text: "Enabled on this device." },
+  ready: { label: "Off", tone: "neutral", text: "Ready to enable on this device." },
+  denied: { label: "Blocked", tone: "danger", text: "Blocked for this site." },
+  "not-configured": { label: "Unavailable", tone: "neutral", text: "Not configured on the server." },
+  unsupported: { label: "Unavailable", tone: "neutral", text: "Unsupported browser." },
+};
+
 export function PushNotificationsSettings() {
   const [state, setState] = useState<PushState>("loading");
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; tone: MessageTone } | null>(null);
   const [showIosHint, setShowIosHint] = useState(false);
 
   useEffect(() => {
@@ -102,14 +114,14 @@ export function PushNotificationsSettings() {
   async function enable() {
     if (!publicKey || state !== "ready") return;
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setState(permission === "denied" ? "denied" : "ready");
         setMessage(permission === "denied"
-          ? "Notifications are blocked for this site. Change the site permission in your browser or device settings to enable them."
-          : "Notification permission was not granted.");
+          ? { text: "Notifications are blocked for this site. Change the site permission in your browser or device settings to enable them.", tone: "danger" }
+          : { text: "Notification permission was not granted.", tone: "neutral" });
         return;
       }
 
@@ -128,10 +140,10 @@ export function PushNotificationsSettings() {
         throw new Error("The device could not be registered with the notification service. Try again later.");
       }
       setState("enabled");
-      setMessage("Push alerts are enabled on this device.");
+      setMessage({ text: "Push alerts are enabled on this device.", tone: "ok" });
     } catch (error) {
       console.error("Could not enable push notifications", error);
-      setMessage(error instanceof Error ? error.message : "Could not enable push notifications on this device.");
+      setMessage({ text: error instanceof Error ? error.message : "Could not enable push notifications on this device.", tone: "danger" });
     } finally {
       setBusy(false);
     }
@@ -139,7 +151,7 @@ export function PushNotificationsSettings() {
 
   async function disable() {
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       const subscription = await registration?.pushManager.getSubscription();
@@ -153,44 +165,75 @@ export function PushNotificationsSettings() {
         await subscription.unsubscribe();
       }
       setState(publicKey ? "ready" : "not-configured");
-      setMessage("Push alerts are disabled on this device.");
+      setMessage({ text: "Push alerts are disabled on this device.", tone: "ok" });
     } catch (error) {
       console.error("Could not disable push notifications", error);
-      setMessage(error instanceof Error ? error.message : "Could not disable push notifications on this device.");
+      setMessage({ text: error instanceof Error ? error.message : "Could not disable push notifications on this device.", tone: "danger" });
     } finally {
       setBusy(false);
     }
   }
 
+  const device = DEVICE_STATE[state];
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Bell className="size-4" />Low-stock push notifications</CardTitle>
-        <CardDescription>When a material enters To Order, all opted-in devices receive an alert. While it stays there, reminders arrive daily at 7:00 AM WIB.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {state === "loading" ? (
-            <Button type="button" variant="outline" disabled><Loader2 className="size-4 animate-spin" />Checking this device…</Button>
-          ) : state === "enabled" ? (
-            <Button type="button" variant="outline" onClick={() => void disable()} disabled={busy}><BellOff className="size-4" />{busy ? "Updating…" : "Disable on this device"}</Button>
-          ) : state === "ready" ? (
-            <Button type="button" onClick={() => void enable()} disabled={busy}>{busy ? <Loader2 className="size-4 animate-spin" /> : <Bell className="size-4" />}{busy ? "Enabling…" : "Enable push notifications"}</Button>
-          ) : state === "denied" ? (
-            <Button type="button" variant="outline" disabled>Notifications are blocked</Button>
-          ) : state === "not-configured" ? (
-            <Button type="button" variant="outline" disabled>Push notifications are not configured</Button>
-          ) : (
-            <Button type="button" variant="outline" disabled>Push notifications are unavailable here</Button>
-          )}
-          {state === "enabled" && <span className="text-sm text-success">Enabled on this device</span>}
+    <section aria-labelledby="push-settings-title" className="space-y-5 overflow-hidden rounded-xl border border-line bg-surface p-4 shadow-card desk:p-6">
+      <div>
+        <h2 id="push-settings-title" className="font-display text-title-2 text-ink">Low-stock push notifications</h2>
+        <p className="mt-1 text-body text-ink-muted">
+          When a material enters To order, all opted-in devices receive an alert. While it stays there, reminders arrive daily at 7:00 AM WIB.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-md border border-line bg-canvas p-4 tablet:flex-row tablet:items-center tablet:justify-between">
+        <div className="min-w-0">
+          <p className="text-small text-ink-muted">Stock alerts on this device</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <StatusChip tone={device.tone}>{device.label}</StatusChip>
+            <span className="text-body text-ink">{device.text}</span>
+          </div>
         </div>
-        {state === "unsupported" && <p className="text-sm text-muted-foreground">This browser does not support Web Push. Try a current browser that supports service workers and push notifications.</p>}
-        {state === "not-configured" && <p className="text-sm text-muted-foreground">The server has not been configured for push notifications yet.</p>}
-        {state === "denied" && <p className="text-sm text-muted-foreground">Notifications are blocked for this site. Change the site permission in your browser or device settings to enable them.</p>}
-        {showIosHint && <p className="text-sm text-muted-foreground">On iPhone or iPad running iOS or iPadOS 16.4 or later, use Share → Add to Home Screen, then open Porcafe POS from its icon before enabling notifications. A regular bookmark does not support these push alerts.</p>}
-        {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
-      </CardContent>
-    </Card>
+        <div className="shrink-0">
+          {state === "loading" ? (
+            <Button variant="secondary" loading disabled>Checking this device…</Button>
+          ) : state === "enabled" ? (
+            <Button variant="secondary" onClick={() => void disable()} loading={busy} disabled={busy}>
+              {busy ? "Updating…" : "Disable on this device"}
+            </Button>
+          ) : state === "ready" ? (
+            <Button onClick={() => void enable()} loading={busy} disabled={busy}>
+              {busy ? "Enabling…" : "Enable push notifications"}
+            </Button>
+          ) : state === "denied" ? (
+            <Button variant="secondary" disabled>Notifications are blocked</Button>
+          ) : state === "not-configured" ? (
+            <Button variant="secondary" disabled>Push notifications are not configured</Button>
+          ) : (
+            <Button variant="secondary" disabled>Push notifications are unavailable here</Button>
+          )}
+        </div>
+      </div>
+
+      {state === "denied" ? (
+        <Banner tone="danger">
+          Notifications are blocked for this site. Change the site permission in your browser or device settings to enable them.
+        </Banner>
+      ) : null}
+      {state === "not-configured" ? <p className="text-small text-ink-muted">The server has not been configured for push notifications yet.</p> : null}
+      {state === "unsupported" ? (
+        <p className="text-small text-ink-muted">This browser does not support Web Push. Try a current browser that supports service workers and push notifications.</p>
+      ) : null}
+      {showIosHint ? (
+        <Banner tone="info">
+          On iPhone or iPad running iOS or iPadOS 16.4 or later, use Share → Add to Home Screen, then open Porcafe POS from its icon before enabling notifications. A regular bookmark does not support these push alerts.
+        </Banner>
+      ) : null}
+      {message ? (
+        <p role="status" className="flex items-start gap-2 text-small text-ink">
+          <ToneShape tone={message.tone} className={message.tone === "ok" ? "mt-1 text-ok" : message.tone === "danger" ? "mt-1 text-danger" : "mt-1 text-neutral"} />
+          {message.text}
+        </p>
+      ) : null}
+    </section>
   );
 }

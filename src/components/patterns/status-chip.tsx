@@ -80,3 +80,22 @@ export function StatusChip({
     </span>
   );
 }
+
+const TONE_TEXT: Record<StatusTone, string> = {
+  ok: "text-ok",
+  info: "text-info",
+  warn: "text-warn-mark",
+  danger: "text-danger",
+  neutral: "text-neutral",
+  solid: "text-danger-solid",
+};
+
+/** A check's status line: the tone shape with one sentence beside it. The sentence carries the meaning. */
+export function StatusLine({ tone, children }: { tone: Exclude<StatusTone, "solid">; children: React.ReactNode }) {
+  return (
+    <p data-tone={tone} className="flex items-start gap-2 text-body font-medium text-ink">
+      <ToneShape tone={tone} className={cn("mt-1", TONE_TEXT[tone])} />
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+}

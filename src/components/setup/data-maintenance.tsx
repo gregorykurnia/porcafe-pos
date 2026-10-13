@@ -5,11 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DuplicateDatesCard } from "@/components/reports/duplicate-dates";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { StatusLine, ToneShape } from "@/components/patterns/status-chip";
 import { AsyncSection, type AsyncStatus } from "@/components/state/async-section";
-import { Stat } from "@/components/state/stat";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   findDuplicateSalesDates,
   listDailyItemLogs,
@@ -21,13 +20,36 @@ import {
   migrateLegacyItemSalesToDailyLogs,
   type LegacyItemSalesMigrationResult,
 } from "@/lib/data";
-import { findPreferredSupplierDisagreements, type PreferredSupplierIssue } from "@/lib/preferred-supplier";
+import { findPreferredSupplierDisagreements, type PreferredSupplierDisagreement, type PreferredSupplierIssue } from "@/lib/preferred-supplier";
 import type { DailyItemLog, InventoryMaterial, InventorySupplier, InventorySupplierItem, ItemSale, SalesEntry } from "@/lib/types";
 
 const ISSUE_TEXT: Record<PreferredSupplierIssue, string> = {
   "missing-link": "The preferred supplier has no supplier link for this material. Add the link, or choose another preferred supplier.",
   "flag-disagrees": "A supplier link is marked preferred, but the material prefers another supplier. The material's setting is the one the app uses.",
 };
+
+/** One check: a heading, one sentence on what it checks, its status line, then its detail. Cards hold sections. */
+function CheckCard({
+  id,
+  title,
+  description,
+  children,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="space-y-4 overflow-hidden rounded-xl border border-line bg-surface p-4 shadow-card desk:p-6">
+      <div>
+        <h2 id={id} className="font-display text-title-2 text-ink">{title}</h2>
+        <p className="mt-1 text-small text-ink-muted">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 /** Checks on the stored data. Data changes only when someone confirms a copy or a duplicate fix. */
 export function DataMaintenance() {
@@ -116,108 +138,113 @@ export function DataMaintenance() {
     }
   }
 
+  const duplicateCount = duplicates.length;
+  // Legacy-only dates say whether a copy is needed, with the word, shape and tone together.
+  const legacyNote = legacyOnlyCount > 0 ? (
+    <span className="inline-flex items-center gap-1.5 text-warn"><ToneShape tone="warn" className="text-warn-mark" />Copy needed</span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 text-ink-muted"><ToneShape tone="ok" className="text-ok" />None</span>
+  );
+  const legacyCells = [
+    { label: "Daily-log dates", value: String(dailyLogDates.size), note: null },
+    { label: "Legacy-only dates", value: String(legacyOnlyCount), note: legacyNote },
+    { label: "Daily-only dates", value: String(dailyOnlyCount), note: null },
+  ];
+
+  const issueColumns: Column<PreferredSupplierDisagreement>[] = [
+    { key: "material", label: "Material", phone: "title", cell: (item) => <span className="font-medium">{item.materialName}</span> },
+    { key: "supplier", label: "Supplier", phone: "meta", cell: (item) => supplierName(item.supplierId) },
+    { key: "check", label: "What to check", phone: "detail", cellClassName: "whitespace-normal", cell: (item) => ISSUE_TEXT[item.issue] },
+  ];
+
   return (
     <AsyncSection status={status} label="Loading data checks" onRetry={() => void load()} errorTitle="Couldn't load the data checks">
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Legacy item sales</CardTitle>
-            <CardDescription>
-              Older item rows from before Daily close. Copying a date creates its Daily close log. Existing logs and legacy rows are kept.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Stat label="Daily-log dates" value={String(dailyLogDates.size)} />
-              <Stat label="Legacy-only dates" value={String(legacyOnlyCount)} tone={legacyOnlyCount > 0 ? "warning" : "default"} />
-              <Stat label="Daily-only dates" value={String(dailyOnlyCount)} />
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => void previewMigration()} disabled={previewing || applying}>
-                {previewing ? "Preparing preview…" : "Preview copy"}
-              </Button>
-              <p className="text-xs text-muted-foreground">Preview only. It does not write or delete data.</p>
-            </div>
-            {migrationPreview && (
-              <div className="rounded-xl border border-info/20 bg-info/5 p-4 text-sm text-foreground">
-                <p className="font-medium">Copy preview</p>
-                {datesToCopy > 0 ? (
-                  <>
-                    <p className="mt-1 text-muted-foreground">
-                      Would copy {datesToCopy} date{datesToCopy === 1 ? "" : "s"} from {migrationPreview.rowsMigrated} legacy item row{migrationPreview.rowsMigrated === 1 ? "" : "s"}. Existing daily logs would be skipped and legacy rows would stay as they are.
-                    </p>
-                    <Button type="button" className="mt-3 bg-primary hover:bg-primary-hover" onClick={() => void applyMigration()} disabled={applying}>
-                      {applying ? "Copying…" : "Copy dates into Daily close"}
-                    </Button>
-                  </>
-                ) : (
-                  <p className="mt-1 text-muted-foreground">Nothing to copy. Every legacy date already has a Daily close log.</p>
-                )}
+      <div className="space-y-5">
+        <CheckCard
+          id="data-legacy-title"
+          title="Legacy item sales"
+          description="Older item rows from before Daily close. Copying a date creates its Daily close log. Existing logs and legacy rows are kept."
+        >
+          {/* Figures sit inside the check card, so they are not a second card: hairline dividers only. */}
+          <dl className="grid grid-cols-3 gap-3">
+            {legacyCells.map((cell) => (
+              <div key={cell.label} className="min-w-0 border-l border-line pl-3 first:border-l-0 first:pl-0">
+                <dt className="text-small text-ink-muted">{cell.label}</dt>
+                <dd className="mt-1 font-display text-fig-m tabular-nums text-ink">{cell.value}</dd>
+                {cell.note ? <dd className="mt-1 text-small">{cell.note}</dd> : null}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            ))}
+          </dl>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" onClick={() => void previewMigration()} disabled={previewing || applying} loading={previewing}>
+              {previewing ? "Preparing preview…" : "Preview copy"}
+            </Button>
+            <p className="text-small text-ink-muted">Preview only. It does not write or delete data.</p>
+          </div>
+          {migrationPreview ? (
+            <div className="space-y-3 rounded-md border border-line bg-canvas p-4">
+              <h3 className="text-title-3 text-ink">Copy preview</h3>
+              {datesToCopy > 0 ? (
+                <>
+                  <p className="text-body text-ink-muted">
+                    Would copy {datesToCopy} date{datesToCopy === 1 ? "" : "s"} from {migrationPreview.rowsMigrated} legacy item row{migrationPreview.rowsMigrated === 1 ? "" : "s"}. Existing daily logs would be skipped and legacy rows would stay as they are.
+                  </p>
+                  <Button onClick={() => void applyMigration()} loading={applying} disabled={applying}>
+                    {applying ? "Copying…" : "Copy dates into Daily close"}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-body text-ink-muted">Nothing to copy. Every legacy date already has a Daily close log.</p>
+              )}
+            </div>
+          ) : null}
+        </CheckCard>
 
-        {duplicates.length > 0 ? (
+        {duplicateCount > 0 ? (
           <DuplicateDatesCard groups={duplicates} onResolved={() => void load()} />
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Duplicate sales dates</CardTitle>
-              <CardDescription>Each operating day should have one revenue record.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">No duplicate dates.</p>
-            </CardContent>
-          </Card>
+          <CheckCard id="duplicate-dates-title" title="Duplicate sales dates" description="Each operating day should have one revenue record.">
+            <StatusLine tone="ok">No duplicate dates.</StatusLine>
+          </CheckCard>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Preferred supplier check</CardTitle>
-            <CardDescription>
-              Read-only. Each material&apos;s preferred supplier should match its supplier link. Nothing here is changed automatically.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {disagreements.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Every preferred supplier matches its supplier link.</p>
-            ) : (
-              <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Preferred supplier disagreements">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Material</TableHead>
-                      <TableHead>Supplier</TableHead>
-                      <TableHead>What to check</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {disagreements.map((item) => (
-                      <TableRow key={`${item.materialId}-${item.supplierId}-${item.issue}`}>
-                        <TableCell className="font-medium">{item.materialName}</TableCell>
-                        <TableCell>{supplierName(item.supplierId)}</TableCell>
-                        <TableCell className="whitespace-normal text-sm text-muted-foreground">{ISSUE_TEXT[item.issue]}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+        <CheckCard
+          id="data-preferred-title"
+          title="Preferred supplier check"
+          description="Read-only. Each material's preferred supplier should match its supplier link. Nothing here is changed automatically."
+        >
+          {disagreements.length === 0 ? (
+            <StatusLine tone="ok">Every preferred supplier matches its supplier link.</StatusLine>
+          ) : (
+            <>
+              <StatusLine tone="warn">
+                {disagreements.length} preferred supplier {disagreements.length === 1 ? "check" : "checks"} to review.
+              </StatusLine>
+              <div className="-mx-4 desk:-mx-6">
+                <DataTable
+                  caption="Preferred supplier disagreements"
+                  columns={issueColumns}
+                  rows={disagreements}
+                  getKey={(item) => `${item.materialId}-${item.supplierId}-${item.issue}`}
+                  density="comfortable"
+                  listBelow="desk"
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </>
+          )}
+        </CheckCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Usage</CardTitle>
-            <CardDescription>Open a day in Usage recap and choose Recalculate day after menu items or recipes change.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline" size="sm">
+        <CheckCard
+          id="data-usage-title"
+          title="Usage"
+          description="Open a day in Usage recap and choose Recalculate day after menu items or recipes change."
+        >
+          <div>
+            <Button asChild variant="secondary">
               <Link href="/inventory?tab=usage">Open Usage recap</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </CheckCard>
       </div>
     </AsyncSection>
   );

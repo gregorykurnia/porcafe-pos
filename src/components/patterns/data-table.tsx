@@ -121,7 +121,7 @@ export function DataTable<R>({
                   </TableHead>
                 )
               )}
-              {rowActions ? <TableHead className="w-10" aria-label="Actions" /> : null}
+              {rowActions ? <TableHead className="w-px whitespace-nowrap" aria-label="Actions" /> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -143,7 +143,7 @@ export function DataTable<R>({
                         {column.cell(row)}
                       </TableCell>
                     ))}
-                    {rowActions ? <TableCell className="w-10 text-right">{rowActions(row)}</TableCell> : null}
+                    {rowActions ? <TableCell className="w-px whitespace-nowrap text-right">{rowActions(row)}</TableCell> : null}
                   </TableRow>
                   {renderOpen && openKey === getKey(row) ? (
                     <TableRow className="border-line hover:bg-transparent">
@@ -167,7 +167,7 @@ export function DataTable<R>({
                     {index === 0 ? footer.label : footer.cells[column.key]}
                   </TableCell>
                 ))}
-                {rowActions ? <TableCell className="w-10" /> : null}
+                {rowActions ? <TableCell className="w-px" /> : null}
               </TableRow>
             </TableFooter>
           ) : null}
