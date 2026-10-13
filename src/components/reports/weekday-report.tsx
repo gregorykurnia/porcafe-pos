@@ -1,6 +1,8 @@
+"use client";
+
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card } from "@/components/ui/card";
+import { DataTable, type Column } from "@/components/patterns/data-table";
 import { WeekdayPatternAnalysis, type WeekdayMetricOption } from "@/components/weekday-pattern-analysis";
 import { idr } from "@/lib/dates";
 import { formatQuantity, topMainItemByWeekday } from "@/lib/item-report";
@@ -13,6 +15,7 @@ const SALES_METRICS: WeekdayMetricOption[] = [
     key: "average",
     label: "Average sales",
     valueLabel: "Average / occurrence",
+    unit: "Rp",
     getValue: (row) => row.average,
     formatValue: idr,
   },
@@ -20,6 +23,7 @@ const SALES_METRICS: WeekdayMetricOption[] = [
     key: "total",
     label: "Total sales",
     valueLabel: "Total recorded",
+    unit: "Rp",
     getValue: (row) => row.total,
     formatValue: idr,
   },
@@ -57,8 +61,8 @@ const PORTION_METRICS: WeekdayMetricOption[] = [
 ];
 
 /**
- * The Weekday tab: revenue by weekday, Main portions by weekday, and the leading Main item for each
- * weekday, all for the shared period.
+ * The Weekday tab (inventory §3.5.3): revenue by weekday, Main portions by weekday, and the leading Main item for
+ * each weekday, all for the shared period. Each pattern is a table with drawn bars, not a chart.
  */
 export function WeekdayReport({
   period,
@@ -99,8 +103,25 @@ export function WeekdayReport({
 
   const topByWeekday = useMemo(() => topMainItemByWeekday(itemRows, isMain, period), [isMain, itemRows, period]);
 
+  const topColumns: Column<{ weekday: string; top: { name: string; qty: number } | null }>[] = [
+    { key: "weekday", label: "Weekday", cell: (row) => row.weekday, phone: "title", cellClassName: "font-medium" },
+    {
+      key: "item",
+      label: "Top item",
+      cell: (row) => row.top?.name ?? <span className="text-ink-muted">No Main sold</span>,
+      phone: "meta",
+    },
+    {
+      key: "portions",
+      label: "Portions",
+      align: "right",
+      cell: (row) => (row.top ? formatQuantity(row.top.qty) : "—"),
+      phone: "figure",
+    },
+  ];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <WeekdayPatternAnalysis
         id="reports-sales-weekday"
         title="Sales pattern by weekday"
@@ -117,6 +138,7 @@ export function WeekdayReport({
         formatTotal={idr}
         formatAverage={idr}
         recordLabel="Sales entries"
+        money
       />
 
       <WeekdayPatternAnalysis
@@ -135,43 +157,33 @@ export function WeekdayReport({
         formatTotal={formatQuantity}
         formatAverage={formatQuantity}
         recordLabel="Main item rows"
+        money={false}
         averageBasis="observed"
         occurrenceLabel="Selling days"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Main item by weekday</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">The leading Main item for each weekday in {rangeLabel}.</p>
-        </CardHeader>
-        <CardContent>
+      <Card className="gap-0 py-0 shadow-card">
+        <div className="space-y-4 p-5 tablet:p-6">
+          <div>
+            <h2 className="font-display text-title-2 text-ink">Top Main item by weekday</h2>
+            <p className="mt-1 text-small text-ink-muted">The leading Main item for each weekday in {rangeLabel}.</p>
+          </div>
           {mainRows.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+            <p className="flex h-32 items-center justify-center rounded-md border border-dashed border-line-input px-4 text-center text-body text-ink-muted">
               No Main portions are available for this period.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border" role="region" tabIndex={0} aria-label="Top item by weekday table">
-              <Table className="min-w-[28rem]">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Weekday</TableHead>
-                    <TableHead>Top item</TableHead>
-                    <TableHead className="text-right">Portions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {topByWeekday.map(({ weekday, top }) => (
-                    <TableRow key={weekday}>
-                      <TableCell className="font-medium">{weekday}</TableCell>
-                      <TableCell>{top?.name ?? <span className="text-muted-foreground">No Main sold</span>}</TableCell>
-                      <TableCell className="text-right tabular-nums">{top ? formatQuantity(top.qty) : "—"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="overflow-hidden rounded-md border border-line">
+              <DataTable
+                caption={`Top Main item by weekday, ${rangeLabel}`}
+                columns={topColumns}
+                rows={topByWeekday}
+                getKey={(row) => row.weekday}
+                density="compact"
+              />
             </div>
           )}
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
