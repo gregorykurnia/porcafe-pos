@@ -40,6 +40,8 @@ export function PeriodChoice({
     <div className="flex flex-wrap items-center gap-2">
       <SegmentedControl
         label="Period"
+        // One row on phone: it scrolls sideways instead of wrapping "Custom range" onto its own line.
+        className="flex-nowrap overflow-x-auto [&>button]:shrink-0 [&>button]:whitespace-nowrap"
         value={preset === "custom" ? "custom" : preset}
         options={options}
         onChange={(value) => {

@@ -121,7 +121,12 @@ export default function Dashboard() {
   const bestDay = useMemo(() => {
     const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
     if (monthSales.length === 0) return null;
-    return monthSales.reduce((best, s) => (s.total > best.total ? s : best), monthSales[0]);
+    // A day can have more than one sales entry, so compare day totals, as Reports does.
+    const totals = new Map<string, number>();
+    for (const s of monthSales) totals.set(s.date, (totals.get(s.date) ?? 0) + s.total);
+    let best: { date: string; total: number } | null = null;
+    for (const [date, total] of totals) if (!best || total > best.total) best = { date, total };
+    return best;
   }, [sales, thisMonth]);
 
   const trendPoints: TrendPoint[] = calendarMonthTrend(sales, thisMonth).map((day) => ({

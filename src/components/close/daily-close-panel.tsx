@@ -145,7 +145,6 @@ function CloseItemRow({
         id={`daily-quantity-${item.id}`}
         label={item.name}
         value={quantity}
-        allowDecimal
         onChange={onQuantityChange}
       />
     </li>
