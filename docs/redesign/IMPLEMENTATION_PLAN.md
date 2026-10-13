@@ -105,7 +105,7 @@ Goal: every building block in DESIGN_SYSTEM §10 exists in code and can be revie
   - The connection state sits at the bottom of the sidebar and rail.
   - Keep the `navigation-guard`, offline notice and push/PWA hooks working exactly as they do now.
   - Leave out the per-section nav signals for now (draft dot, Stock count) until the owner decides (see the behaviour changes below).
-- [ ] **R2.6 Owner review.** The owner opens `/lab` on the Mac and the phone (and the tablet, if used) and approves it.
+- [x] **R2.6 Owner review.** The owner opens `/lab` on the Mac and the phone (and the tablet, if used) and approves it.
 
 **Exit:** owner approves `/lab`. The new shell can go live in R3.1, or as its own commit if it looks right with the old screens under the bridge theme.
 
