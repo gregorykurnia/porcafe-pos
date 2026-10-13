@@ -1,8 +1,9 @@
 # Redesign implementation plan — Canopy
 
-Status: design finished (R0); ready to build once the owner answers R0.6  
+Status: design finished (R0); ready to build, starting at R1  
 Updated: 2026-10-13  
 Design reference: **`DESIGN_SYSTEM.md`** (the rules) and **`directions/canopy-final.html`** (the visuals). If they disagree, `DESIGN_SYSTEM.md` wins. The reasons behind the decisions are in `CANOPY_REVIEW.md`.
+How to run the build, one phase per session: `HANDOFF_IMPLEMENTATION.md`.
 
 ## Scope and guardrails
 
@@ -35,14 +36,14 @@ Done by a stronger-model review (`HANDOFF_CANOPY_REVIEW.md` → `CANOPY_REVIEW.m
 - [x] **R0.3 Status colours:** five tones (ok · info · warn · danger · neutral), each with its own shape. Honey is retired. A solid danger fill is used only for Negative stock.
 - [x] **R0.4 Phone navigation:** a docked 5-tab bar with Close centred (tinted normally, solid when active). Sub-sections are underline tabs at the top of each page, at every width. On phone, Setup is an index list.
 - [x] **R0.5 Final mockup and rules:** `directions/canopy-final.html` and `DESIGN_SYSTEM.md`.
-- [ ] **R0.6 Owner answers.** Answer these, then record them in the decisions log:
-  1. Is the cream sidebar too quiet? The fallback is a deep-green logo panel at the top of the sidebar only.
-  2. In Daily close, are payments entered before or after items? The design currently puts them after, matching the paper sheet.
-  3. Line amounts in the close (qty × price beside each item): desktop only, everywhere, or nowhere?
-  4. Counter tablet: landscape on a stand, or held in portrait? Is the tablet used at all? The review treats it as first-class.
-  5. Is it fine to retire honey? If warmth is missed, it can come back in non-status places only.
-  6. Accept the brief amendments in `CANOPY_REVIEW.md` §1? If yes, apply them to `DESIGN_BRIEF.md`.
-  7. Approve or decline each item under "Behaviour changes needing owner approval" below.
+- [x] **R0.6 Owner answers.** On 2026-10-13 the owner accepted the recommendations below, which are also in the decisions log:
+  1. **Sidebar:** stays cream. Revisit at the R2.6 `/lab` review; the fallback is a deep-green logo panel at the top of the sidebar only.
+  2. **Payments:** entered after the items, matching the paper sheet. The order is one component's layout, so it's cheap to swap later.
+  3. **Line amounts:** shown on desk and tablet, but not on phone, where the row needs the room for the stepper.
+  4. **Tablet:** the rail layout covers 768–1183 automatically. Landscape (1024 and up) gets the two-column close; portrait drops to one column with the summary below. No other tablet-only work.
+  5. **Honey:** retired.
+  6. **Brief amendments:** applied to `DESIGN_BRIEF.md`.
+  7. **Behaviour changes:** see the table below. Nav signals are declined for now; the recipes guard and line amounts are approved.
 
 ## Phase R1 — Foundations (bridge theme)
 
@@ -96,7 +97,7 @@ Goal: every building block in DESIGN_SYSTEM §10 exists in code and can be revie
   - Empty, loading and error states: the illustration empty state, skeletons, and an error banner with Retry.
   - Confirm dialog (normal, and destructive with focus on the safe choice), the unsaved-changes guard dialog (Save draft & continue / Stay / Discard), and the before/after diff.
   - Saved-at indicator.
-  - Inline-SVG chart helpers: bars, highlight, dashed today, dotted missing days, average line, legend and `aria-label`.
+  - Chart styling: update `src/lib/chart-colors.ts` and add shared `recharts` settings (bars, highlight, dashed today, dotted missing days, average line, legend, `role="img"` and `aria-label` wrapper).
 - [ ] **R2.5 App shell (`nav.tsx`).**
   - Desk: a 232 px cream sidebar with the lockup.
   - Tablet: an 88 px labelled rail.
@@ -133,6 +134,8 @@ For **each** work package below:
 | [ ] R3.10 | Setup → Menu, Materials, Recipes | `src/app/setup/page.tsx`, `setup/menu-catalog.tsx`, `menu-item-row.tsx`, `materials-setup.tsx`, `recipes-setup.tsx`, `inventory/recipes.tsx`, `inventory/materials.tsx` | 3.7–3.9 | Menu uses category band rows. Recipes is a list next to its detail. Materials is assembled from drawn patterns (HTML §7). |
 | [ ] R3.11 | Setup → Suppliers, Import, Notifications, Data maintenance | `setup/suppliers-setup.tsx`, `inventory/suppliers.tsx`, `setup/import-setup.tsx`, `inventory/import-review.tsx`, `push-notifications-settings.tsx`, `setup/data-maintenance.tsx` | 3.10–3.13 | Assembled from drawn patterns (HTML §7). Suppliers gets an in-page segmented control instead of stacked cards. |
 
+**Owner checkpoint after R3.2:** the owner uses the new Daily close for a real night's close before R3.3 onwards goes ahead.
+
 The order follows usage: the nightly close first, then stock, reports and setup. Charts follow DESIGN_SYSTEM §10 "Charts" and the dataviz rules.
 
 **Exit:** every screen is ticked off against the inventory.
@@ -158,9 +161,9 @@ The design assumes these, but each one changes behaviour or data, not just the l
 
 | Item | What it is | Cost or risk |
 |---|---|---|
-| **Nav signals** | A draft half-circle on Daily close and a To order count on Stock, in the sidebar, rail and tab bar. | Needs data in the app shell on **every page**, which means extra Firestore reads. Could reuse data already loaded per page, or be dropped. |
-| **Recipes unsaved guard** | The same unsaved-changes guard Daily close has, added to the recipe editor (the inventory notes none exists today). | Small; reuses `navigation-guard`. |
-| **Line amounts in the close** | qty × menu price beside each item. | Display-only, computed from data already loaded. It's listed here because it adds figures; see R0.6 question 3. |
+| **Nav signals** — ❌ declined for now | A draft half-circle on Daily close and a To order count on Stock, in the sidebar, rail and tab bar. | Needs data in the app shell on **every page**, which means extra Firestore reads. Revisit after the redesign, perhaps reusing data a page has already loaded. Leave a slot in the shell's API, but render nothing. |
+| **Recipes unsaved guard** — ✅ approved | The same unsaved-changes guard Daily close has, added to the recipe editor (the inventory notes none exists today). | Small; reuses `navigation-guard` / `use-unsaved-changes.ts`. Build it as its own commit inside R3.10. |
+| **Line amounts in the close** — ✅ approved (desk and tablet) | qty × menu price beside each item. | Display-only, computed from data already loaded. Built in R3.2. |
 
 ## Decisions log
 
@@ -172,7 +175,8 @@ The design assumes these, but each one changes behaviour or data, not just the l
 | 2026-10-13 | Work directly on `main`, one commit per work package. |
 | 2026-10-13 | Canopy review accepted as the design reference. Cream sidebar; comfortable and compact densities; five status tones with shapes; honey retired; docked phone tab bar with Close centred; sub-sections as page tabs; tablet treated as first-class (pending R0.6 answer 4). |
 | 2026-10-13 | Build note: new tokens go in alongside the old ones (bridge) because `main` is live. The palette reset waits until R4.1. |
-| _open_ | R0.6 answers 1–7. |
+| 2026-10-13 | R0.6: the owner accepted all recommendations (cream sidebar, payments after items, line amounts on desk and tablet, rail covers tablet, honey retired, brief amended, nav signals declined, recipes guard approved). |
+| 2026-10-13 | Charts: keep `recharts` (already a dependency), restyled to the DESIGN_SYSTEM chart rules through `src/lib/chart-colors.ts`, rather than rewriting them as inline SVG. Same look, less risk. |
 
 ## Out of scope (noted for later)
 

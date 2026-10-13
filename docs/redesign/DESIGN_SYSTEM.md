@@ -247,7 +247,7 @@ On touch devices (`@media (pointer: coarse)`), compact switches to comfortable a
 
 **Empty / loading / error.** Empty: the one line illustration + `title-2` + one sentence + at most one action. Loading: skeletons shaped like the real layout + "Loading …" text; time out after 10 s. Error: a danger banner that says what failed and what is kept, plus Retry; the previous view stays visible when one exists.
 
-**Charts** (inline SVG). Bars in `chart-1` at 78%, the highlight in `brand` with a direct label, today in progress as a dashed `line-input` outline, missing days as a dotted baseline, and the average as a dashed ink line. Always include a legend naming each mark, a one-line takeaway under the chart, and `role="img"` with a sentence-long `aria-label`.
+**Charts** (built with `recharts`, already a dependency, and styled through `src/lib/chart-colors.ts`; the mockup's inline SVG is only the visual reference). Bars in `chart-1` at 78%, the highlight in `brand` with a direct label, today in progress as a dashed `line-input` outline, missing days as a dotted baseline, and the average as a dashed ink line. Always include a legend naming each mark, a one-line takeaway under the chart, and `role="img"` with a sentence-long `aria-label`.
 
 ## 11. Icons
 
