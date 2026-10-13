@@ -11,7 +11,7 @@ import { ITEM_CATEGORIES, filterSheetItems, sortForSheet } from "@/lib/menu-shee
 import { getDailyItemLog, saveDailyClose, undoDailyClose, getSalesEntryByDate } from "@/lib/data";
 import type { DailyItemLog, MenuItem, SalesEntry } from "@/lib/types";
 import { todayISO, formatDisplay } from "@/lib/dates";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { calculateAndPersistDailyInventoryUsage, usageStatusDeductsStock } from "@/lib/inventory-usage";
 import type { ConfirmFn } from "@/components/confirm-dialog";
 

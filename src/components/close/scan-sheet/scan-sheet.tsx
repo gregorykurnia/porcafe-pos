@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ChangeDiff } from "@/components/change-diff";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DuplicateDatesCard } from "@/components/reports/duplicate-dates";
 import { AsyncSection, type AsyncStatus } from "@/components/state/async-section";

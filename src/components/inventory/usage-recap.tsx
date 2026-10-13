@@ -5,7 +5,7 @@ import { usageStatusView } from "@/lib/status";
 import { Stat } from "@/components/state/stat";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calculator, ChevronDown, ChevronRight, CircleCheck, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

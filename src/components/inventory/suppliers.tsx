@@ -6,7 +6,7 @@ import { reorderStatusView } from "@/lib/status";
 import { Stat } from "@/components/state/stat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, parseISO } from "date-fns";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   Archive, ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, CircleAlert, ClipboardList, Link2, Pencil, Plus, RotateCcw, Truck,
 } from "lucide-react";

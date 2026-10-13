@@ -2,7 +2,7 @@
 
 import { Stat } from "@/components/state/stat";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   AlertTriangle,
   ClipboardCheck,

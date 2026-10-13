@@ -232,4 +232,33 @@
   [data-slot="card"] {
     box-shadow: var(--shadow-card);
   }
+
+  /* Toasts: the tone lives only in the icon disc. The icon shape (check, info, triangle, octagon) carries the meaning too. */
+  [data-sonner-toast] [data-icon] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: 9999px;
+    color: var(--color-ink-muted);
+    background: var(--color-sunken);
+  }
+  [data-sonner-toast][data-type="success"] [data-icon] {
+    color: var(--color-ok);
+    background: var(--color-ok-tint);
+  }
+  [data-sonner-toast][data-type="info"] [data-icon] {
+    color: var(--color-info);
+    background: var(--color-info-tint);
+  }
+  [data-sonner-toast][data-type="warning"] [data-icon] {
+    color: var(--color-warn);
+    background: var(--color-warn-tint);
+  }
+  [data-sonner-toast][data-type="error"] [data-icon] {
+    color: var(--color-danger);
+    background: var(--color-danger-tint);
+  }
 }

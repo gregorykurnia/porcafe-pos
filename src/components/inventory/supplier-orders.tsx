@@ -4,7 +4,7 @@ import { ResponsiveTable } from "@/components/responsive-table";
 import { StatusBadge } from "@/components/state/status-badge";
 import { orderStatusView } from "@/lib/status";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Ban, ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/confirm-dialog";

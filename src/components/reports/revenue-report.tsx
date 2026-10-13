@@ -2,7 +2,7 @@ import { ResponsiveTable } from "@/components/responsive-table";
 import { useMemo } from "react";
 import Link from "next/link";
 import { Download, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";

@@ -21,7 +21,7 @@ import { todayISO, toISODate, weekKey, monthKey, formatDisplay, formatWeekDispla
 import { downloadCSV } from "@/lib/csv";
 import { addDays, subDays, addWeeks, subWeeks, addMonths, subMonths, parseISO } from "date-fns";
 import { ExternalLink } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 type Period = "day" | "week" | "month";
 

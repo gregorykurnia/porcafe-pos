@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { EditableMenuItemRow } from "@/components/setup/menu-item-row";
 import { SortableHead, cmp, toggleSort, type Sort } from "@/components/sortable-head";

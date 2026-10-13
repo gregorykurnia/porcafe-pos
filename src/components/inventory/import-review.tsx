@@ -4,7 +4,7 @@ import { StatusBadge } from "@/components/state/status-badge";
 import { importRowStatusView } from "@/lib/status";
 import { Stat } from "@/components/state/stat";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Check, FileSpreadsheet, Save, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

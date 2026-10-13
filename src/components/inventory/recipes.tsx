@@ -3,7 +3,7 @@
 import { StatusBadge } from "@/components/state/status-badge";
 import { recipeStatusView, reviewStatusView } from "@/lib/status";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Check, Copy, Plus, Save, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

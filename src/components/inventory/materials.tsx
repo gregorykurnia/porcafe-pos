@@ -3,7 +3,7 @@
 import { StatusBadge } from "@/components/state/status-badge";
 import { reviewStatusView } from "@/lib/status";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Archive, Check, Plus, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
