@@ -45,7 +45,7 @@ export function AsyncSection({
     return (
       <div role="alert" className="rounded-xl border border-danger/20 bg-danger/5 p-5 text-center">
         <p className="font-medium text-foreground">{errorTitle}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{errorDescription}</p>
+        <p className="mt-1 text-table text-muted-foreground">{errorDescription}</p>
         {onRetry && (
           <Button type="button" variant="outline" className="mt-4" onClick={onRetry}>
             Retry
@@ -59,7 +59,7 @@ export function AsyncSection({
     return (
       <div className="rounded-xl border border-dashed border-border p-6 text-center">
         {emptyTitle && <p className="font-medium text-foreground">{emptyTitle}</p>}
-        {emptyDescription && <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>}
+        {emptyDescription && <p className="mt-1 text-table text-muted-foreground">{emptyDescription}</p>}
         {emptyAction && <div className="mt-4">{emptyAction}</div>}
       </div>
     );

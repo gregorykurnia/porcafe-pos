@@ -26,7 +26,7 @@ export function RelativeSavedAt({
 
   if (savedAt === null) return null;
   return (
-    <span className={cn("text-xs text-muted-foreground", className)} aria-live="polite">
+    <span className={cn("text-micro text-muted-foreground", className)} aria-live="polite">
       {prefix ? `${prefix} ` : ""}
       {formatSavedAgo(savedAt, now)}
     </span>

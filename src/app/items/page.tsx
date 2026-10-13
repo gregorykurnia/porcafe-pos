@@ -37,7 +37,7 @@ function isItemsView(value: string): boolean {
 // The view and the close date live in the URL, so a reload or a shared link opens the same screen.
 // History is loaded when the tab opens, so the Daily close screen stays light.
 const ItemHistory = dynamic(() => import("@/components/items/item-history").then((module) => module.ItemHistory), {
-  loading: () => <p className="py-6 text-center text-sm text-muted-foreground">Loading history…</p>,
+  loading: () => <p className="py-6 text-center text-table text-muted-foreground">Loading history…</p>,
 });
 
 export default function ItemsPage() {

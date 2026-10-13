@@ -336,7 +336,7 @@ export function UsageRecap() {
               {event.issues.map((issue, index) => (
                 <li key={`${issue.code}-${issue.recipeId ?? ""}-${index}`}>
                   {issue.message}
-                  {issue.sourceRef && <span className="ml-1 font-mono text-xs">({issue.sourceRef})</span>}
+                  {issue.sourceRef && <span className="ml-1 font-mono text-micro">({issue.sourceRef})</span>}
                 </li>
               ))}
             </ul>

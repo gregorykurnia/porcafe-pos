@@ -87,7 +87,7 @@ function preloadInventoryTab(tab: DataTab) {
 function InventoryTabLoading() {
   return (
     <Card>
-      <CardContent className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+      <CardContent className="flex items-center justify-center gap-2 p-10 text-table text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />Loading inventory section…
       </CardContent>
     </Card>
