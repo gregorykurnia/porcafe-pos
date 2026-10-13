@@ -84,7 +84,7 @@ const SETUP_SEGMENTS: { value: SetupSegment; label: string }[] = [
 
 const SECTION_CLASS = "overflow-hidden rounded-xl border border-line bg-surface shadow-card";
 const TEXTAREA_CLASS =
-  "min-h-24 w-full rounded-md border border-line-input bg-surface px-3 py-2 text-[16px] text-ink outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-accent desk:text-body";
+  "min-h-24 w-full rounded-md border border-line-input bg-surface px-3 py-2 text-[16px] text-ink placeholder:text-ink-muted desk:text-body";
 
 /** Previous prices for one link, newest first, in a disclosure. Shows nothing when there is no history. */
 function PriceHistory({ item }: { item: InventorySupplierItem }) {

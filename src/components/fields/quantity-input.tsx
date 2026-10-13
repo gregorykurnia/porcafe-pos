@@ -63,7 +63,7 @@ export function QuantityInput({ id, label, value, onChange, min = 0, unit, allow
           if (next !== null) onChange(next);
         }}
         className={cn(
-          "h-11 w-16 bg-transparent text-center font-display text-fig-m tabular-nums outline-none sm:h-9",
+          "h-11 w-16 bg-transparent text-center font-display text-fig-m tabular-nums sm:h-9 [@media(pointer:coarse)]:h-11",
           hasValue ? "text-brand" : "text-ink"
         )}
       />

@@ -4,6 +4,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { useReturnFocus } from "@/hooks/use-return-focus"
 
 // Confirmations (DESIGN_SYSTEM §10 "Dialogs"). Title, one sentence, an optional detail block, then the buttons
 // right-aligned (stacked full width on phone). Focus placement is set by the caller: normal confirms focus the
@@ -30,12 +31,22 @@ function AlertDialogOverlay({ className, ...props }: React.ComponentProps<typeof
   )
 }
 
-function AlertDialogContent({ className, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+function AlertDialogContent({ className, onOpenAutoFocus, onCloseAutoFocus, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  // Radix AlertDialog only returns focus to a trigger, so dialogs opened from code get their opener back here.
+  const focus = useReturnFocus()
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
+        onOpenAutoFocus={(event) => {
+          focus.remember()
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (!event.defaultPrevented) focus.restore(event)
+        }}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl border border-line bg-surface p-6 text-ink shadow-overlay outline-none",
           className

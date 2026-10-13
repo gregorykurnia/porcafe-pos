@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useRef } from "react";
 import { Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -13,22 +13,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-
-/**
- * Radix returns focus to its own trigger, and these dialogs are opened from code with no trigger, so focus would
- * fall to the page top. This records what had focus when the dialog opened and gives it back on close.
- */
-function useReturnFocus(open: boolean) {
-  const openerRef = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    if (open) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  }, [open]);
-  return (event: Event) => {
-    event.preventDefault();
-    const opener = openerRef.current;
-    if (opener?.isConnected) opener.focus();
-  };
-}
 
 /**
  * Confirmation (DESIGN_SYSTEM §10). A normal confirm focuses the action. A destructive one shows a danger disc and
@@ -60,7 +44,6 @@ export function ConfirmDialog({
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const returnFocus = useReturnFocus(open);
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -70,7 +53,6 @@ export function ConfirmDialog({
           event.preventDefault();
           (destructive ? cancelRef.current : confirmRef.current)?.focus();
         }}
-        onCloseAutoFocus={returnFocus}
       >
         <AlertDialogHeader>
           {destructive ? (
@@ -125,7 +107,6 @@ export function UnsavedGuardDialog({
   onDiscard: () => void;
 }) {
   const canSave = onSaveAndContinue !== undefined;
-  const returnFocus = useReturnFocus(open);
   const saveRef = useRef<HTMLButtonElement>(null);
   const stayRef = useRef<HTMLButtonElement>(null);
   return (
@@ -136,7 +117,6 @@ export function UnsavedGuardDialog({
           event.preventDefault();
           (canSave ? saveRef.current : stayRef.current)?.focus();
         }}
-        onCloseAutoFocus={returnFocus}
       >
         <AlertDialogHeader>
           <AlertDialogTitle>{canSave ? "Save your changes first?" : "Unsaved changes"}</AlertDialogTitle>

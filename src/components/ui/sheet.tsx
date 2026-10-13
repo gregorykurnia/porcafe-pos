@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 import { XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useReturnFocus } from "@/hooks/use-return-focus"
 
 // Review-and-save flows (DESIGN_SYSTEM §10 "Sheets"). A 680 px side sheet on tablet and desk, full screen on phone.
 function Sheet(props: React.ComponentProps<typeof DialogPrimitive.Root>) {
@@ -23,11 +24,14 @@ function SheetContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   /** Set false when the screen draws its own close control, for example one that is disabled while work runs. */
   showCloseButton?: boolean
 }) {
+  const focus = useReturnFocus()
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -36,6 +40,14 @@ function SheetContent({
       />
       <DialogPrimitive.Content
         data-slot="sheet-content"
+        onOpenAutoFocus={(event) => {
+          focus.remember()
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (!event.defaultPrevented) focus.restore(event)
+        }}
         className={cn(
           "fixed inset-0 z-50 flex flex-col gap-4 overflow-y-auto overscroll-contain bg-surface p-4 text-ink shadow-overlay outline-none",
           "tablet:inset-y-0 tablet:right-0 tablet:left-auto tablet:w-[min(680px,100vw)] tablet:rounded-l-xl tablet:p-6",
