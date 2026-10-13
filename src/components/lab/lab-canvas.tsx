@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "@/lib/toast";
 import { LabFields } from "@/components/lab/lab-fields";
+import { LabPatterns } from "@/components/lab/lab-patterns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -81,6 +82,10 @@ export function LabCanvas() {
 
       <LabSection id="lab-fields" title="Fields" note="Money, portions, material quantities, dates and periods. Shorthand money is read back on blur.">
         <LabFields />
+      </LabSection>
+
+      <LabSection id="lab-patterns" title="Patterns" note="Chips, stats, tabs, banners, states, dialogs, tables and charts.">
+        <LabPatterns />
       </LabSection>
 
       <LabSection id="lab-sheets" title="Sheets and dialogs" note="Sheets are 680 px on tablet and desk, full screen on phone. Confirmations are AlertDialogs.">

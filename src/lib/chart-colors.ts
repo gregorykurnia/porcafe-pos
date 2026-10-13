@@ -3,6 +3,13 @@
 // The four payment and category slots keep a fixed order and never cycle.
 export const chartColors = {
   primary: "var(--color-brand)",
+  // DESIGN_SYSTEM §10: main series at 78% opacity, the highlight in brand, today as a dashed outline,
+  // and the average as a dashed ink line.
+  series: "var(--color-accent)",
+  seriesOpacity: 0.78,
+  highlight: "var(--color-brand)",
+  today: "var(--color-line-input)",
+  average: "var(--color-ink)",
   grid: "var(--chart-grid)",
   other: "var(--chart-other)",
   payment: {
