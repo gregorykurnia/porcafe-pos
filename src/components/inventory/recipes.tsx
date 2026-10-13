@@ -1,18 +1,18 @@
 "use client";
 
-import { StatusBadge } from "@/components/state/status-badge";
-import { recipeStatusView, reviewStatusView } from "@/lib/status";
 import { useMemo, useState } from "react";
-import { toast } from "@/lib/toast";
 import { Check, Copy, Plus, Save, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { EmptyState } from "@/components/patterns/states";
+import { StatusChip, ToneShape, type StatusTone } from "@/components/patterns/status-chip";
 import { UnsavedGuardDialog } from "@/components/patterns/dialogs";
+import { Banner } from "@/components/patterns/banner";
+import { FieldRow } from "@/components/fields/field-row";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
+import { toast } from "@/lib/toast";
 import { saveInventoryRecipeVersion } from "@/lib/data";
 import { INVENTORY_UNITS, normalizeRecipeBoxLines, validateRecipe } from "@/lib/inventory";
 import {
@@ -21,6 +21,8 @@ import {
   inventoryRecipeId,
   slugifyInventoryId,
 } from "@/lib/inventory-source";
+import { recipeStatusView, reviewStatusView } from "@/lib/status";
+import { cn } from "@/lib/utils";
 import type {
   InventoryMaterial,
   InventoryRecipeLine,
@@ -39,6 +41,21 @@ type RecipesProps = {
   recipeLines: InventoryRecipeLine[];
   onChanged: () => Promise<void>;
 };
+
+/** Recipe statuses use the Canopy tones of DESIGN_SYSTEM §6: Active ok, Draft info, Needs review warn, Retired neutral. */
+const RECIPE_TONE: Record<InventoryRecipeVersion["status"], StatusTone> = {
+  active: "ok",
+  draft: "info",
+  "needs-review": "warn",
+  retired: "neutral",
+};
+
+/**
+ * The line grid. Desk: ingredient, quantity, unit and remove on the first line, then the source and review beneath.
+ * Phone and tablet: the ingredient and remove first, then quantity and unit, source and review.
+ */
+const LINE_GRID =
+  "grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 gap-y-2 desk:grid-cols-[minmax(0,1fr)_112px_96px_44px] desk:gap-x-3";
 
 function timestamp(): number {
   return Date.now();
@@ -74,10 +91,6 @@ function newRecipe(menuItems: MenuItem[], recipes: InventoryRecipeVersion[]): In
   };
 }
 
-function recipeBadge(status: InventoryRecipeVersion["status"]) {
-  return <StatusBadge view={recipeStatusView(status)} />;
-}
-
 /** What the editor would save, without ids and timestamps. The draft is unsaved when this differs from the saved copy. */
 function recipeSnapshot(recipe: InventoryRecipeVersion | null, lines: InventoryRecipeLine[]): string {
   return JSON.stringify([
@@ -86,6 +99,10 @@ function recipeSnapshot(recipe: InventoryRecipeVersion | null, lines: InventoryR
       : null,
     lines.map((line) => [line.ingredientType, line.ingredientId, line.ingredientName, line.quantity, line.unit, line.sourceRef, line.note ?? null, line.reviewStatus]),
   ]);
+}
+
+function basisText(recipe: Pick<InventoryRecipeVersion, "basis" | "yieldQuantity" | "yieldUnit">): string {
+  return recipe.basis === "batch" ? `Yield ${recipe.yieldQuantity ?? "—"} ${recipe.yieldUnit ?? ""}`.trim() : "Per portion";
 }
 
 function recipeLineApprovalIssue(
@@ -328,63 +345,245 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
     }
   }
 
+  const targetOptions = draftRecipe?.targetType === "menu_item"
+    ? menuItems.map((item) => ({ value: item.id, label: item.name }))
+    : componentOptions.map(([id, name]) => ({ value: id, label: name }));
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(240px,0.38fr)_minmax(0,1fr)]">
-      <Card className="h-fit">
-        <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Recipe versions</CardTitle><CardDescription>Draft and review versions are safe to edit; active versions should be copied forward.</CardDescription></div><Button size="icon-sm" variant="outline" onClick={() => leaveThen(startNewRecipe)} aria-label="Create recipe"><Plus className="size-4" /></Button></div></CardHeader>
-        <CardContent className="space-y-2">
-          {recipes.length === 0 && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">No recipe versions yet. Review the import or create one.</p>}
-          {recipes.map((recipe) => (
-            <button key={recipe.id} type="button" onClick={() => leaveThen(() => editRecipe(recipe))} className={`w-full rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${selectedId === recipe.id ? "border-primary bg-primary/5" : "border-border/70"}`}>
-              <div className="flex items-start justify-between gap-2"><span className="font-medium">{recipe.targetName}</span>{recipeBadge(recipe.status)}</div>
-              <p className="mt-1 text-xs text-muted-foreground">v{recipe.version} · {recipe.targetType === "menu_item" ? "Menu item" : "Prepared component"} · {recipe.basis === "batch" ? `Yield ${recipe.yieldQuantity ?? "—"} ${recipe.yieldUnit ?? ""}` : "Per portion"}</p>
-            </button>
-          ))}
-        </CardContent>
-      </Card>
+    <div className="grid gap-5 desk:grid-cols-[300px_minmax(0,1fr)] desk:items-start">
+      <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-card" aria-label="Recipe versions">
+        <div className="flex items-start justify-between gap-3 border-b border-line p-4 desk:px-5">
+          <div className="min-w-0">
+            <h2 className="font-display text-title-2 text-ink">Recipe versions</h2>
+            <p className="mt-1 text-small text-ink-muted">Draft and review versions are safe to edit; active versions should be copied forward.</p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => leaveThen(startNewRecipe)} className="shrink-0">
+            <Plus className="size-4" strokeWidth={1.5} aria-hidden="true" />
+            New recipe
+          </Button>
+        </div>
+        {recipes.length === 0 ? (
+          <div className="p-5">
+            <EmptyState title="No recipe versions yet">Review the import or create one.</EmptyState>
+          </div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {recipes.map((recipe) => {
+              const selected = selectedId === recipe.id;
+              return (
+                <li key={recipe.id}>
+                  <button
+                    type="button"
+                    aria-current={selected ? "true" : undefined}
+                    onClick={() => leaveThen(() => editRecipe(recipe))}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-canvas desk:px-5",
+                      selected && "bg-brand-soft hover:bg-brand-soft"
+                    )}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-table font-semibold text-ink">{recipe.targetName}</span>
+                      <span className="mt-0.5 block text-small text-ink-muted">
+                        v{recipe.version} · {recipe.targetType === "menu_item" ? "Menu item" : "Prepared component"} · {basisText(recipe)}
+                      </span>
+                    </span>
+                    <StatusChip tone={RECIPE_TONE[recipe.status]}>{recipeStatusView(recipe.status).label}</StatusChip>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
-      <Card>
-        <CardHeader><CardTitle>{draftRecipe ? `${draftRecipe.targetName || "New recipe"} · v${draftRecipe.version}` : "Recipe editor"}</CardTitle><CardDescription>Recipe lines retain source references where they came from the reviewed workbook preview.</CardDescription></CardHeader>
-        <CardContent>
-          {!draftRecipe ? (
-            <div className="rounded-xl border border-dashed p-10 text-center"><p className="font-medium">Choose a version to edit</p><p className="mt-1 text-sm text-muted-foreground">Or use the plus button to define a new menu or prepared-component recipe.</p><Button className="mt-4" onClick={() => leaveThen(startNewRecipe)}><Plus className="size-4" />New recipe</Button></div>
-          ) : (
-            <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5"><Label>Target type</Label><Select value={draftRecipe.targetType} onValueChange={(value) => setTargetType(value as RecipeTargetType)}><SelectTrigger aria-label="Target type" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="menu_item">Menu item</SelectItem><SelectItem value="prepared_component">Prepared component</SelectItem></SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Target</Label><Select value={draftRecipe.targetId} onValueChange={setTargetId}><SelectTrigger aria-label="Target" className="w-full"><SelectValue placeholder="Choose a target" /></SelectTrigger><SelectContent>{draftRecipe.targetType === "menu_item" ? menuItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>) : componentOptions.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Status</Label><Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}><SelectTrigger aria-label="Recipe status" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => <SelectItem key={status} value={status}>{recipeStatusView(status).label}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-1.5"><Label>Effective from</Label><Input aria-label="Effective from" type="date" value={draftRecipe.effectiveFrom ?? ""} onChange={(event) => updateRecipe({ effectiveFrom: event.target.value || null })} /></div>
-              </div>
-
-              {draftRecipe.targetType === "prepared_component" && <div className="rounded-xl border border-border/70 bg-surface/50 p-3"><div className="grid gap-3 sm:grid-cols-3"><div className="space-y-1.5"><Label>Component basis</Label><Select value={draftRecipe.basis} onValueChange={(value) => updateRecipe({ basis: value as RecipeBasis, yieldQuantity: value === "batch" ? draftRecipe.yieldQuantity : null, yieldUnit: value === "batch" ? draftRecipe.yieldUnit : null })}><SelectTrigger aria-label="Component basis" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="per_portion">Per portion</SelectItem><SelectItem value="batch">Batch with yield</SelectItem></SelectContent></Select></div>{draftRecipe.basis === "batch" && <><div className="space-y-1.5"><Label>Yield quantity</Label><Input aria-label="Yield quantity" type="number" min="0" step="0.01" value={draftRecipe.yieldQuantity ?? ""} onChange={(event) => updateRecipe({ yieldQuantity: event.target.value ? Number(event.target.value) : null })} /></div><div className="space-y-1.5"><Label>Yield unit</Label><Select value={draftRecipe.yieldUnit ?? ""} onValueChange={(value) => updateRecipe({ yieldUnit: value as InventoryUnit })}><SelectTrigger aria-label="Yield unit" className="w-full"><SelectValue placeholder="Choose unit" /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></>}</div>{draftRecipe.basis === "per_portion" && <p className="mt-2 text-xs text-muted-foreground">This records the reviewed one-portion basis without inventing a batch yield.</p>}</div>}
-
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold">Recipe lines</h2>
-                  <p className="text-sm text-muted-foreground">Review each mapping, quantity, and unit, then approve the line before saving.</p>
+      <section className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-card" aria-label="Recipe editor">
+        {!draftRecipe ? (
+          <div className="p-6 desk:p-8">
+            <EmptyState
+              title="Choose a version to edit"
+              action={
+                <Button onClick={() => leaveThen(startNewRecipe)}>
+                  <Plus className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                  New recipe
+                </Button>
+              }
+            >
+              Or use New recipe to define a new menu or prepared-component recipe.
+            </EmptyState>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3 border-b border-line p-4 desk:px-6 desk:pt-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="font-display text-title-2 text-ink">{draftRecipe.targetName || "New recipe"} · v{draftRecipe.version}</h2>
+                    <StatusChip tone={RECIPE_TONE[draftRecipe.status]} header>
+                      {recipeStatusView(draftRecipe.status).label}
+                    </StatusChip>
+                  </div>
+                  <p className="mt-1 text-small text-ink-muted">
+                    Basis: <span className="font-medium text-ink">{basisText(draftRecipe)}</span>
+                    {draftRecipe.targetType === "menu_item" ? " · menu recipes are always per portion." : null}
+                  </p>
                 </div>
-                <Button size="sm" variant="outline" onClick={addLine}><Plus className="size-4" />Add line</Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="secondary" size="sm" onClick={duplicateAsNewVersion} disabled={!draftRecipe.id || saving}>
+                    <Copy className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                    New version
+                  </Button>
+                  <Button loading={saving} disabled={saving} onClick={() => void saveRecipe()}>
+                    <Save className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                    {saving ? "Saving…" : "Save recipe"}
+                  </Button>
+                </div>
               </div>
-              <div className="overflow-x-auto rounded-xl border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="sticky left-0 z-10 min-w-40 bg-card">Ingredient / component</TableHead>
-                      <TableHead className="w-28">Quantity</TableHead>
-                      <TableHead className="w-40">Unit</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Review</TableHead>
-                      <TableHead className="w-12"><span className="sr-only">Actions</span></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {draftLines.map((line) => {
-                      const approvalIssue = recipeLineApprovalIssue(line, materials, recipes);
-                      const approved = line.reviewStatus === "approved" && !approvalIssue;
-                      return (
-                        <TableRow key={line.id}>
-                          <TableCell className="sticky left-0 z-10 min-w-40 bg-card p-1">
+              {dirty && (
+                <p className="flex items-center gap-1.5 text-small font-medium text-warn" role="status">
+                  <ToneShape tone="warn" className="size-3" />
+                  Unsaved changes — save recipe to keep them.
+                </p>
+              )}
+            </div>
+
+            <div className="grid gap-4 p-4 tablet:grid-cols-2 desk:px-6">
+              <FieldRow label="Target type">
+                {() => (
+                  <SegmentedControl
+                    label="Target type"
+                    value={draftRecipe.targetType}
+                    options={[
+                      { value: "menu_item", label: "Menu item" },
+                      { value: "prepared_component", label: "Prepared component" },
+                    ]}
+                    onChange={(value) => setTargetType(value)}
+                  />
+                )}
+              </FieldRow>
+              <FieldRow label="Target">
+                {(id) => (
+                  <Select value={draftRecipe.targetId} onValueChange={setTargetId}>
+                    <SelectTrigger id={id} className="w-full">
+                      <SelectValue placeholder="Choose a target" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {targetOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FieldRow>
+              <FieldRow label="Status">
+                {(id) => (
+                  <Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}>
+                    <SelectTrigger id={id} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(["draft", "needs-review", "active", "retired"] as RecipeVersionStatus[]).map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {recipeStatusView(status).label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FieldRow>
+              <FieldRow label="Effective from" hint="Needed before it can be Active.">
+                {(id) => (
+                  <Input id={id} type="date" value={draftRecipe.effectiveFrom ?? ""} onChange={(event) => updateRecipe({ effectiveFrom: event.target.value || null })} />
+                )}
+              </FieldRow>
+            </div>
+
+            {draftRecipe.targetType === "prepared_component" && (
+              <div className="mx-4 mb-4 space-y-4 rounded-lg border border-line bg-canvas p-4 desk:mx-6">
+                <div className="grid gap-4 tablet:grid-cols-3">
+                  <FieldRow label="Component basis">
+                    {(id) => (
+                      <Select
+                        value={draftRecipe.basis}
+                        onValueChange={(value) => updateRecipe({
+                          basis: value as RecipeBasis,
+                          yieldQuantity: value === "batch" ? draftRecipe.yieldQuantity : null,
+                          yieldUnit: value === "batch" ? draftRecipe.yieldUnit : null,
+                        })}
+                      >
+                        <SelectTrigger id={id} className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="per_portion">Per portion</SelectItem>
+                          <SelectItem value="batch">Batch with yield</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </FieldRow>
+                  {draftRecipe.basis === "batch" && (
+                    <>
+                      <FieldRow label="Yield quantity">
+                        {(id) => (
+                          <Input
+                            id={id}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={draftRecipe.yieldQuantity ?? ""}
+                            onChange={(event) => updateRecipe({ yieldQuantity: event.target.value ? Number(event.target.value) : null })}
+                          />
+                        )}
+                      </FieldRow>
+                      <FieldRow label="Yield unit">
+                        {(id) => (
+                          <Select value={draftRecipe.yieldUnit ?? ""} onValueChange={(value) => updateRecipe({ yieldUnit: value as InventoryUnit })}>
+                            <SelectTrigger id={id} className="w-full">
+                              <SelectValue placeholder="Choose unit" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {INVENTORY_UNITS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </FieldRow>
+                    </>
+                  )}
+                </div>
+                {draftRecipe.basis === "per_portion" && (
+                  <p className="text-small text-ink-muted">This records the reviewed one-portion basis without inventing a batch yield.</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-end justify-between gap-3 border-t border-line px-4 pt-5 desk:px-6">
+              <div className="min-w-0">
+                <h3 className="font-display text-title-3 text-ink">Recipe lines</h3>
+                <p className="text-small text-ink-muted">Review each mapping, quantity, and unit, then approve the line before saving.</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={addLine}>
+                <Plus className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                Add line
+              </Button>
+            </div>
+
+            <div className="mt-3 border-t border-line">
+              {draftLines.length === 0 ? (
+                <p className="px-4 py-8 text-center text-small text-ink-muted">No lines yet.</p>
+              ) : (
+                <ul className="divide-y divide-line" aria-label="Recipe lines">
+                  {draftLines.map((line) => {
+                    const approvalIssue = recipeLineApprovalIssue(line, materials, recipes);
+                    const approved = line.reviewStatus === "approved" && !approvalIssue;
+                    return (
+                      <li key={line.id} className="px-4 py-3 desk:px-6 desk:py-2">
+                        <div className={LINE_GRID}>
+                          <div className="row-start-1 col-start-1 min-w-0">
                             <Select
                               value={`${line.ingredientType}:${line.ingredientId}`}
                               onValueChange={(value) => {
@@ -399,69 +598,82 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                                 });
                               }}
                             >
-                              <SelectTrigger size="sm" aria-label="Ingredient for this line" className="w-full"><SelectValue /></SelectTrigger>
+                              <SelectTrigger aria-label={`Ingredient for this line, ${line.ingredientName}`} className="w-full min-w-0">
+                                <SelectValue />
+                              </SelectTrigger>
                               <SelectContent>
                                 {ingredientOptions.map((option) => (
                                   <SelectItem key={option.key} value={option.key}>
-                                    {option.name} <span className="text-xs text-muted-foreground">· {option.type}</span>
+                                    {option.name} <span className="text-small text-ink-muted">· {option.type}</span>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
-                          </TableCell>
-                          <TableCell className="p-1">
+                          </div>
+
+                          <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 desk:contents">
                             <Input
                               type="number"
                               min="0"
                               step="0.01"
                               value={line.quantity ?? ""}
                               onChange={(event) => updateLine(line.id, { quantity: event.target.value ? Number(event.target.value) : null })}
-                              className="h-8 text-right"
-                              aria-label="Quantity for this line"
+                              className="text-right desk:col-start-2 desk:row-start-1"
+                              aria-label={`Quantity for ${line.ingredientName}`}
                             />
-                          </TableCell>
-                          <TableCell className="p-1">
                             <Select value={line.unit ?? ""} onValueChange={(value) => updateLine(line.id, { unit: value as InventoryUnit })}>
-                              <SelectTrigger size="sm" aria-label="Unit for this line" className="w-full"><SelectValue placeholder="Unit" /></SelectTrigger>
+                              <SelectTrigger aria-label={`Unit for ${line.ingredientName}`} className="w-full min-w-0 desk:col-start-3 desk:row-start-1">
+                                <SelectValue placeholder="Unit" />
+                              </SelectTrigger>
                               <SelectContent>
-                                {INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.value}</SelectItem>)}
+                                {INVENTORY_UNITS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.value}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
+                          </div>
+
+                          <div className="col-span-2 min-w-0 text-small text-ink-muted [overflow-wrap:anywhere] desk:col-span-1 desk:col-start-1 desk:row-start-2">
                             {line.sourceRef ?? "Manual"}
                             {line.note && <span className="block">{line.note}</span>}
-                          </TableCell>
-                          <TableCell>
-                            {approved ? (
-                              <StatusBadge view={reviewStatusView("approved")} />
-                            ) : (
-                              <div className="space-y-1">
-                                <Button size="sm" variant="outline" onClick={() => approveLine(line)}>
-                                  <Check className="size-3.5" />Approve
-                                </Button>
-                                {approvalIssue && <p className="max-w-48 text-xs text-muted-foreground">{approvalIssue}</p>}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="p-1">
-                            <Button size="icon-sm" variant="ghost" onClick={() => removeLine(line.id)} aria-label={`Remove ${line.ingredientName}`}>
-                              <Trash2 className="size-4 text-muted-foreground" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {draftLines.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No lines yet.</TableCell></TableRow>}
-                  </TableBody>
-                </Table>
-              </div>
+                          </div>
 
-              <div className="flex flex-col gap-3 rounded-xl border border-info/20 bg-info/5 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-muted-foreground">Active versions require an effective date. Prepared components only require a yield when marked as batch-based.</p><div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" onClick={duplicateAsNewVersion} disabled={!draftRecipe.id}><Copy className="size-4" />New version</Button><Button onClick={saveRecipe} disabled={saving}><Save className="size-4" />{saving ? "Saving…" : "Save recipe"}</Button></div></div>
+                          <div className="col-span-2 flex min-w-0 flex-wrap items-center gap-2 desk:col-span-3 desk:col-start-2 desk:row-start-2">
+                            {approved ? (
+                              <StatusChip tone="ok">{reviewStatusView("approved").label}</StatusChip>
+                            ) : (
+                              <>
+                                <StatusChip tone="warn">{reviewStatusView("needs-review").label}</StatusChip>
+                                <Button variant="secondary" size="sm" onClick={() => approveLine(line)}>
+                                  <Check className="size-4" strokeWidth={1.5} aria-hidden="true" />
+                                  Approve
+                                </Button>
+                                {approvalIssue && <p className="w-full text-micro font-semibold text-danger">{approvalIssue}</p>}
+                              </>
+                            )}
+                          </div>
+
+                          <div className="row-start-1 col-start-2 desk:col-start-4">
+                            <Button variant="ghost" size="icon-sm" onClick={() => removeLine(line.id)} aria-label={`Remove ${line.ingredientName}`}>
+                              <Trash2 className="text-ink-muted" strokeWidth={1.5} aria-hidden="true" />
+                            </Button>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            <div className="border-t border-line px-4 py-3 desk:px-6">
+              <Banner tone="info">Active versions require an effective date. Prepared components only require a yield when marked as batch-based.</Banner>
+            </div>
+          </>
+        )}
+      </section>
 
       <UnsavedGuardDialog
         open={pendingLeave !== null}

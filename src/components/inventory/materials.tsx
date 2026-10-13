@@ -1,29 +1,41 @@
 "use client";
 
-import { StatusBadge } from "@/components/state/status-badge";
-import { reviewStatusView } from "@/lib/status";
 import { useState } from "react";
+import { Ellipsis, Plus } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { Archive, Check, Plus, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useConfirm } from "@/components/confirm-dialog";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { EmptyState } from "@/components/patterns/states";
+import { StatusChip, type StatusTone } from "@/components/patterns/status-chip";
+import { FieldRow } from "@/components/fields/field-row";
+import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getMaterialUsageCounts, upsertInventoryMaterial } from "@/lib/data";
 import { INVENTORY_UNITS, normalizeInventoryName } from "@/lib/inventory";
 import { inventoryMaterialId } from "@/lib/inventory-source";
 import { describeUnitChangeBlock } from "@/lib/material-usage";
+import { reviewStatusView, type StatusView } from "@/lib/status";
 import type { InventoryMaterial, InventoryUnit } from "@/lib/types";
-import { useConfirm } from "@/components/confirm-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type MaterialsProps = {
   materials: InventoryMaterial[];
   onChanged: () => Promise<void>;
 };
+
+// The lib's status tones map onto the five Canopy tones (DESIGN_SYSTEM §6).
+function chipTone(view: StatusView): StatusTone {
+  if (view.tone === "success") return "ok";
+  if (view.tone === "warning") return "warn";
+  if (view.tone === "primary") return "info";
+  return view.tone;
+}
+
+function unitLabel(unit: InventoryUnit): string {
+  return INVENTORY_UNITS.find((option) => option.value === unit)?.label ?? unit;
+}
 
 export function Materials({ materials, onChanged }: MaterialsProps) {
   const [name, setName] = useState("");
@@ -128,109 +140,203 @@ export function Materials({ materials, onChanged }: MaterialsProps) {
     }
   }
 
+  const columns: Column<InventoryMaterial>[] = [
+    {
+      key: "name",
+      label: "Name",
+      phone: "title",
+      cell: (material) => (
+        <div className="min-w-0">
+          <span className="block font-medium text-ink">{material.name}</span>
+          <span className="block truncate font-mono text-micro text-ink-muted">{material.id}</span>
+        </div>
+      ),
+    },
+    {
+      key: "type",
+      label: "Type",
+      phone: "meta",
+      cell: (material) => (material.type === "raw_ingredient" ? "Raw ingredient" : material.type),
+      cellClassName: "text-ink-muted",
+    },
+    {
+      key: "unit",
+      label: "Base unit",
+      phone: "meta",
+      cell: (material) => unitLabel(material.baseUnit),
+    },
+    {
+      key: "review",
+      label: "Review",
+      phone: "detail",
+      cell: (material) => {
+        const view = reviewStatusView(material.reviewStatus);
+        return <StatusChip tone={chipTone(view)}>{view.label}</StatusChip>;
+      },
+    },
+    {
+      key: "status",
+      label: "Status",
+      phone: "detail",
+      cell: (material) => (material.active ? null : <StatusChip tone="neutral">Archived</StatusChip>),
+    },
+  ];
+
   return (
     <div className="space-y-5">
-      <Card className="border-warning/20 bg-warning/5">
-        <CardContent className="flex gap-3 p-4">
-          <Check className="mt-0.5 size-5 shrink-0 text-warning" />
-          <div>
-            <p className="font-medium">Materials</p>
-            <p className="mt-1 text-sm text-muted-foreground">Each material has a name, a base unit, and a review status. Set opening stock in the Stock tab before you record movements or rely on balances.</p>
-          </div>
-        </CardContent>
-      </Card>
+      <p className="text-body text-ink-muted">
+        Each material has a name, a base unit, and a review status. Set opening stock in the Stock tab before you record movements or rely on balances.
+      </p>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add a material</CardTitle>
-          <CardDescription>Use one base unit per material. Do not convert mass and volume without an approved rule.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-[1fr_220px_auto] sm:items-end">
-            <div className="space-y-1.5"><Label htmlFor="new-inventory-material">Name</Label><Input id="new-inventory-material" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Chicken" onKeyDown={(event) => { if (event.key === "Enter") void addMaterial(); }} /></div>
-            <div className="space-y-1.5"><Label htmlFor="new-inventory-unit">Base unit</Label><Select value={unit} onValueChange={(value) => setUnit(value as InventoryUnit)}><SelectTrigger id="new-inventory-unit" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
-            <Button onClick={addMaterial} disabled={saving}><Plus className="size-4" />{saving ? "Adding…" : "Add material"}</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Material master</CardTitle><CardDescription>{materials.length} material{materials.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
-        <CardContent>
-          {materials.length === 0 ? (
-            <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No materials yet. Review the source import or add one above.</p>
-          ) : (
-            <Table>
-              <TableHeader><TableRow><TableHead className="sticky left-0 z-10 min-w-40 bg-card">Name</TableHead><TableHead>Type</TableHead><TableHead>Base unit</TableHead><TableHead>Review</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {materials.map((material) => {
-                  const busy = updatingId === material.id;
-                  return (
-                    <TableRow key={material.id} className={!material.active ? "bg-surface-elevated" : undefined}>
-                      <TableCell className="sticky left-0 z-10 min-w-40 bg-card"><span className="font-medium">{material.name}</span><span className="block font-mono text-[11px] text-muted-foreground">{material.id}</span></TableCell>
-                      <TableCell className="text-muted-foreground">{material.type === "raw_ingredient" ? "Raw ingredient" : material.type}</TableCell>
-                      <TableCell className="min-w-32">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm">{INVENTORY_UNITS.find((option) => option.value === material.baseUnit)?.label ?? material.baseUnit}</span>
-                          <Button size="sm" variant="outline" disabled={busy || unitCheckId === material.id} onClick={() => void openUnitChange(material)}>
-                            {unitCheckId === material.id ? "Checking…" : "Change unit…"}
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell><StatusBadge view={reviewStatusView(material.reviewStatus)} /></TableCell>
-                      <TableCell><Badge variant={material.active ? "secondary" : "outline"}>{material.active ? "Active" : "Archived"}</Badge></TableCell>
-                      <TableCell className="text-right"><Button size="sm" variant="outline" disabled={busy} onClick={() => void toggleMaterialActive(material)}>{material.active ? <><Archive className="size-3.5" />Archive</> : <><RotateCcw className="size-3.5" />Restore</>}</Button></TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
-          {unitChange?.blocked ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="pr-8">Base unit is locked</DialogTitle>
-                <DialogDescription>{unitChange.blocked}</DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setUnitDialogOpen(false)}>Close</Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle className="pr-8">Change base unit</DialogTitle>
-                <DialogDescription>
-                  {unitChange?.material.name} is in {unitChange?.material.baseUnit}. Nothing uses it yet, so the unit can change.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-1.5">
-                <Label htmlFor="material-new-unit">New base unit</Label>
-                <Select
-                  value={unitChange?.nextUnit}
-                  onValueChange={(value) => setUnitChange((current) => (current ? { ...current, nextUnit: value as InventoryUnit } : current))}
-                >
-                  <SelectTrigger id="material-new-unit" className="w-full"><SelectValue /></SelectTrigger>
+      <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
+        <div className="border-b border-line p-4 desk:px-6">
+          <h2 className="font-display text-title-2 text-ink">Add a material</h2>
+          <div className="mt-3 grid gap-3 tablet:grid-cols-[minmax(0,1fr)_220px_auto] tablet:items-end">
+            <FieldRow label="Name">
+              {(id) => (
+                <Input
+                  id={id}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="e.g. Chicken"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void addMaterial();
+                  }}
+                />
+              )}
+            </FieldRow>
+            <FieldRow label="Base unit">
+              {(id) => (
+                <Select value={unit} onValueChange={(value) => setUnit(value as InventoryUnit)}>
+                  <SelectTrigger id={id} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
-                    {INVENTORY_UNITS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                    {INVENTORY_UNITS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              )}
+            </FieldRow>
+            <Button onClick={() => void addMaterial()} loading={saving} disabled={saving}>
+              <Plus className="size-4" strokeWidth={1.5} aria-hidden="true" />
+              {saving ? "Adding…" : "Add material"}
+            </Button>
+          </div>
+          <p className="mt-2 text-small text-ink-muted">Use one base unit per material. Do not convert mass and volume without an approved rule.</p>
+        </div>
+
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 desk:px-6">
+          <h2 className="font-display text-title-2 text-ink">Material master</h2>
+          <p className="text-small text-ink-muted">
+            {materials.length} material{materials.length === 1 ? "" : "s"} currently defined.
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <DataTable
+            caption="Material master"
+            columns={columns}
+            rows={materials}
+            getKey={(material) => material.id}
+            listBelow="desk"
+            actionsBelow
+            rowActions={(material) => {
+              const busy = updatingId === material.id;
+              return (
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || unitCheckId === material.id}
+                    onClick={() => void openUnitChange(material)}
+                  >
+                    {unitCheckId === material.id ? "Checking…" : "Change unit…"}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${material.name}`}>
+                        <Ellipsis strokeWidth={1.5} aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem disabled={busy} onSelect={() => void toggleMaterialActive(material)}>
+                        {material.active ? "Archive" : "Restore"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            }}
+            empty={
+              <div className="p-6">
+                <EmptyState title="No materials yet">Review the source import or add one above.</EmptyState>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setUnitDialogOpen(false)}>Cancel</Button>
-                <Button onClick={() => void applyUnitChange()} disabled={unitChange?.nextUnit === unitChange?.material.baseUnit}>
+            }
+          />
+        </div>
+      </section>
+
+      <AlertDialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
+        <AlertDialogContent>
+          {unitChange?.blocked ? (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Base unit is locked</AlertDialogTitle>
+                <AlertDialogDescription>{unitChange.blocked}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <Button variant="secondary" className="w-full tablet:w-auto" onClick={() => setUnitDialogOpen(false)}>
+                  Close
+                </Button>
+              </AlertDialogFooter>
+            </>
+          ) : (
+            <>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Change base unit</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {unitChange?.material.name} is in {unitChange?.material.baseUnit}. Nothing uses it yet, so the unit can change.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <FieldRow label="New base unit">
+                {(id) => (
+                  <Select
+                    value={unitChange?.nextUnit}
+                    onValueChange={(value) => setUnitChange((current) => (current ? { ...current, nextUnit: value as InventoryUnit } : current))}
+                  >
+                    <SelectTrigger id={id} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INVENTORY_UNITS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </FieldRow>
+              <AlertDialogFooter>
+                <Button variant="secondary" className="w-full tablet:w-auto" onClick={() => setUnitDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  className="w-full tablet:w-auto"
+                  onClick={() => void applyUnitChange()}
+                  disabled={unitChange?.nextUnit === unitChange?.material.baseUnit}
+                >
                   Continue
                 </Button>
-              </DialogFooter>
+              </AlertDialogFooter>
             </>
           )}
-        </DialogContent>
-      </Dialog>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

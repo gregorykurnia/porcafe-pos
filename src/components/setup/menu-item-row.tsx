@@ -1,17 +1,27 @@
+"use client";
+
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { toast } from "@/lib/toast";
-import { Badge } from "@/components/ui/badge";
+import { ArrowDown, ArrowUp, Ellipsis } from "lucide-react";
+import { StatusChip } from "@/components/patterns/status-chip";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TableCell, TableRow } from "@/components/ui/table";
+import { toast } from "@/lib/toast";
 import { upsertMenuItem } from "@/lib/data";
 import { ITEM_CATEGORIES, parseAliases } from "@/lib/menu-sheet";
+import { cn } from "@/lib/utils";
 import type { MenuItem } from "@/lib/types";
 
 type EditableMenuItemField = "name" | "category" | "price";
 type MenuItemDraft = Partial<Record<EditableMenuItemField, string>>;
+
+/**
+ * The menu grid. Desk: sheet order, name, category, price, sheet names, status and the ⋯ menu on one line. Phone and
+ * tablet: name and ⋯ on the first line, category and price next, then sheet names and status. The header row uses it too.
+ */
+export const MENU_GRID =
+  "grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 gap-y-2 desk:grid-cols-[96px_minmax(0,1.4fr)_120px_124px_minmax(0,1.3fr)_96px_44px] desk:gap-x-2";
 
 // Other names the item is written under on the sheet. Saved when the field loses focus.
 function SheetNamesInput({ item, onSaved }: { item: MenuItem; onSaved: () => void }) {
@@ -33,24 +43,31 @@ function SheetNamesInput({ item, onSaved }: { item: MenuItem; onSaved: () => voi
           toast.error(err instanceof Error ? err.message : "Could not save sheet names");
         }
       }}
-      className="h-8 min-w-40 flex-1 text-sm"
     />
   );
 }
 
-export function EditableMenuItemRow({
+/** One menu item. Fields edit in place and save when the field loses focus, as before. */
+export function MenuItemRow({
   item,
+  position,
+  count,
   onSaved,
   onToggleActive,
   onMove,
 }: {
   item: MenuItem;
+  /** The item's place in its category on the sheet, counted from 1, and how many items the category has. */
+  position: number;
+  count: number;
   onSaved: () => void;
   onToggleActive: (id: string, active: boolean) => void;
   onMove: (direction: -1 | 1) => void;
 }) {
   const [draft, setDraft] = useState<MenuItemDraft>({});
   const [saving, setSaving] = useState(false);
+  const first = position === 1;
+  const last = position === count;
 
   function fieldValue(field: EditableMenuItemField): string {
     if (field in draft) return draft[field] ?? "";
@@ -90,83 +107,106 @@ export function EditableMenuItemRow({
     }
   }
 
-  function cellInput(field: EditableMenuItemField, type: "text" | "number") {
-    return (
-      <Input
-        type={type}
-        inputMode={type === "number" ? "decimal" : undefined}
-        aria-label={`${field === "name" ? "Menu item name" : field === "category" ? "Category" : "Price"} for ${item.name}`}
-        value={fieldValue(field)}
-        disabled={saving}
-        onChange={(e) => setField(field, e.target.value)}
-        onBlur={() => commit()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        className={`h-10 border-border bg-transparent px-1.5 sm:h-8 sm:border-transparent hover:border-border focus:border-ring ${
-          type === "number" ? "text-right" : ""
-        }`}
-      />
-    );
-  }
-
   return (
-    <TableRow className={`${saving ? "opacity-50" : ""} ${item.active ? "" : "bg-surface-elevated"}`}>
-      <TableCell className="sticky left-0 z-10 min-w-44 bg-card p-1 font-medium">{cellInput("name", "text")}</TableCell>
-      <TableCell className="p-1">
-        <Select
-          value={fieldValue("category")}
-          disabled={saving}
-          onValueChange={(v) => {
-            setField("category", v);
-            commit({ category: v });
-          }}
-        >
-          <SelectTrigger
-            size="sm"
-          className="h-10 w-full border-border bg-transparent hover:border-border sm:h-8 sm:border-transparent"
-            aria-label={`Category for ${item.name}`}
+    <li className={cn("px-4 py-3 desk:px-4 desk:py-2", saving && "opacity-60")}>
+      <div className={MENU_GRID}>
+        <div className="hidden items-center gap-0.5 desk:flex">
+          <Button variant="ghost" size="icon-sm" onClick={() => onMove(-1)} disabled={first || saving} aria-label={`Move ${item.name} up on the sheet`}>
+            <ArrowUp strokeWidth={1.5} aria-hidden="true" />
+          </Button>
+          <Button variant="ghost" size="icon-sm" onClick={() => onMove(1)} disabled={last || saving} aria-label={`Move ${item.name} down on the sheet`}>
+            <ArrowDown strokeWidth={1.5} aria-hidden="true" />
+          </Button>
+          <span className="w-6 text-center text-table tabular-nums text-ink-muted" aria-label={`Position ${position} of ${count} in ${item.category}`}>
+            {position}
+          </span>
+        </div>
+
+        <div className="row-start-1 min-w-0 col-start-1 desk:row-auto desk:col-auto">
+          <Input
+            aria-label={`Menu item name for ${item.name}`}
+            value={fieldValue("name")}
+            disabled={saving}
+            onChange={(event) => setField("name", event.target.value)}
+            onBlur={() => commit()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+            }}
+          />
+        </div>
+
+        <div className="col-span-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 desk:contents">
+          <Select
+            value={fieldValue("category")}
+            disabled={saving}
+            onValueChange={(value) => {
+              setField("category", value);
+              void commit({ category: value });
+            }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ITEM_CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell className="p-1 text-right">
-        {cellInput("price", "number")}
-        {item.price === null && <p className="px-1.5 text-left text-xs font-medium text-warning">Missing price</p>}
-      </TableCell>
-      <TableCell className="p-1">
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={() => onMove(-1)} disabled={saving} aria-label={`Move ${item.name} up on the sheet`}>
-            <ChevronUp className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => onMove(1)} disabled={saving} aria-label={`Move ${item.name} down on the sheet`}>
-            <ChevronDown className="size-4" />
-          </Button>
+            <SelectTrigger aria-label={`Category for ${item.name}`} className="w-full min-w-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ITEM_CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="text-small text-ink-muted desk:hidden" aria-hidden="true">Rp</span>
+            <div className="min-w-0 flex-1">
+              <Input
+                type="number"
+                inputMode="decimal"
+                aria-label={`Price for ${item.name}`}
+                placeholder="0"
+                value={fieldValue("price")}
+                disabled={saving}
+                onChange={(event) => setField("price", event.target.value)}
+                onBlur={() => commit()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+                }}
+                className="text-right"
+              />
+              {item.price === null && <p className="mt-1 text-micro font-semibold text-warn">Missing price</p>}
+            </div>
+          </div>
+        </div>
+
+        <div className="col-span-2 min-w-0 desk:col-span-1">
           <SheetNamesInput key={(item.sheetAliases ?? []).join("|")} item={item} onSaved={onSaved} />
         </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={item.active ? "default" : "outline"}>{item.active ? "Active" : "Archived"}</Badge>
-      </TableCell>
-      <TableCell>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onToggleActive(item.id, !item.active)}
-          disabled={saving}
-          aria-label={`${item.active ? "Archive" : "Restore"} ${item.name}`}
-        >
-          {item.active ? "Archive" : "Restore"}
-        </Button>
-      </TableCell>
-    </TableRow>
+
+        <div className="col-span-2 flex min-w-0 items-center desk:col-span-1">
+          {!item.active && <StatusChip tone="neutral">Archived</StatusChip>}
+        </div>
+
+        <div className="row-start-1 col-start-2 desk:row-auto desk:col-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label={`More actions for ${item.name}`}>
+                <Ellipsis strokeWidth={1.5} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="desk:hidden" disabled={first || saving} onSelect={() => onMove(-1)}>
+                Move up
+              </DropdownMenuItem>
+              <DropdownMenuItem className="desk:hidden" disabled={last || saving} onSelect={() => onMove(1)}>
+                Move down
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={saving} onSelect={() => onToggleActive(item.id, !item.active)}>
+                {item.active ? "Archive" : "Restore"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </li>
   );
 }
