@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction C · Mise</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        canvas: '#F8F4EC', panel: '#FFFEFB', well: '#F2EDE3', line: '#E7DFD1', line2: '#D6CBB8',
+        forest: '#163D2F', leaf: '#3E7B5A', sprout: '#E3EEE5', sprout2: '#C9DDCD',
+        ink: '#18201C', graphite: '#5F655F', fog: '#9A9C94',
+        saffron: '#B97D14', saffrontint: '#F6EAD0',
+        brick: '#B5452E', bricktint: '#F5E0D8',
+        slate: '#46708A', slatetint: '#E2EBF0',
+        studio: '#E1D9CA'
+      },
+      fontFamily: {
+        sans: ['Geist', 'system-ui', 'sans-serif'],
+        mono: ['"Geist Mono"', 'ui-monospace', 'monospace']
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { background: #E1D9CA; }
+  .mono { font-family: "Geist Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  .cap { font-family: "Geist Mono", monospace; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: #5F655F; }
+  .mark { position: relative; overflow: hidden; border-radius: 9999px; background: #F6F0E6; }
+  .mark img { position: absolute; max-width: none; width: 288%; left: -100%; top: -66%; mix-blend-mode: multiply; }
+  .ico { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ico-sm { width: 15px; height: 15px; }
+  .frame { box-shadow: 0 0 0 1px rgba(22,61,47,.08), 0 30px 60px -30px rgba(22,61,47,.4); }
+  .phone { box-shadow: 0 0 0 1px #2a2a2a, 0 40px 70px -35px rgba(22,61,47,.55); }
+  .kbd { font-family: "Geist Mono", monospace; font-size: 10.5px; padding: 1px 5px; border: 1px solid #D6CBB8; border-bottom-width: 2px; border-radius: 4px; color: #5F655F; background: #FFFEFB; }
+  .scrollx { overflow-x: auto; }
+  .grid-bg { background-image: linear-gradient(#E7DFD1 1px, transparent 1px), linear-gradient(90deg, #E7DFD1 1px, transparent 1px); background-size: 24px 24px; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<svg width="0" height="0" class="absolute">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="m9 13 2.2 2.2L15.5 11"/></symbol>
+  <symbol id="i-reports" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16v-4"/><path d="M12 16V8"/><path d="M16 16v-6"/></symbol>
+  <symbol id="i-stock" viewBox="0 0 24 24"><path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5 12 11.5l8.5-4"/><path d="M12 11.5v9"/></symbol>
+  <symbol id="i-setup" viewBox="0 0 24 24"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></symbol>
+  <symbol id="i-cl" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+  <symbol id="i-cr" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-cd" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 19.5h18z"/><path d="M12 10v4.5M12 17.2v.3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 6.5 4.5 11 9 15.5"/><path d="M5 11h9.5a5 5 0 0 1 0 10H12"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9.5h4l3 3.5V16h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 19.5 5.7 16A8 8 0 1 1 8.7 19z"/></symbol>
+  <symbol id="i-count" viewBox="0 0 24 24"><path d="M5 4.5h14v15H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></symbol>
+</svg>
+
+<div class="max-w-[1360px] mx-auto px-4 sm:px-8 py-12">
+
+<!-- ============ HEADER ============ -->
+<header class="bg-panel rounded-[14px] frame overflow-hidden">
+  <div class="grid lg:grid-cols-[1fr_1fr]">
+    <div class="p-8 sm:p-12 grid-bg relative border-b lg:border-b-0 lg:border-r border-line">
+      <div class="absolute inset-0 bg-gradient-to-br from-panel/95 via-panel/80 to-panel/40"></div>
+      <div class="relative">
+        <div class="flex items-center justify-between">
+          <span class="cap">Direction C / 03</span>
+          <div class="flex items-center gap-2"><div class="mark w-9 h-9 border border-line"><img src="logo.png" alt="Charred by Porcafe"></div><span class="mono text-[11px] tracking-[0.28em] text-forest">CHARRED</span></div>
+        </div>
+        <h1 class="text-[80px] sm:text-[104px] font-medium tracking-[-0.055em] leading-[0.9] text-forest mt-16">Mise<span class="text-leaf">.</span></h1>
+        <p class="text-[20px] leading-[1.5] text-ink/85 mt-6 max-w-[36ch] font-light">Mise en place — everything in its place before service. A precise, tool-like workspace: a slim icon rail, split panes that keep the list and its detail side by side, and numbers set in mono so columns of Rupiah line up perfectly.</p>
+        <div class="mt-10 grid sm:grid-cols-2 gap-8 text-[13.5px] leading-relaxed text-ink/80">
+          <div><div class="cap mb-2">Navigation</div>Desktop: a 76&nbsp;px icon rail for the five sections; sub-sections and the day/period live in a top toolbar, with ⌘K to jump anywhere. Phone: the section name is a button that opens a sheet of every section and sub-section; a contextual action dock sits at the bottom.</div>
+          <div><div class="cap mb-2">Personality</div>Calm, exact, quietly technical — like a well-labelled kitchen. Mono uppercase labels echo the wide-spaced wordmark. Colour is used only for state.</div>
+        </div>
+      </div>
+    </div>
+    <div class="p-8 sm:p-12 space-y-9">
+      <div>
+        <div class="cap mb-3">Type pairing</div>
+        <div class="border border-line rounded-[10px] divide-y divide-line">
+          <div class="p-5 flex items-baseline justify-between"><span class="text-[40px] font-medium tracking-[-0.04em] text-forest leading-none">Daily close</span><span class="text-[11.5px] text-graphite">Geist 300–600</span></div>
+          <div class="p-5 flex items-baseline justify-between"><span class="mono text-[30px] text-ink leading-none">Rp 43.570.000</span><span class="text-[11.5px] text-graphite">Geist Mono · figures</span></div>
+          <div class="p-5 flex items-baseline justify-between"><span class="cap !text-[11.5px] !text-forest">Needs attention · 3</span><span class="text-[11.5px] text-graphite">Mono caps · labels</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="cap mb-3">Colour tokens</div>
+        <div class="grid grid-cols-4 sm:grid-cols-6 gap-px bg-line border border-line rounded-[10px] overflow-hidden text-[10.5px]" id="c-swatches"></div>
+      </div>
+      <div>
+        <div class="cap mb-3">Space &amp; radius</div>
+        <p class="text-[13.5px] leading-relaxed text-ink/80">Strict 4&nbsp;px grid; 48&nbsp;px rows for touch, 40&nbsp;px on desktop tables. Panes are separated by 1&nbsp;px lines, not gaps — the screen reads as one instrument. Radius 8&nbsp;px on controls, 12&nbsp;px on panes and sheets. Shadows only on things that float (sheets, toasts, menus).</p>
+        <div class="flex items-center gap-3 mt-4">
+          <div class="w-10 h-10 border border-forest rounded-[8px]"></div><div class="w-10 h-10 border border-forest rounded-[12px]"></div><div class="h-10 px-3 border border-line rounded-[8px] flex items-center gap-1"><span class="kbd">⌘</span><span class="kbd">K</span></div><span class="mono text-[11px] text-graphite">8 · 12 · 4pt</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============ DESKTOP ============ -->
+<section class="mt-20">
+  <div class="px-1 mb-6 flex items-end justify-between"><div><div class="cap">Desktop · 1280 px</div><h2 class="text-[38px] font-medium tracking-[-0.04em] text-forest mt-1">Stations</h2></div></div>
+
+  <!-- HOME -->
+  <div class="scrollx pb-4"><div class="w-[1280px] mx-auto rounded-[14px] overflow-hidden frame bg-canvas">
+    <div class="chrome" data-url="pos.charred.id/home?month=2026-10"></div>
+    <div class="flex h-[930px]">
+      <div class="rail" data-active="Home"></div>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="topbar" data-title="Home" data-tabs="" data-right='<span class="h-8 px-3 rounded-[8px] border border-line bg-panel text-[13px] flex items-center gap-2"><span class="cap !text-[10px]">Month</span>October 2026<svg class="ico ico-sm text-graphite"><use href="#i-cd"/></svg></span>'></div>
+        <div class="flex-1 flex min-h-0">
+          <!-- attention pane -->
+          <section class="w-[340px] border-r border-line bg-panel flex flex-col">
+            <div class="px-5 h-12 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Needs attention</span><span class="mono text-[12px] w-6 h-6 rounded-[6px] bg-saffrontint text-saffron flex items-center justify-center">3</span></div>
+            <ul class="divide-y divide-line">
+              <li class="px-5 py-4 bg-well/60 border-l-2 border-saffron"><div class="flex items-center gap-2"><span class="chip" data-s="Draft"></span><span class="mono text-[11.5px] text-graphite ml-auto">Today</span></div><div class="text-[14.5px] font-medium mt-2">Today is saved as a draft</div><div class="text-[12.5px] text-graphite mt-0.5">101 portions · Rp 3.215.000</div><div class="text-[12.5px] text-forest font-medium mt-2 flex items-center gap-1">Continue close<svg class="ico ico-sm"><use href="#i-arrow"/></svg></div></li>
+              <li class="px-5 py-4"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-saffron"></span><span class="cap !text-saffron">Warning</span><span class="mono text-[11.5px] text-graphite ml-auto">Sun 11 Oct</span></div><div class="text-[14.5px] font-medium mt-2">Items entered, no revenue recorded</div><div class="text-[12.5px] text-graphite mt-0.5">148 portions · payments blank</div></li>
+              <li class="px-5 py-4"><div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-saffron"></span><span class="cap !text-saffron">Warning</span><span class="mono text-[11.5px] text-graphite ml-auto">Mon 5 Oct</span></div><div class="text-[14.5px] font-medium mt-2">Revenue recorded, no items closed</div><div class="text-[12.5px] text-graphite mt-0.5">Rp 2.870.000 · 0 portions</div></li>
+            </ul>
+            <div class="px-5 py-4 border-t border-line text-[12.5px] text-fog flex items-center gap-2"><svg class="ico ico-sm"><use href="#i-check"/></svg>Everything else in the last 30 days agrees.</div>
+            <div class="mt-auto p-5 border-t border-line">
+              <div class="cap mb-3">Last 14 days</div>
+              <div class="grid grid-cols-7 gap-1.5" id="c-cal"></div>
+              <div class="flex gap-3 mt-3 text-[11px] text-graphite"><span class="flex items-center gap-1"><span class="w-2 h-2 rounded-[2px] bg-forest"></span>Complete</span><span class="flex items-center gap-1"><span class="w-2 h-2 rounded-[2px] bg-saffron"></span>Draft / issue</span><span class="flex items-center gap-1"><span class="w-2 h-2 rounded-[2px] border border-line2"></span>Not started</span></div>
+            </div>
+          </section>
+          <!-- summary -->
+          <section class="flex-1 overflow-hidden p-6">
+            <div class="grid grid-cols-4 border border-line rounded-[12px] bg-panel divide-x divide-line overflow-hidden">
+              <div class="p-5"><div class="cap">Today</div><div class="mono text-[20px] whitespace-nowrap mt-2">Rp 3.215.000</div><div class="mono text-[12px] text-leaf mt-1">+8,6% <span class="text-graphite">vs yesterday</span></div></div>
+              <div class="p-5"><div class="cap">This week · 12–18 Oct</div><div class="mono text-[20px] whitespace-nowrap mt-2">Rp 6.175.000</div><div class="mono text-[12px] text-leaf mt-1">+3,3% <span class="text-graphite">vs last week</span></div></div>
+              <div class="p-5 bg-sprout/50"><div class="cap !text-forest">Reported · October</div><div class="mono text-[20px] whitespace-nowrap mt-2 text-forest">Rp 43.570.000</div><div class="mono text-[12px] text-leaf mt-1">+6,2% <span class="text-graphite">same days Sep</span></div></div>
+              <div class="p-5"><div class="cap">Avg / day</div><div class="mono text-[20px] whitespace-nowrap mt-2">Rp 3.960.909</div><div class="mono text-[12px] text-graphite mt-1">11 / 13 days logged</div></div>
+            </div>
+            <div class="grid grid-cols-[1.55fr_1fr] gap-4 mt-4">
+              <div class="border border-line rounded-[12px] bg-panel">
+                <div class="h-12 px-5 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Sales trend · Oct</span><a class="text-[12.5px] text-forest font-medium flex items-center gap-1">View recap<svg class="ico ico-sm"><use href="#i-arrow"/></svg></a></div>
+                <svg id="c-trend" viewBox="0 0 560 210" class="w-full px-3 pt-3"></svg>
+                <div class="px-5 py-3 border-t border-line text-[13px] flex gap-3"><span class="cap !text-leaf pt-0.5">Takeaway</span><span>Averaging Rp 3.960.909 a day, up 6,2% on the same days of September.</span></div>
+              </div>
+              <div class="border border-line rounded-[12px] bg-panel">
+                <div class="h-12 px-5 flex items-center border-b border-line"><span class="cap !text-forest">Month at a glance</span></div>
+                <dl class="divide-y divide-line text-[13.5px]">
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Portions sold</dt><dd class="mono">1.042</dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Avg per Main portion</dt><dd class="mono">Rp 53.657</dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Best day</dt><dd class="mono">Rp 5.480.000 <span class="text-graphite">· Sat 10</span></dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Best seller</dt><dd>Chicken Nanban <span class="mono text-graphite">· 214</span></dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Recorded sales</dt><dd class="mono">Rp 43.570.000</dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">Selisih</dt><dd class="mono text-saffron">Pending</dd></div>
+                  <div class="px-5 h-11 flex items-center justify-between"><dt class="text-graphite">All-time reported</dt><dd class="mono">Rp 612.840.000</dd></div>
+                </dl>
+              </div>
+            </div>
+            <div class="grid grid-cols-[1.55fr_1fr] gap-4 mt-4">
+              <div class="border border-line rounded-[12px] bg-panel">
+                <div class="h-12 px-5 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Top items</span><span class="mono text-[12px] text-graphite">1.042 sold</span></div>
+                <table class="w-full text-[13.5px]" id="c-top"></table>
+              </div>
+              <div class="border border-line rounded-[12px] bg-panel">
+                <div class="h-12 px-5 flex items-center border-b border-line"><span class="cap !text-forest">Payment mix</span></div>
+                <div class="p-5">
+                  <div class="flex h-7 rounded-[6px] overflow-hidden gap-px" id="c-paybar"></div>
+                  <ul class="mt-4 space-y-2 text-[13px]" id="c-paylist"></ul>
+                  <div class="flex h-2 rounded-full overflow-hidden mt-5 gap-px"><span class="bg-forest" style="width:78%"></span><span class="bg-leaf/60" style="width:14%"></span><span class="bg-line2" style="width:8%"></span></div>
+                  <div class="flex justify-between mono text-[11.5px] text-graphite mt-1.5"><span>Main 78%</span><span>Add On 14%</span><span>Other 8%</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="text-center text-[13px] text-graphite mt-3 mb-16">Home — an inbox of things to fix on the left; the month as a measured instrument panel on the right.</p>
+
+  <!-- DAILY CLOSE -->
+  <div class="scrollx pb-4"><div class="w-[1280px] mx-auto rounded-[14px] overflow-hidden frame bg-canvas">
+    <div class="chrome" data-url="pos.charred.id/close?date=2026-10-13"></div>
+    <div class="flex h-[990px]">
+      <div class="rail" data-active="Daily close"></div>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="topbar" data-title="Daily close" data-tabs="Daily close|History" data-right='<button class="h-8 px-3 rounded-[8px] border border-forest text-forest text-[13px] font-medium flex items-center gap-2"><svg class="ico ico-sm"><use href="#i-cam"/></svg>Scan sheet</button>'></div>
+        <div class="flex-1 flex min-h-0">
+          <!-- days pane -->
+          <section class="w-[220px] border-r border-line bg-panel flex flex-col">
+            <div class="p-3 border-b border-line flex items-center gap-1.5">
+              <button class="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center"><svg class="ico ico-sm"><use href="#i-cl"/></svg></button>
+              <button class="flex-1 h-8 rounded-[8px] border border-line text-[12.5px] font-medium">Today</button>
+              <button class="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center text-fog"><svg class="ico ico-sm"><use href="#i-cr"/></svg></button>
+              <button class="w-8 h-8 rounded-[8px] border border-line flex items-center justify-center"><svg class="ico ico-sm"><use href="#i-cal"/></svg></button>
+            </div>
+            <ul id="c-daylist" class="divide-y divide-line overflow-hidden"></ul>
+          </section>
+          <!-- items -->
+          <section class="flex-1 flex flex-col min-w-0 bg-panel">
+            <div class="px-6 pt-5 pb-4 border-b border-line">
+              <div class="flex items-center justify-between">
+                <div><div class="cap">Close date · Today</div><div class="text-[24px] font-medium tracking-[-0.03em] mt-1">Tuesday, 13 Oct 2026</div></div>
+                <span class="chip" data-s="Unsaved changes"></span>
+              </div>
+              <div class="flex items-center gap-2 mt-4">
+                <div class="flex-1 h-9 rounded-[8px] border border-line bg-canvas flex items-center gap-2 px-3 text-[13px] text-fog"><svg class="ico ico-sm"><use href="#i-search"/></svg>Find an item<span class="ml-auto kbd">/</span></div>
+                <label class="h-9 px-3 rounded-[8px] border border-line flex items-center gap-2 text-[12.5px]"><span class="w-3.5 h-3.5 rounded-[4px] border border-line2"></span>Only items with a quantity</label>
+              </div>
+            </div>
+            <div class="mx-6 mt-3 h-10 px-3 rounded-[8px] bg-slatetint text-[12.5px] flex items-center gap-2"><svg class="ico ico-sm text-slate"><use href="#i-info"/></svg>Restored unsaved entries from 21:42.<button class="ml-auto text-slate font-medium">Discard them</button></div>
+            <div class="flex-1 overflow-hidden px-6 pb-4">
+              <table class="w-full text-[13.5px] mt-2">
+                <thead><tr class="text-left"><th class="cap font-normal py-2.5">Item</th><th class="cap font-normal text-right">Ref. price</th><th class="cap font-normal text-center w-[150px]">Qty</th><th class="cap font-normal text-right w-[110px]">Est.</th></tr></thead>
+                <tbody id="c-items"></tbody>
+              </table>
+            </div>
+          </section>
+          <!-- summary -->
+          <aside class="w-[320px] border-l border-line bg-canvas flex flex-col">
+            <div class="p-5 border-b border-line">
+              <div class="cap">Portions</div>
+              <div class="grid grid-cols-3 mt-3 border border-line rounded-[10px] bg-panel divide-x divide-line">
+                <div class="p-3"><div class="mono text-[22px]">62</div><div class="text-[11.5px] text-graphite">Main</div></div>
+                <div class="p-3"><div class="mono text-[22px]">17</div><div class="text-[11.5px] text-graphite">Add On</div></div>
+                <div class="p-3"><div class="mono text-[22px]">22</div><div class="text-[11.5px] text-graphite">Other</div></div>
+              </div>
+              <div class="text-[12px] text-graphite mt-2">All items: <span class="mono">101</span> portions</div>
+            </div>
+            <div class="p-5 border-b border-line">
+              <div class="flex justify-between items-baseline"><span class="cap">Payments</span><span class="mono text-[11px] text-graphite">≈ 3.347.000 menu</span></div>
+              <div class="mt-3 space-y-2" id="c-pay"></div>
+              <div class="flex justify-between items-baseline mt-4 pt-3 border-t border-line"><span class="text-[13px] font-medium">Total</span><span class="mono text-[22px] text-forest">Rp 3.215.000</span></div>
+              <div class="text-[11.5px] text-graphite mt-1">Blank = zero. Saved together with the items.</div>
+            </div>
+            <div class="p-5 space-y-2 mt-auto">
+              <div class="flex justify-between text-[12px] text-graphite"><span>Source <span class="text-ink">Manual</span></span><span>Last saved <span class="text-ink">12 min ago</span></span></div>
+              <button class="w-full h-11 rounded-[8px] bg-forest text-canvas text-[14px] font-medium flex items-center justify-center gap-2">Complete day<span class="kbd !bg-transparent !text-canvas/70 !border-canvas/30">⌘↵</span></button>
+              <div class="grid grid-cols-2 gap-2">
+                <button class="h-10 rounded-[8px] border border-forest text-forest text-[13.5px] font-medium">Save draft</button>
+                <button class="h-10 rounded-[8px] border border-line2 text-[13.5px] flex items-center justify-center gap-1.5"><svg class="ico ico-sm text-graphite"><use href="#i-ban"/></svg>No sales</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+        <!-- status bar -->
+        <div class="h-9 border-t border-line bg-panel flex items-center px-5 gap-5 text-[12px]">
+          <span class="flex items-center gap-1.5 text-saffron font-medium"><span class="w-1.5 h-1.5 rounded-full bg-saffron"></span>Unsaved changes · 3 edits</span>
+          <span class="text-graphite">Blank or 0 means this item did not sell.</span>
+          <span class="ml-auto text-graphite flex items-center gap-1.5"><span class="kbd">⌘S</span> Save draft</span>
+          <span class="text-graphite flex items-center gap-1.5"><span class="kbd">↑↓</span> Move · <span class="kbd">+</span><span class="kbd">−</span> Adjust</span>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <!-- close states -->
+  <div class="w-full max-w-[1280px] mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+    <div class="rounded-[12px] border border-line bg-panel p-4"><div class="cap mb-2">State · Saving</div><div class="h-9 rounded-[8px] bg-canvas border border-line px-3 flex items-center gap-2 text-[12.5px] text-graphite"><span class="w-3 h-3 rounded-full border-[1.5px] border-forest border-t-transparent animate-spin"></span>Saving changes… actions paused</div></div>
+    <div class="rounded-[12px] border border-line bg-panel p-4"><div class="cap mb-2">State · Conflict</div><div class="h-9 rounded-[8px] bg-bricktint px-3 flex items-center gap-2 text-[12.5px] text-brick"><svg class="ico ico-sm"><use href="#i-alert"/></svg>Changed on another device. Nothing saved.<button class="ml-auto font-medium underline underline-offset-2">Load latest</button></div></div>
+    <div class="rounded-[12px] border border-forest bg-forest text-canvas p-4 relative overflow-hidden"><div class="cap !text-canvas/60 mb-2">State · Completed (10 s)</div><div class="flex items-center gap-2 text-[13px]"><svg class="ico ico-sm text-sprout2"><use href="#i-check"/></svg><span class="flex-1">13 Oct closed · <span class="mono">101</span> portions · <span class="mono">Rp 3.215.000</span> · stock updated</span><button class="h-7 px-2.5 rounded-[6px] bg-canvas text-forest text-[12px] font-medium flex items-center gap-1"><svg class="ico ico-sm"><use href="#i-undo"/></svg>Undo</button></div><div class="absolute left-0 bottom-0 h-[3px] bg-sprout2" style="width:58%"></div></div>
+  </div>
+  <p class="text-center text-[13px] text-graphite mt-3 mb-16">Daily close — days on the left with their status, a keyboard-friendly item table in the middle, the receipt on the right, an editor-style status bar below.</p>
+
+  <!-- REPORTS -->
+  <div class="scrollx pb-4"><div class="w-[1280px] mx-auto rounded-[14px] overflow-hidden frame bg-canvas">
+    <div class="chrome" data-url="pos.charred.id/reports/revenue?from=2026-10-01&to=2026-10-13"></div>
+    <div class="flex h-[1000px]">
+      <div class="rail" data-active="Reports"></div>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="topbar" data-title="Reports" data-tabs="Revenue|Items|Weekday patterns" data-right='<div class="flex items-center gap-1 p-0.5 rounded-[8px] border border-line bg-panel text-[12.5px]"><span class="h-7 px-2.5 rounded-[6px] bg-forest text-canvas flex items-center">This month</span><span class="h-7 px-2.5 flex items-center text-graphite">Last month</span><span class="h-7 px-2.5 flex items-center text-graphite">Last 30 days</span></div><span class="h-8 px-3 rounded-[8px] border border-line bg-panel mono text-[12px] flex items-center gap-2"><svg class="ico ico-sm text-graphite"><use href="#i-cal"/></svg>2026-10-01 → 2026-10-13</span>'></div>
+        <div class="flex-1 flex min-h-0">
+          <section class="flex-1 p-6 overflow-hidden">
+            <div class="flex items-baseline justify-between"><h1 class="text-[26px] font-medium tracking-[-0.03em]">Revenue for 1 Oct – 13 Oct 2026</h1><div class="flex gap-2"><button class="h-8 px-3 rounded-[8px] border border-line bg-panel text-[12.5px] flex items-center gap-1.5"><svg class="ico ico-sm"><use href="#i-down"/></svg>Daily rows CSV</button><button class="h-8 px-3 rounded-[8px] border border-line bg-panel text-[12.5px] flex items-center gap-1.5"><svg class="ico ico-sm"><use href="#i-down"/></svg>Monthly totals CSV</button></div></div>
+            <!-- equation -->
+            <div class="mt-5 grid grid-cols-[1fr_auto_1fr_auto_1.2fr] items-stretch border border-line rounded-[12px] bg-panel overflow-hidden">
+              <div class="p-5"><div class="cap">Recorded sales</div><div class="mono text-[26px] mt-2">Rp 43.570.000</div><div class="text-[12px] text-graphite mt-1"><span class="mono">11</span> entries</div></div>
+              <div class="flex items-center px-2 mono text-[22px] text-fog">+</div>
+              <div class="p-5"><div class="cap">Selisih</div><div class="mono text-[26px] mt-2 text-fog">Rp 0</div><div class="text-[12px] text-saffron mt-1">Counts after October 2026 ends</div></div>
+              <div class="flex items-center px-2 mono text-[22px] text-fog">=</div>
+              <div class="p-5 bg-forest text-canvas"><div class="cap !text-canvas/60">Reported total</div><div class="mono text-[30px] mt-2">Rp 43.570.000</div><div class="text-[12px] text-canvas/70 mt-1">Recorded sales plus selisih</div></div>
+            </div>
+            <div class="mt-4 border border-line rounded-[12px] bg-panel">
+              <div class="h-12 px-5 flex items-center gap-8 border-b border-line text-[12.5px]"><span class="cap !text-forest">Daily revenue</span><span class="text-graphite">Average <span class="mono text-ink">3.960.909</span></span><span class="text-graphite">Lowest <span class="mono text-ink">2.870.000</span> Mon 5</span><span class="text-graphite">Highest <span class="mono text-ink">5.480.000</span> Sat 10</span><span class="ml-auto text-fog">Today excluded · in progress</span></div>
+              <svg id="c-rev" viewBox="0 0 860 250" class="w-full px-3 pt-3"></svg>
+              <div class="px-5 py-3 border-t border-line text-[13px] flex gap-3"><span class="cap !text-leaf pt-0.5">Takeaway</span>Monday, 12 Oct recorded Rp 2.960.000, the month's second-lowest day.</div>
+            </div>
+            <div class="mt-4 border border-line rounded-[12px] bg-panel overflow-hidden">
+              <table class="w-full text-[13px]">
+                <thead class="bg-well/60"><tr class="text-right"><th class="cap font-normal text-left px-5 py-2.5">Date</th><th class="cap font-normal">BCA</th><th class="cap font-normal">Cash</th><th class="cap font-normal">Soundbox</th><th class="cap font-normal">Other</th><th class="cap font-normal">Total</th><th class="cap font-normal text-left pl-6">Note</th><th class="w-24"></th></tr></thead>
+                <tbody id="c-days" class="divide-y divide-line"></tbody>
+              </table>
+            </div>
+          </section>
+          <aside class="w-[300px] border-l border-line bg-panel flex flex-col">
+            <div class="h-12 px-5 flex items-center border-b border-line"><span class="cap !text-forest">Monthly reconciliation</span></div>
+            <div class="p-5 space-y-4 text-[13px]">
+              <p class="text-graphite leading-relaxed">The bank difference for one month. Counts only after the month ends, and only in that month's total — never daily figures.</p>
+              <div><div class="cap mb-1.5">Month</div><div class="h-9 rounded-[8px] border border-line px-3 flex items-center justify-between">October 2026<svg class="ico ico-sm text-graphite"><use href="#i-cd"/></svg></div></div>
+              <div><div class="cap mb-1.5">Amount</div><div class="h-9 rounded-[8px] border border-line px-3 flex items-center gap-2 mono"><span class="text-graphite">Rp</span><span class="text-fog">±0</span></div><div class="text-[11.5px] text-graphite mt-1">+ bank received more · − less</div></div>
+              <div><div class="cap mb-1.5">Note</div><div class="h-9 rounded-[8px] border border-line px-3 flex items-center text-fog">e.g. bank fee, transfer delay</div></div>
+              <button class="w-full h-9 rounded-[8px] border border-forest text-forest font-medium">Save selisih</button>
+              <div class="text-[12px] text-graphite">Nothing saved for this month yet.</div>
+            </div>
+            <div class="mt-auto border-t border-line">
+              <div class="px-5 h-10 flex items-center cap">History</div>
+              <div class="divide-y divide-line text-[12.5px]">
+                <div class="px-5 h-10 flex items-center justify-between"><span>Sep 2026</span><span class="mono text-brick">−185.000</span></div>
+                <div class="px-5 h-10 flex items-center justify-between"><span>Aug 2026</span><span class="mono text-leaf">+42.500</span></div>
+                <div class="px-5 h-10 flex items-center justify-between"><span>Jul 2026</span><span class="mono text-brick">−96.000</span></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="text-center text-[13px] text-graphite mt-3 mb-16">Reports → Revenue — the period sits in the toolbar; totals read as an equation; reconciliation is a side panel, always at hand.</p>
+
+  <!-- STOCK -->
+  <div class="scrollx pb-4"><div class="w-[1280px] mx-auto rounded-[14px] overflow-hidden frame bg-canvas">
+    <div class="chrome" data-url="pos.charred.id/stock?material=chicken-thigh-fillet"></div>
+    <div class="flex h-[860px]">
+      <div class="rail" data-active="Stock"></div>
+      <div class="flex-1 flex flex-col min-w-0">
+        <div class="topbar" data-title="Stock" data-tabs="Stock|To order|Orders|Usage recap" data-right='<span class="h-8 px-3 rounded-[8px] border border-line bg-panel text-[12.5px] flex items-center gap-2"><svg class="ico ico-sm text-graphite"><use href="#i-bell"/></svg>Alerts here: Off<a class="text-forest font-medium">Turn on</a></span><button class="h-8 px-3 rounded-[8px] bg-forest text-canvas text-[12.5px] font-medium flex items-center gap-1.5"><svg class="ico ico-sm"><use href="#i-plus"/></svg>Record movement</button>'></div>
+        <div class="grid grid-cols-4 border-b border-line bg-panel divide-x divide-line">
+          <div class="px-6 py-4 flex items-center justify-between"><div><div class="cap">To order</div><div class="text-[12px] text-graphite mt-1">At / below alert</div></div><span class="mono text-[30px] text-saffron">4</span></div>
+          <div class="px-6 py-4 flex items-center justify-between"><div><div class="cap">On order</div><div class="text-[12px] text-graphite mt-1">PO-1013-02</div></div><span class="mono text-[30px]">1</span></div>
+          <div class="px-6 py-4 flex items-center justify-between"><div><div class="cap">Negative</div><div class="text-[12px] text-graphite mt-1">Warnings only</div></div><span class="mono text-[30px] text-brick">1</span></div>
+          <div class="px-6 py-4 flex items-center justify-between"><div><div class="cap">Last count</div><div class="text-[12px] text-graphite mt-1">24 materials</div></div><span class="mono text-[18px]">Mon 12 Oct</span></div>
+        </div>
+        <div class="flex-1 flex min-h-0">
+          <!-- list -->
+          <section class="w-[520px] border-r border-line bg-panel flex flex-col">
+            <div class="p-3 border-b border-line flex items-center gap-2">
+              <div class="flex-1 h-8 rounded-[8px] border border-line bg-canvas flex items-center gap-2 px-3 text-[12.5px] text-fog"><svg class="ico ico-sm"><use href="#i-search"/></svg>Search materials</div>
+              <span class="h-8 px-3 rounded-[8px] border border-line text-[12.5px] flex items-center gap-1.5">Needs attention <span class="mono text-graphite">4</span><svg class="ico ico-sm text-graphite"><use href="#i-cd"/></svg></span>
+            </div>
+            <div class="grid grid-cols-[1fr_96px_74px_96px] px-4 h-9 items-center cap border-b border-line"><span>Material</span><span class="text-right">On hand</span><span class="text-center">Level</span><span>Status</span></div>
+            <ul id="c-stock" class="divide-y divide-line"></ul>
+          </section>
+          <!-- detail -->
+          <section class="flex-1 p-6 overflow-hidden">
+            <div class="flex items-start justify-between">
+              <div><div class="cap">Material · g</div><h2 class="text-[28px] font-medium tracking-[-0.03em] mt-1">Chicken thigh fillet</h2><div class="mt-2"><span class="chip" data-s="To order"></span></div></div>
+              <div class="flex gap-2"><button class="h-9 px-3 rounded-[8px] border border-line2 bg-panel text-[13px] flex items-center gap-1.5"><svg class="ico ico-sm"><use href="#i-count"/></svg>Count</button><button class="h-9 px-4 rounded-[8px] bg-forest text-canvas text-[13px] font-medium flex items-center gap-1.5"><svg class="ico ico-sm"><use href="#i-truck"/></svg>Create order</button></div>
+            </div>
+            <!-- gauge -->
+            <div class="mt-6 border border-line rounded-[12px] bg-panel p-5">
+              <div class="flex items-end justify-between"><div><div class="cap">On hand</div><div class="mono text-[40px] leading-none mt-2">350 <span class="text-[18px] text-graphite">g</span></div></div><div class="text-right text-[12.5px] text-graphite"><span class="mono text-saffron">1.650 g</span> below alert level</div></div>
+              <svg viewBox="0 0 600 54" class="w-full mt-5">
+                <rect x="0" y="16" width="600" height="10" rx="5" fill="#F2EDE3"/>
+                <rect x="0" y="16" width="35" height="10" rx="5" fill="#B97D14"/>
+                <line x1="200" x2="200" y1="8" y2="34" stroke="#18201C" stroke-width="1.5"/>
+                <text x="200" y="48" text-anchor="middle" font-size="11" font-family="Geist Mono" fill="#5F655F">alert 2.000</text>
+                <line x1="500" x2="500" y1="12" y2="30" stroke="#9A9C94" stroke-dasharray="2 2"/>
+                <text x="500" y="48" text-anchor="middle" font-size="11" font-family="Geist Mono" fill="#9A9C94">+ order 5.000 → 5.350</text>
+                <text x="0" y="48" font-size="11" font-family="Geist Mono" fill="#5F655F">0</text>
+              </svg>
+            </div>
+            <div class="grid grid-cols-3 mt-4 border border-line rounded-[12px] bg-panel divide-x divide-line text-[13px]">
+              <div class="p-4"><div class="cap">Order quantity</div><div class="mono text-[17px] mt-1.5">5.000 g</div></div>
+              <div class="p-4"><div class="cap">Preferred supplier</div><div class="mt-1.5 font-medium">CV Unggas Sejahtera</div><div class="text-[12px] text-graphite">Lead time 1 day · Rp 58.000 / kg</div></div>
+              <div class="p-4"><div class="cap">Usage · last 7 days</div><div class="mono text-[17px] mt-1.5">14.820 g</div><div class="text-[12px] text-graphite">≈ 2.117 g a day</div></div>
+            </div>
+            <div class="mt-4 border border-line rounded-[12px] bg-panel">
+              <div class="h-11 px-5 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Movements</span><span class="text-[12px] text-graphite">Showing 5 of 212</span></div>
+              <table class="w-full text-[13px]">
+                <tbody class="divide-y divide-line">
+                  <tr><td class="px-5 py-2.5 mono text-graphite w-24">13 Oct</td><td>Recipe consumption</td><td class="text-graphite text-[12.5px]">Recipe use from daily close 12 Oct</td><td class="mono text-right pr-5 text-brick">−2.150 g</td></tr>
+                  <tr><td class="px-5 py-2.5 mono text-graphite">12 Oct</td><td>Stock count</td><td class="text-graphite text-[12.5px]">Stock count 12 Oct · −4%</td><td class="mono text-right pr-5 text-brick">−110 g</td></tr>
+                  <tr><td class="px-5 py-2.5 mono text-graphite">12 Oct</td><td>Recipe consumption</td><td class="text-graphite text-[12.5px]">Recipe use from daily close 11 Oct</td><td class="mono text-right pr-5 text-brick">−3.020 g</td></tr>
+                  <tr><td class="px-5 py-2.5 mono text-graphite">10 Oct</td><td>Receiving</td><td class="text-graphite text-[12.5px]">Delivery against a supplier order · PO-1009-01</td><td class="mono text-right pr-5 text-leaf">+5.000 g</td></tr>
+                  <tr><td class="px-5 py-2.5 mono text-graphite">10 Oct</td><td>Recipe consumption</td><td class="text-graphite text-[12.5px]">Recipe use from daily close 9 Oct</td><td class="mono text-right pr-5 text-brick">−2.480 g</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <p class="text-center text-[13px] text-graphite mt-3">Stock — master–detail: scan the list, read one material in depth, act without leaving the page.</p>
+</section>
+
+<!-- ============ PHONE ============ -->
+<section class="mt-24">
+  <div class="px-1 mb-8"><div class="cap">Phone · 390 px</div><h2 class="text-[38px] font-medium tracking-[-0.04em] text-forest mt-1">Pocket station</h2>
+    <p class="text-[14px] text-graphite mt-2 max-w-[66ch]">The section name in the top bar is the navigation: tap it for a sheet listing every section and sub-section (third frame). Each screen owns a bottom action dock — on Daily close it carries the total and Complete. A strip of days with status dots replaces the desktop day pane.</p></div>
+  <div class="flex flex-wrap gap-10 justify-center">
+
+    <!-- phone home -->
+    <div class="w-[390px] h-[844px] rounded-[54px] bg-[#111] p-[10px] phone flex-none"><div class="w-full h-full rounded-[44px] overflow-hidden bg-canvas relative">
+      <div class="statusbar"></div>
+      <div class="phonetop" data-title="Home"></div>
+      <div class="px-4 pt-3 space-y-3">
+        <div class="border border-line rounded-[12px] bg-panel">
+          <div class="h-10 px-4 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Needs attention</span><span class="mono text-[11.5px] w-5 h-5 rounded-[5px] bg-saffrontint text-saffron flex items-center justify-center">3</span></div>
+          <ul class="divide-y divide-line text-[13.5px]">
+            <li class="px-4 py-3 flex items-center gap-3 border-l-2 border-saffron"><div class="flex-1"><div class="font-medium">Today is saved as a draft</div><div class="text-[12px] text-graphite mono">101 portions · Rp 3.215.000</div></div><svg class="ico ico-sm text-graphite"><use href="#i-cr"/></svg></li>
+            <li class="px-4 py-3 flex items-center gap-3"><div class="flex-1"><div>Items entered, no revenue</div><div class="text-[12px] text-graphite mono">Sun 11 Oct</div></div><svg class="ico ico-sm text-graphite"><use href="#i-cr"/></svg></li>
+            <li class="px-4 py-3 flex items-center gap-3"><div class="flex-1"><div>Revenue recorded, no items</div><div class="text-[12px] text-graphite mono">Mon 5 Oct</div></div><svg class="ico ico-sm text-graphite"><use href="#i-cr"/></svg></li>
+          </ul>
+        </div>
+        <div class="grid grid-cols-2 border border-line rounded-[12px] bg-panel divide-x divide-line">
+          <div class="p-3.5"><div class="cap">Today</div><div class="mono text-[17px] mt-1">Rp 3.215.000</div><div class="mono text-[11.5px] text-leaf">+8,6%</div></div>
+          <div class="p-3.5 bg-sprout/50"><div class="cap !text-forest">October</div><div class="mono text-[17px] mt-1 text-forest">Rp 43.570.000</div><div class="mono text-[11.5px] text-leaf">+6,2%</div></div>
+        </div>
+        <div class="border border-line rounded-[12px] bg-panel">
+          <div class="h-10 px-4 flex items-center justify-between border-b border-line"><span class="cap !text-forest">Sales trend</span><span class="text-[12px] text-forest font-medium">Recap →</span></div>
+          <svg id="c-trend-phone" viewBox="0 0 340 120" class="w-full p-2"></svg>
+        </div>
+        <dl class="border border-line rounded-[12px] bg-panel divide-y divide-line text-[13px]">
+          <div class="px-4 h-10 flex items-center justify-between"><dt class="text-graphite">Portions</dt><dd class="mono">1.042</dd></div>
+          <div class="px-4 h-10 flex items-center justify-between"><dt class="text-graphite">Best seller</dt><dd>Chicken Nanban <span class="mono text-graphite">214</span></dd></div>
+        </dl>
+      </div>
+      <div class="absolute left-0 right-0 bottom-0 bg-panel/95 backdrop-blur border-t border-line px-4 pt-3 pb-8 flex gap-2">
+        <button class="flex-1 h-12 rounded-[10px] bg-forest text-canvas text-[14.5px] font-medium flex items-center justify-center gap-2">Continue today's close<svg class="ico ico-sm"><use href="#i-arrow"/></svg></button>
+      </div>
+    </div></div>
+
+    <!-- phone close -->
+    <div class="w-[390px] h-[844px] rounded-[54px] bg-[#111] p-[10px] phone flex-none"><div class="w-full h-full rounded-[44px] overflow-hidden bg-canvas relative">
+      <div class="statusbar"></div>
+      <div class="phonetop" data-title="Daily close" data-scan="1"></div>
+      <div class="px-4 pt-3">
+        <div class="grid grid-cols-2 p-0.5 rounded-[9px] border border-line bg-panel text-[13px]"><span class="h-8 rounded-[7px] bg-forest text-canvas flex items-center justify-center font-medium">Daily close</span><span class="h-8 flex items-center justify-center text-graphite">History</span></div>
+        <div class="flex gap-1.5 mt-3 -mr-4 overflow-hidden" id="c-strip"></div>
+        <div class="flex items-center justify-between mt-3"><div class="text-[17px] font-medium tracking-[-0.02em]">Tuesday, 13 Oct 2026</div><span class="chip" data-s="Unsaved changes"></span></div>
+        <div class="mt-3 border border-line rounded-[12px] bg-panel overflow-hidden">
+          <div class="h-9 px-4 flex items-center justify-between border-b border-line bg-well/50"><span class="cap !text-forest">Main</span><span class="mono text-[11.5px] text-graphite">62</span></div>
+          <ul class="divide-y divide-line" id="c-items-phone"></ul>
+        </div>
+      </div>
+      <div class="absolute left-0 right-0 bottom-0 bg-panel/95 backdrop-blur border-t border-line px-4 pt-3 pb-8">
+        <div class="flex items-center justify-between text-[12px]"><span class="mono text-graphite">62 · 17 · 22 portions</span><span class="text-saffron flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-saffron"></span>3 unsaved</span></div>
+        <div class="flex items-center gap-2 mt-2">
+          <div class="flex-1"><div class="mono text-[19px] text-forest leading-none">Rp 3.215.000</div><div class="text-[11px] text-graphite mt-1">Payments ↑ tap to edit</div></div>
+          <button class="h-12 px-4 rounded-[10px] border border-forest text-forest text-[14px] font-medium">Save</button>
+          <button class="h-12 px-4 rounded-[10px] bg-forest text-canvas text-[14px] font-medium">Complete</button>
+        </div>
+      </div>
+    </div></div>
+
+    <!-- phone nav sheet -->
+    <div class="w-[390px] h-[844px] rounded-[54px] bg-[#111] p-[10px] phone flex-none"><div class="w-full h-full rounded-[44px] overflow-hidden bg-canvas relative">
+      <div class="statusbar"></div>
+      <div class="phonetop" data-title="Daily close" data-open="1" data-scan="1"></div>
+      <div class="absolute inset-0 top-[104px] bg-ink/30"></div>
+      <div class="absolute left-0 right-0 bottom-0 top-[150px] bg-panel rounded-t-[22px] shadow-[0_-20px_40px_-20px_rgba(0,0,0,.3)] px-4 pt-2">
+        <div class="w-10 h-1 rounded-full bg-line2 mx-auto"></div>
+        <div class="mt-3 h-10 rounded-[10px] border border-line bg-canvas flex items-center gap-2 px-3 text-[13.5px] text-fog"><svg class="ico ico-sm"><use href="#i-search"/></svg>Jump to a day, item or material</div>
+        <div class="mt-3 space-y-1" id="c-sheet"></div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============ COMPONENTS ============ -->
+<section class="mt-24 bg-panel rounded-[14px] frame p-8 sm:p-12">
+  <div class="cap">Component sheet</div>
+  <h2 class="text-[38px] font-medium tracking-[-0.04em] text-forest mt-1">Tools on the rail</h2>
+  <div class="grid lg:grid-cols-3 gap-px bg-line border border-line rounded-[12px] overflow-hidden mt-8">
+    <div class="bg-panel p-6">
+      <div class="cap mb-4">Buttons</div>
+      <div class="flex flex-wrap gap-2">
+        <button class="h-10 px-4 rounded-[8px] bg-forest text-canvas text-[13.5px] font-medium">Complete day</button>
+        <button class="h-10 px-4 rounded-[8px] border border-forest text-forest text-[13.5px] font-medium">Save draft</button>
+        <button class="h-10 px-4 rounded-[8px] border border-line2 text-[13.5px]">Back</button>
+        <button class="h-10 px-4 rounded-[8px] bg-brick text-white text-[13.5px] font-medium">Delete entry</button>
+        <button class="h-10 px-4 rounded-[8px] border border-brick/40 text-brick text-[13.5px] font-medium">Cancel order</button>
+        <button class="h-10 px-4 rounded-[8px] bg-forest/40 text-canvas text-[13.5px] font-medium">Saving…</button>
+      </div>
+      <div class="cap mb-3 mt-8">Status chips</div>
+      <div class="flex flex-wrap gap-1.5" id="c-chips"></div>
+    </div>
+    <div class="bg-panel p-6">
+      <div class="cap mb-4">Inputs</div>
+      <div class="cap !text-[10px] mb-1">Cash</div>
+      <div class="h-10 rounded-[8px] border border-forest ring-[3px] ring-sprout px-3 flex items-center gap-2 mono text-[14px]"><span class="text-graphite">Rp</span><span class="flex-1">1.500.000</span><span class="text-[10.5px] text-leaf">← 1,5jt</span></div>
+      <div class="cap !text-[10px] mb-1 mt-4">BCA</div>
+      <div class="h-10 rounded-[8px] border border-brick px-3 flex items-center gap-2 mono text-[14px]"><span class="text-graphite">Rp</span><span>1.4oo.ooo</span><svg class="ico ico-sm text-brick ml-auto"><use href="#i-alert"/></svg></div>
+      <div class="text-[12px] text-brick mt-1">Use digits, for example 1.500.000 or 1,5jt.</div>
+      <div class="cap !text-[10px] mb-1 mt-4">Quantity</div>
+      <div class="inline-flex h-10 rounded-[8px] border border-line2 overflow-hidden"><button class="w-10 flex items-center justify-center border-r border-line"><svg class="ico ico-sm"><use href="#i-minus"/></svg></button><span class="w-14 flex items-center justify-center mono text-[15px]">18</span><button class="w-10 flex items-center justify-center border-l border-line bg-well"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button></div>
+      <div class="cap !text-[10px] mb-1 mt-4">Date</div>
+      <div class="inline-flex h-10 rounded-[8px] border border-line2 overflow-hidden text-[13.5px]"><button class="w-10 flex items-center justify-center border-r border-line"><svg class="ico ico-sm"><use href="#i-cl"/></svg></button><span class="px-4 flex items-center gap-2"><svg class="ico ico-sm text-graphite"><use href="#i-cal"/></svg>Mon, 12 Oct 2026</span><button class="w-10 flex items-center justify-center border-l border-line"><svg class="ico ico-sm"><use href="#i-cr"/></svg></button><button class="px-3 border-l border-line text-forest font-medium">Today</button></div>
+    </div>
+    <div class="bg-panel p-6">
+      <div class="cap mb-4">List row</div>
+      <div class="border border-line rounded-[10px] divide-y divide-line">
+        <div class="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-3"><div><div class="text-[13.5px] font-medium">PO-1013-02</div><div class="text-[12px] text-graphite">Toko Telur Pak Darmo · Telur ayam × 60 pcs</div></div><span class="mono text-[12px] text-graphite">Wed 14</span><span class="chip" data-s="On order"></span></div>
+        <div class="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-3 bg-well/50"><div><div class="text-[13.5px] font-medium">PO-1009-01</div><div class="text-[12px] text-graphite">CV Unggas Sejahtera · Chicken thigh × 5.000 g</div></div><span class="mono text-[12px] text-graphite">Sat 10</span><span class="inline-flex items-center h-6 px-2 rounded-[6px] text-[11.5px] font-medium bg-sprout text-forest">Received</span></div>
+      </div>
+      <div class="cap mb-4 mt-8">Empty state</div>
+      <div class="border border-dashed border-line2 rounded-[10px] p-6 text-center grid-bg relative overflow-hidden">
+        <div class="absolute inset-0 bg-panel/85"></div>
+        <div class="relative">
+          <div class="mono text-[12px] text-graphite">0 / 0</div>
+          <div class="text-[15px] font-medium mt-2">No items match</div>
+          <p class="text-[12.5px] text-graphite mt-1">Clear the find box or the filter.</p>
+          <button class="mt-3 h-8 px-3 rounded-[8px] border border-line2 text-[12.5px]">Clear filters</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="grid lg:grid-cols-2 gap-6 mt-6">
+    <div>
+      <div class="cap mb-3">Toasts</div>
+      <div class="space-y-2 max-w-[420px]">
+        <div class="flex items-center gap-3 rounded-[10px] bg-ink text-canvas px-4 h-11 text-[13.5px] shadow-[0_12px_30px_-12px_rgba(0,0,0,.4)]"><svg class="ico ico-sm text-sprout2"><use href="#i-check"/></svg><span class="flex-1">Stock count recorded</span><span class="mono text-[11px] text-canvas/50">now</span></div>
+        <div class="flex items-center gap-3 rounded-[10px] bg-panel border border-line border-l-[3px] border-l-saffron px-4 py-2.5 text-[13.5px] shadow-[0_12px_30px_-16px_rgba(0,0,0,.3)]"><svg class="ico ico-sm text-saffron"><use href="#i-alert"/></svg><span class="flex-1">Day saved, but inventory usage needs recipe or mapping review.</span></div>
+        <div class="flex items-center gap-3 rounded-[10px] bg-panel border border-line border-l-[3px] border-l-brick px-4 py-2.5 text-[13.5px] shadow-[0_12px_30px_-16px_rgba(0,0,0,.3)]"><svg class="ico ico-sm text-brick"><use href="#i-x"/></svg><span class="flex-1">You're offline. Connect to save. Nothing was changed.</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="cap mb-3">Confirm prompt · with before / after</div>
+      <div class="rounded-[12px] bg-panel border border-line shadow-[0_24px_50px_-24px_rgba(22,61,47,.4)] max-w-[480px] overflow-hidden">
+        <div class="p-5"><div class="text-[17px] font-medium">Replace Tuesday, 13 Oct?</div><p class="text-[13px] text-graphite mt-1">Saving the scanned sheet replaces this day's items and payments.</p></div>
+        <table class="w-full text-[12.5px] border-y border-line">
+          <thead class="bg-well/60"><tr><th class="cap font-normal text-left px-5 py-2">Field</th><th class="cap font-normal text-right">Saved</th><th class="cap font-normal text-right pr-5">Sheet</th></tr></thead>
+          <tbody class="divide-y divide-line mono">
+            <tr><td class="px-5 py-2 font-sans">Chicken Nanban</td><td class="text-right text-graphite">18</td><td class="text-right pr-5">18</td></tr>
+            <tr class="bg-saffrontint/50"><td class="px-5 py-2 font-sans">Es Teh Manis</td><td class="text-right text-graphite line-through">12</td><td class="text-right pr-5 text-saffron">14</td></tr>
+            <tr class="bg-saffrontint/50"><td class="px-5 py-2 font-sans">Cash</td><td class="text-right text-graphite line-through">865.000</td><td class="text-right pr-5 text-saffron">889.000</td></tr>
+          </tbody>
+        </table>
+        <div class="p-4 flex items-center gap-2"><span class="text-[12px] text-graphite mono">2 values will change</span><button class="ml-auto h-9 px-4 rounded-[8px] border border-forest text-forest text-[13px] font-medium ring-[3px] ring-sprout">Keep saved day</button><button class="h-9 px-4 rounded-[8px] bg-brick text-white text-[13px] font-medium">Replace day</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+<footer class="text-center text-[12px] text-graphite mt-12">Direction C · Mise — Charred by Porcafe back office concept · October 2026</footer>
+</div>
+
+<script>
+const rp = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+const nf = n => n.toLocaleString('id-ID');
+
+const SW = [['canvas','#F8F4EC'],['panel','#FFFEFB'],['well','#F2EDE3'],['line','#E7DFD1'],['forest','#163D2F'],['leaf','#3E7B5A'],['sprout','#E3EEE5'],['ink','#18201C'],['graphite','#5F655F'],['saffron','#B97D14'],['brick','#B5452E'],['slate','#46708A']];
+document.getElementById('c-swatches').innerHTML = SW.map(([n,h])=>`<div class="bg-panel"><div class="h-12" style="background:${h}"></div><div class="px-2 py-1.5"><div class="font-medium">${n}</div><div class="mono text-graphite">${h}</div></div></div>`).join('');
+
+const CHIP = {'Not started':'bg-slatetint text-slate','Draft':'bg-saffrontint text-saffron','Unsaved changes':'bg-saffrontint text-saffron','Complete':'bg-sprout text-forest','No sales':'bg-well text-graphite','Negative':'bg-brick text-white','Out':'bg-bricktint text-brick','To order':'bg-saffrontint text-saffron','On order':'bg-slatetint text-slate','OK':'bg-sprout text-forest','No alert level':'bg-well text-graphite','Alerts off':'border border-line2 text-graphite'};
+const chip = s => `<span class="inline-flex items-center gap-1.5 h-6 px-2 rounded-[6px] text-[11.5px] font-medium whitespace-nowrap ${CHIP[s]||'bg-well'}"><span class="w-1.5 h-1.5 rounded-[2px] bg-current"></span>${s}</span>`;
+document.querySelectorAll('.chip').forEach(el => el.outerHTML = chip(el.dataset.s));
+document.getElementById('c-chips').innerHTML = Object.keys(CHIP).map(chip).join('');
+
+document.querySelectorAll('.chrome').forEach(el => el.outerHTML = `<div class="h-10 bg-well border-b border-line flex items-center px-4 gap-2"><span class="w-3 h-3 rounded-full bg-[#E9776B]"></span><span class="w-3 h-3 rounded-full bg-[#E9C46A]"></span><span class="w-3 h-3 rounded-full bg-[#7FBF7A]"></span><div class="mx-auto w-[460px] h-6 rounded-[6px] bg-panel border border-line mono text-[10.5px] text-graphite flex items-center justify-center">${el.dataset.url}</div></div>`);
+
+const NAV = [['Home','i-home'],['Daily close','i-close'],['Reports','i-reports'],['Stock','i-stock'],['Setup','i-setup']];
+const SUBS = {'Home':[],'Daily close':['Daily close','History'],'Reports':['Revenue','Items','Weekday patterns'],'Stock':['Stock','To order','Orders','Usage recap'],'Setup':['Menu','Materials','Recipes','Suppliers','Import','Notifications','Data maintenance']};
+document.querySelectorAll('.rail').forEach(el => {
+  const a = el.dataset.active;
+  el.outerHTML = `<nav class="w-[76px] flex-none bg-panel border-r border-line flex flex-col items-center py-4 gap-1">
+    <div class="mark w-10 h-10 border border-line mb-5"><img src="logo.png" alt=""></div>
+    ${NAV.map(([s,i]) => `<div class="w-[60px] py-2 rounded-[10px] flex flex-col items-center gap-1 relative ${s===a?'bg-forest text-canvas':'text-graphite'}"><svg class="ico"><use href="#${i}"/></svg><span class="text-[10px] leading-none ${s===a?'font-medium':''}">${s==='Daily close'?'Close':s}</span>${s==='Stock'?'<span class="absolute top-1 right-2 w-4 h-4 rounded-full bg-saffron text-white mono text-[9px] flex items-center justify-center">4</span>':''}</div>`).join('')}
+    <div class="mt-auto flex flex-col items-center gap-1 text-[10px] text-graphite"><span class="w-2 h-2 rounded-full bg-leaf"></span>Online</div>
+  </nav>`;
+});
+document.querySelectorAll('.topbar').forEach(el => {
+  const tabs = el.dataset.tabs ? el.dataset.tabs.split('|') : [];
+  el.outerHTML = `<div class="h-14 flex-none border-b border-line bg-panel flex items-center px-5 gap-5">
+    <div class="text-[15px] font-medium tracking-[-0.02em]">${el.dataset.title}</div>
+    ${tabs.length?`<div class="flex items-center gap-0.5 p-0.5 rounded-[8px] bg-well text-[13px]">${tabs.map((t,i)=>`<span class="h-7 px-3 rounded-[6px] flex items-center ${i===0?'bg-panel shadow-[0_1px_2px_rgba(0,0,0,.08)] font-medium':'text-graphite'}">${t}</span>`).join('')}</div>`:''}
+    <div class="h-8 w-[220px] rounded-[8px] border border-line bg-canvas flex items-center gap-2 px-3 text-[12.5px] text-fog"><svg class="ico ico-sm"><use href="#i-search"/></svg>Jump to…<span class="ml-auto flex gap-0.5"><span class="kbd">⌘</span><span class="kbd">K</span></span></div>
+    <div class="ml-auto flex items-center gap-2">${el.dataset.right||''}</div>
+  </div>`;
+});
+document.querySelectorAll('.statusbar').forEach(el => el.outerHTML = `<div class="h-12 flex items-center justify-between px-8 text-[14px] font-semibold"><span>21:55</span><span class="w-24 h-7 rounded-full bg-[#111] absolute left-1/2 -translate-x-1/2 top-2.5"></span><span class="text-[12px]">●●● ▮</span></div>`);
+document.querySelectorAll('.phonetop').forEach(el => {
+  el.outerHTML = `<div class="h-14 px-4 flex items-center gap-3 border-b border-line bg-panel relative z-10">
+    <div class="mark w-8 h-8 border border-line"><img src="logo.png" alt=""></div>
+    <button class="h-9 pl-3 pr-2 rounded-[9px] ${el.dataset.open?'bg-forest text-canvas':'bg-well'} flex items-center gap-1.5 text-[15px] font-medium tracking-[-0.01em]">${el.dataset.title}<svg class="ico ico-sm ${el.dataset.open?'rotate-180':''}"><use href="#i-cd"/></svg></button>
+    <div class="ml-auto flex gap-1.5">${el.dataset.scan?'<button class="w-9 h-9 rounded-[9px] border border-line flex items-center justify-center text-forest"><svg class="ico"><use href="#i-cam"/></svg></button>':''}<button class="w-9 h-9 rounded-[9px] border border-line flex items-center justify-center"><svg class="ico"><use href="#i-search"/></svg></button></div>
+  </div>`;
+});
+
+/* sheet */
+document.getElementById('c-sheet').innerHTML = NAV.map(([s,i])=>`<div class="rounded-[12px] ${s==='Daily close'?'bg-sprout/60':''} px-3 py-2.5"><div class="flex items-center gap-3 text-[15px] ${s==='Daily close'?'text-forest font-medium':''}"><svg class="ico"><use href="#${i}"/></svg>${s}${s==='Stock'?'<span class="ml-auto mono text-[11px] px-1.5 rounded-[5px] bg-saffrontint text-saffron">4 to order</span>':''}</div>${SUBS[s].length?`<div class="flex flex-wrap gap-1.5 mt-2 pl-[30px]">${SUBS[s].map((x,j)=>`<span class="h-7 px-2.5 rounded-[7px] text-[12.5px] flex items-center ${s==='Daily close'&&j===0?'bg-forest text-canvas':'border border-line text-graphite'}">${x}</span>`).join('')}</div>`:''}</div>`).join('');
+
+/* data */
+const DAYS = [[1,'Thu',3420000],[2,'Fri',4185000],[3,'Sat',5260000],[4,'Sun',4930000],[5,'Mon',2870000],[6,'Tue',3110000],[7,'Wed',3345000],[8,'Thu',3590000],[9,'Fri',4420000],[10,'Sat',5480000],[11,'Sun',null],[12,'Mon',2960000],[13,'Tue',3215000]];
+
+/* 14-day calendar (30 Sep..13 Oct) */
+const cal = [['W',30,'c'],['T',1,'c'],['F',2,'c'],['S',3,'c'],['S',4,'c'],['M',5,'w'],['T',6,'c'],['W',7,'c'],['T',8,'c'],['F',9,'c'],['S',10,'c'],['S',11,'w'],['M',12,'c'],['T',13,'d']];
+document.getElementById('c-cal').innerHTML = cal.map(([w,d,s])=>`<div class="aspect-square rounded-[6px] flex flex-col items-center justify-center text-[11px] mono ${s==='c'?'bg-forest text-canvas':s==='w'?'bg-saffrontint text-saffron border border-saffron/40':'border-2 border-saffron text-saffron'}">${d}</div>`).join('');
+
+function area(id, W, H, opts={}){
+  const pl=opts.pl??40, pr=10, pt=16, pb=opts.pb??26, max=6000000;
+  const pts = DAYS.filter(d=>!(opts.excludeToday && d[0]===13));
+  const x = i => pl + i*(W-pl-pr)/(DAYS.length-1);
+  const y = v => pt + (H-pt-pb)*(1-v/max);
+  let s = `<defs><linearGradient id="${id}g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3E7B5A" stop-opacity=".22"/><stop offset="1" stop-color="#3E7B5A" stop-opacity="0"/></linearGradient></defs>`;
+  if(!opts.mini) [0,2e6,4e6,6e6].forEach(v=> s+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="#E7DFD1"/><text x="${pl-8}" y="${y(v)+3.5}" text-anchor="end" font-size="10" font-family="Geist Mono" fill="#9A9C94">${v/1e6}M</text>`);
+  // segments
+  let segs=[[]];
+  DAYS.forEach((d,i)=>{ if(d[2]==null || (opts.excludeToday&&d[0]===13)){ segs.push([]); } else segs[segs.length-1].push([x(i),y(d[2]),d]); });
+  segs.filter(g=>g.length).forEach(g=>{
+    const line = g.map(p=>p[0]+','+p[1]).join(' ');
+    s += `<polygon points="${g[0][0]},${y(0)} ${line} ${g[g.length-1][0]},${y(0)}" fill="url(#${id}g)"/>`;
+    s += `<polyline points="${line}" fill="none" stroke="#163D2F" stroke-width="1.5" stroke-linejoin="round"/>`;
+  });
+  DAYS.forEach((d,i)=>{
+    if(!opts.mini) s += `<text x="${x(i)}" y="${H-8}" text-anchor="middle" font-size="10" font-family="Geist Mono" fill="${d[0]===13?'#B97D14':'#9A9C94'}">${String(d[0]).padStart(2,'0')}</text>`;
+    if(d[2]==null){ s+=`<rect x="${x(i)-10}" y="${pt}" width="20" height="${H-pt-pb}" fill="#F2EDE3" opacity=".9"/><text x="${x(i)}" y="${y(0)-6}" text-anchor="middle" font-size="9" font-family="Geist Mono" fill="#9A9C94">—</text>`; }
+    else if(d[0]===13 && !opts.excludeToday){ s+=`<circle cx="${x(i)}" cy="${y(d[2])}" r="3.5" fill="#FFFEFB" stroke="#B97D14" stroke-width="1.5"/>`; }
+    else if(!(opts.excludeToday&&d[0]===13)) s+=`<circle cx="${x(i)}" cy="${y(d[2])}" r="${opts.mini?1.8:2.4}" fill="#163D2F"/>`;
+  });
+  if(opts.cross){ const i=9, v=DAYS[i][2]; s+=`<line x1="${x(i)}" x2="${x(i)}" y1="${pt}" y2="${y(0)}" stroke="#163D2F" stroke-dasharray="2 3"/><circle cx="${x(i)}" cy="${y(v)}" r="5" fill="#FFFEFB" stroke="#163D2F" stroke-width="2"/><g transform="translate(${x(i)+10},${y(v)-6})"><rect width="150" height="54" rx="8" fill="#18201C"/><text x="12" y="18" font-size="10" font-family="Geist Mono" fill="#9A9C94" letter-spacing="1">SAT 10 OCT</text><text x="12" y="38" font-size="15" font-family="Geist Mono" fill="#FFFEFB">Rp 5.480.000</text></g>`;
+    s+=`<line x1="${pl}" x2="${W-pr}" y1="${y(3960909)}" y2="${y(3960909)}" stroke="#3E7B5A" stroke-dasharray="4 4"/><text x="${W-pr}" y="${y(3960909)+14}" text-anchor="end" font-size="10" font-family="Geist Mono" fill="#3E7B5A">AVG 3.960.909</text>`; }
+  document.getElementById(id).innerHTML = s;
+}
+area('c-trend',560,210,{});
+area('c-rev',860,250,{excludeToday:true,cross:true});
+area('c-trend-phone',340,120,{mini:true,pl:6,pb:8});
+
+/* top table */
+const TOP = [['Chicken Nanban','Main',214],['Nasi Goreng Charred','Main',168],['Chicken Katsu Curry','Main',131],['Beef Teriyaki Bowl','Main',109],['Kopi Susu Aren','Other',96]];
+document.getElementById('c-top').innerHTML = TOP.map(([n,c,q],i)=>`<tr class="border-b border-line last:border-0"><td class="pl-5 py-2.5 mono text-[11.5px] text-fog w-10">0${i+1}</td><td>${n}</td><td class="text-graphite text-[12px]">${c}</td><td class="w-[160px] pr-3"><div class="h-1.5 rounded-full bg-well"><div class="h-full rounded-full bg-forest" style="width:${q/214*100}%"></div></div></td><td class="mono text-right pr-5">${q}</td></tr>`).join('');
+
+const PAY = [['BCA',19606500,45,'#163D2F'],['Cash',11764000,27,'#3E7B5A'],['Soundbox',10456800,24,'#9DBFA7'],['Other',1742700,4,'#D6CBB8']];
+document.getElementById('c-paybar').innerHTML = PAY.map(([m,v,p,c])=>`<span style="width:${p}%;background:${c}" class="flex items-center justify-center text-[10.5px] mono ${p>20?'text-white':''}">${p>20?p+'%':''}</span>`).join('');
+document.getElementById('c-paylist').innerHTML = PAY.map(([m,v,p,c])=>`<li class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:${c}"></span><span class="flex-1">${m}</span><span class="mono text-graphite">${nf(v)}</span><span class="mono w-9 text-right">${p}%</span></li>`).join('');
+
+/* day list */
+const DL = [['Tue','13 Oct','Unsaved changes','Rp 3.215.000',1],['Mon','12 Oct','Complete','Rp 2.960.000'],['Sun','11 Oct','Draft','no revenue'],['Sat','10 Oct','Complete','Rp 5.480.000'],['Fri','9 Oct','Complete','Rp 4.420.000'],['Thu','8 Oct','Complete','Rp 3.590.000'],['Wed','7 Oct','Complete','Rp 3.345.000'],['Tue','6 Oct','Complete','Rp 3.110.000'],['Mon','5 Oct','Complete','no items'],['Sun','4 Oct','Complete','Rp 4.930.000'],['Sat','3 Oct','Complete','Rp 5.260.000'],['Fri','2 Oct','Complete','Rp 4.185.000']];
+const dot = s => s==='Complete'?'bg-forest':s==='Draft'||s==='Unsaved changes'?'bg-saffron':'border border-line2';
+document.getElementById('c-daylist').innerHTML = DL.map(([w,d,s,t,sel])=>`<li class="px-4 py-2.5 flex items-center gap-3 ${sel?'bg-sprout/60 border-l-2 border-forest':''}"><span class="w-2 h-2 rounded-[2px] ${dot(s)}"></span><div class="flex-1"><div class="text-[13px] ${sel?'font-medium':''}">${w} ${d}</div><div class="mono text-[11px] ${t.startsWith('no')?'text-saffron':'text-graphite'}">${t}</div></div>${sel?'<span class="mono text-[10px] text-forest">TODAY</span>':''}</li>`).join('');
+
+/* items */
+const ITEMS = {
+  'Main':[['Chicken Nanban',45000,18],['Nasi Goreng Charred',42000,14],['Chicken Katsu Curry',48000,11],['Beef Teriyaki Bowl',52000,9],['Iga Bakar Madu',65000,4],['Spaghetti Aglio Olio',40000,6],['Nasi Ayam Sambal Matah',38000,0]],
+  'Add On':[['Telur Ceplok',6000,9],['Nasi Putih',8000,5],['Sambal Matah',5000,3],['Extra Saus Mentai',10000,0]],
+  'Other':[['Kopi Susu Aren',25000,8,1],['Es Teh Manis',12000,12,1],['Croffle Coklat',null,2,1]]
+};
+const qty = (q,focus) => `<div class="inline-flex h-8 rounded-[8px] border ${focus?'border-forest ring-[3px] ring-sprout':'border-line'} overflow-hidden bg-panel"><button class="w-8 flex items-center justify-center text-graphite border-r border-line"><svg class="ico ico-sm"><use href="#i-minus"/></svg></button><span class="w-11 flex items-center justify-center mono text-[14px] ${q?'':'text-fog'}">${q||'·'}</span><button class="w-8 flex items-center justify-center border-l border-line bg-well/60"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button></div>`;
+let rows='';
+Object.entries(ITEMS).forEach(([cat,list])=>{
+  rows += `<tr><td colspan="4" class="pt-3 pb-1.5"><div class="flex items-center gap-3"><span class="cap !text-forest">${cat}</span><span class="flex-1 h-px bg-line"></span><span class="mono text-[11px] text-graphite">${list.reduce((a,r)=>a+r[2],0)} portions</span></div></td></tr>`;
+  list.forEach(([n,p,q,e],i)=>{
+    const focus = n==='Es Teh Manis';
+    rows += `<tr class="${focus?'bg-sprout/40':''}"><td class="py-[5px] pl-2 ${q?'':'text-graphite'}"><span class="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle ${e?'bg-saffron':'bg-transparent'}"></span>${n}</td><td class="text-right mono text-[12.5px] ${p?'text-graphite':'text-saffron'}">${p?nf(p):'missing price'}</td><td class="text-center">${qty(q,focus)}</td><td class="text-right mono text-[12.5px] pr-2 ${q&&p?'':'text-fog'}">${q&&p?nf(q*p):'—'}</td></tr>`;
+  });
+});
+document.getElementById('c-items').innerHTML = rows;
+document.getElementById('c-items-phone').innerHTML = ITEMS.Main.slice(0,6).map(([n,p,q])=>`<li class="px-4 py-2 flex items-center gap-2"><div class="flex-1 min-w-0"><div class="text-[14px] truncate ${q?'':'text-graphite'}">${n}</div><div class="mono text-[11px] text-graphite">${nf(p)}</div></div><div class="inline-flex h-10 rounded-[9px] border border-line overflow-hidden"><button class="w-10 flex items-center justify-center border-r border-line text-graphite"><svg class="ico ico-sm"><use href="#i-minus"/></svg></button><span class="w-11 flex items-center justify-center mono text-[15px] ${q?'':'text-fog'}">${q||'·'}</span><button class="w-10 flex items-center justify-center border-l border-line bg-well/60"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button></div></li>`).join('');
+document.getElementById('c-strip').innerHTML = [['Fri',9,'Complete'],['Sat',10,'Complete'],['Sun',11,'Draft'],['Mon',12,'Complete'],['Tue',13,'Unsaved changes',1],['Wed',14,'none'],['Thu',15,'none']].map(([w,d,s,sel])=>`<div class="flex-none w-[50px] h-[58px] rounded-[10px] flex flex-col items-center justify-center gap-1 ${sel?'bg-forest text-canvas':'bg-panel border border-line'} ${s==='none'?'opacity-40':''}"><span class="mono text-[10px] ${sel?'text-canvas/70':'text-graphite'}">${w.toUpperCase()}</span><span class="mono text-[16px] leading-none">${d}</span><span class="w-1.5 h-1.5 rounded-[2px] ${sel?'bg-saffron':s==='none'?'':dot(s)}"></span></div>`).join('');
+
+const DPAY=[['Cash','865.000'],['BCA','1.420.000'],['Soundbox','930.000'],['Other','']];
+document.getElementById('c-pay').innerHTML = DPAY.map(([m,v])=>`<div class="flex items-center gap-2"><span class="w-[72px] text-[12.5px]">${m}</span><div class="flex-1 h-9 rounded-[8px] border ${m==='BCA'?'border-forest ring-[3px] ring-sprout':'border-line'} bg-panel px-3 flex items-center gap-2 mono text-[13.5px]"><span class="text-fog">Rp</span><span class="${v?'':'text-fog'}">${v||'0'}</span></div></div>`).join('');
+
+/* revenue rows */
+const SPLIT = {12:[1310000,820000,740000,90000],10:[2480000,1465000,1335000,200000],9:[1990000,1180000,1100000,150000],8:[1615000,980000,880000,115000],7:[1505000,905000,835000,100000]};
+document.getElementById('c-days').innerHTML = [[12,'Mon'],[11,'Sun'],[10,'Sat'],[9,'Fri'],[8,'Thu'],[7,'Wed']].map(([d,w])=>{
+  if(!SPLIT[d]) return `<tr class="text-graphite"><td class="px-5 py-2 mono">${w} ${String(d).padStart(2,'0')} Oct</td><td colspan="5" class="text-right mono text-[12px] text-saffron">no revenue recorded</td><td class="pl-6 text-[12px]">Items closed</td><td class="text-right pr-5"><a class="text-forest font-medium">Edit</a></td></tr>`;
+  const s=SPLIT[d],t=s.reduce((a,b)=>a+b,0);
+  return `<tr><td class="px-5 py-2 mono">${w} ${String(d).padStart(2,'0')} Oct</td>${s.map(v=>`<td class="text-right mono text-graphite">${nf(v)}</td>`).join('')}<td class="text-right mono font-medium">${nf(t)}</td><td class="pl-6 text-[12px] text-graphite">${d===10?'Arisan group':''}</td><td class="text-right pr-5 whitespace-nowrap"><a class="text-forest font-medium">Edit</a><button class="ml-2 text-fog align-middle"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button></td></tr>`;
+}).join('') + `<tr class="bg-well/60"><td class="px-5 py-2.5 font-medium" colspan="5">Recorded sales in this period</td><td class="text-right mono font-semibold">43.570.000</td><td colspan="2" class="pl-6 text-[12px] text-graphite">+ 5 earlier days</td></tr>`;
+
+/* stock list */
+const STOCK = [['Saus Teriyaki','ml',-150,500,'Negative'],['Kewpie Mayo','ml',0,1000,'Out'],['Chicken thigh fillet','g',350,2000,'To order',1],['Gula aren','g',800,1000,'To order'],['Telur ayam','pcs',18,30,'On order'],['Beras pulen','g',12400,10000,'OK'],['Daging sapi slice','g',3200,2000,'OK'],['Susu UHT full cream','ml',6000,5000,'OK'],['Box takeaway kraft','pcs',140,100,'OK'],['Bawang putih','g',900,500,'OK'],['Kopi bubuk house blend','g',1250,null,'No alert level']];
+document.getElementById('c-stock').innerHTML = STOCK.map(([n,u,q,al,s,sel])=>{
+  const col = s==='Negative'||s==='Out'?'#B5452E':s==='To order'?'#B97D14':s==='On order'?'#46708A':'#3E7B5A';
+  const w = al? Math.max(2,Math.min(100,q/(al*2)*100)) : 0;
+  return `<li class="grid grid-cols-[1fr_96px_74px_96px] px-4 h-[46px] items-center text-[13px] ${sel?'bg-sprout/60 border-l-2 border-forest':''}"><span class="${sel?'font-medium':''}">${n}</span><span class="mono text-right ${q<0?'text-brick':''}">${nf(q)} ${u}</span><span class="flex justify-center">${al?`<span class="w-12 h-1.5 rounded-full bg-well relative"><span class="absolute inset-y-0 left-0 rounded-full" style="width:${q<0?4:w}%;background:${col}"></span><span class="absolute -top-0.5 -bottom-0.5 w-px bg-ink/40 left-1/2"></span></span>`:'<span class="mono text-fog text-[11px]">—</span>'}</span><span>${chip(s)}</span></li>`;
+}).join('');
+</script>
+</body>
+</html>
