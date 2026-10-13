@@ -136,7 +136,7 @@ function CloseItemRow({
       <p
         className={cn(
           "hidden w-28 shrink-0 text-right text-table tabular-nums tablet:block",
-          lineAmount === null ? "text-ink-faint" : "text-ink-muted"
+          "text-ink-muted"
         )}
       >
         {lineAmount === null ? "—" : formatCount(lineAmount)}

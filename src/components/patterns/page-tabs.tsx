@@ -31,7 +31,7 @@ export function PageTabs<T extends string>({
             aria-selected={active}
             onClick={() => onChange(tab.value)}
             className={cn(
-              "-mb-px h-11 shrink-0 border-b-2 text-body font-medium whitespace-nowrap transition-colors",
+              "-mb-px h-11 shrink-0 border-b-2 text-body font-medium whitespace-nowrap transition-colors [@media(pointer:coarse)]:min-w-11",
               active ? "border-brand text-brand" : "border-transparent text-ink-muted hover:text-ink"
             )}
           >

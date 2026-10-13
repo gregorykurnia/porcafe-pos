@@ -65,7 +65,7 @@ export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFu
           type="date"
           value={value}
           onChange={(event) => void move(acceptDateInput(event.target.value, value))}
-          className="h-11 w-[10.5rem] bg-surface pl-9 sm:h-10"
+          className="h-11 w-[10.5rem] bg-surface pl-9 sm:h-10 [@media(pointer:coarse)]:h-11"
         />
       </div>
     </div>
