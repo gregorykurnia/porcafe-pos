@@ -1,17 +1,19 @@
 "use client";
 
-import { StatusBadge } from "@/components/state/status-badge";
-import { usageStatusView } from "@/lib/status";
-import { Stat } from "@/components/state/stat";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calculator, ChevronDown, ChevronRight, CircleCheck, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { StatStrip, type StatCell } from "@/components/patterns/stat-strip";
+import { StatusChip, ToneShape, type StatusTone } from "@/components/patterns/status-chip";
+import { Banner } from "@/components/patterns/banner";
+import { EmptyState, ErrorBanner, LoadingSkeleton } from "@/components/patterns/states";
+import { FieldRow } from "@/components/fields/field-row";
+import { usageStatusView } from "@/lib/status";
 import { formatDisplay, todayISO } from "@/lib/dates";
 import { getDailyItemLog } from "@/lib/data";
 import {
@@ -24,10 +26,22 @@ import {
   usageStatusDeductsStock,
 } from "@/lib/inventory-usage";
 import { daysNeedingExclusion, excludableItemsFor, sourceStatusLabel } from "@/lib/usage-exclusions";
-import type { InventoryUsageEvent } from "@/lib/types";
+import type { InventoryUsageEvent, InventoryUsageLine, InventoryUsageStatus } from "@/lib/types";
 
-function statusBadge(event: InventoryUsageEvent) {
-  return <StatusBadge view={usageStatusView(event.status)} />;
+// Stock → Usage recap (inventory §3.6.4). Completed days are turned into material usage through recipes. A day
+// opens in place as an inner panel (one level only), with its exclusions, issues and material lines.
+
+// Usage day status to a Canopy tone (DESIGN_SYSTEM §6). Each status keeps its word, its shape and its tone.
+const USAGE_TONE: Record<InventoryUsageStatus, StatusTone> = {
+  calculated: "ok",
+  "calculated-with-exclusions": "info",
+  "pending-draft": "info",
+  "needs-review": "warn",
+  "no-sales": "neutral",
+};
+
+function UsageStatusChip({ status }: { status: InventoryUsageStatus }) {
+  return <StatusChip tone={USAGE_TONE[status]}>{usageStatusView(status).label}</StatusChip>;
 }
 
 function safeEndDate(): string {
@@ -90,14 +104,13 @@ export function UsageRecap() {
     queueMicrotask(() => void refresh());
   }, [refresh]);
 
+  const rangeInvalid = !from || !to || from > to;
   const selectedEvent = events.find((event) => event.sourceDate === selectedDate) ?? null;
   const materialSummary = useMemo(() => summarizeInventoryUsage(events), [events]);
   const totalPortions = events.reduce((total, event) => total + event.totalPortions, 0);
   const reviewEvents = events.filter((event) => event.status === "needs-review").length;
   const exclusionEvents = events.filter((event) => event.status === "calculated-with-exclusions").length;
   const issueCount = events.reduce((total, event) => total + event.issues.length, 0);
-  const selectedExclusions = selectedEvent?.excludedItems ?? [];
-  const excludableMenuItems = selectedEvent ? excludableItemsFor(selectedEvent) : [];
   const busy = updatingExclusionFor !== null || recalculatingDate !== null || bulkProgress !== null;
 
   async function updateMenuItemExclusion(menuItemId: string, menuItemName: string, excluded: boolean) {
@@ -176,184 +189,336 @@ export function UsageRecap() {
     }
   }
 
-  // The selected day's detail. It is rendered as an expanded row under that day, not as a separate card.
-  const detail = selectedEvent && (
-    <div className="max-w-[calc(100vw-7rem)] space-y-4 sm:max-w-none">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="font-semibold">Calculation detail · {formatDisplay(selectedEvent.sourceDate)}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Calculated {new Date(selectedEvent.calculatedAt).toLocaleString("en-GB")}. Recalculate after changing menu items or recipes to refresh this saved result.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {statusBadge(selectedEvent)}
-          <Button variant="outline" size="sm" onClick={() => void recalculateSelectedDay()} disabled={busy}>
-            <RefreshCw className={recalculatingDate === selectedEvent.sourceDate ? "size-3.5 animate-spin" : "size-3.5"} />
-            {recalculatingDate === selectedEvent.sourceDate ? "Recalculating…" : "Recalculate day"}
-          </Button>
-        </div>
-      </div>
-      {selectedEvent.issues.length > 0 && (
-        <div className="rounded-xl border border-warning/25 bg-warning/10 p-4">
-          <div className="flex gap-2">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-            <div className="w-full space-y-3">
-              <div>
-                <p className="font-medium text-warning">Review before trusting this day&apos;s material usage</p>
-                <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  {selectedEvent.issues.map((issue, index) => (
-                    <li key={`${issue.code}-${issue.recipeId ?? ""}-${index}`}>
-                      {issue.message}
-                      {issue.sourceRef && <span className="ml-1 font-mono text-xs">({issue.sourceRef})</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              {excludableMenuItems.length > 0 && (
-                <div className="rounded-lg border border-warning/20 bg-background/70 p-3">
-                  <p className="text-sm font-medium">Recipe not ready yet?</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Exclude an item for this day to calculate the rest. Its sold portions stay recorded, but its material usage will not be deducted from stock.
-                  </p>
-                  <ul className="mt-3 space-y-2">
-                    {excludableMenuItems.map((item) => {
-                      const acrossRange = daysNeedingExclusion(events, item.id).length;
-                      const running = bulkProgress?.menuItemId === item.id;
-                      return (
-                        <li key={item.id} className="flex flex-wrap items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={busy}
-                            onClick={() => void updateMenuItemExclusion(item.id, item.name, true)}
-                          >
-                            {updatingExclusionFor === item.id ? "Updating…" : `Exclude ${item.name} for this day`}
-                          </Button>
-                          {acrossRange > 1 && (
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => void excludeAcrossRange(item.id, item.name)}>
-                              {running
-                                ? `Excluding… ${bulkProgress?.done} of ${bulkProgress?.total}`
-                                : `Exclude on all ${acrossRange} days in range`}
-                            </Button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-            </div>
+  const cells: StatCell[] = [
+    { label: "Days calculated", value: events.length },
+    { label: "Recorded portions", value: formatInventoryUsageQuantity(totalPortions) },
+    { label: "Material totals", value: materialSummary.length },
+    {
+      label: "Review issues",
+      value: (
+        <span className="inline-flex items-center gap-2">
+          {issueCount > 0 ? <ToneShape tone="warn" className="text-warn-mark" /> : null}
+          {issueCount}
+        </span>
+      ),
+      note: reviewEvents > 0 || exclusionEvents > 0 ? `${reviewEvents} review · ${exclusionEvents} with exclusions` : undefined,
+    },
+  ];
+
+  const columns: Column<InventoryUsageEvent>[] = [
+    {
+      key: "date",
+      label: "Date",
+      cell: (event) => <span className="font-medium">{formatDisplay(event.sourceDate)}</span>,
+      phone: "title",
+      cellClassName: "whitespace-normal",
+    },
+    {
+      key: "close",
+      label: "Close",
+      cell: (event) => <span className="text-ink-muted">{sourceStatusLabel(event.sourceStatus)}</span>,
+      phone: "meta",
+      cellClassName: "whitespace-normal",
+    },
+    {
+      key: "usage",
+      label: "Usage",
+      cell: (event) => <UsageStatusChip status={event.status} />,
+      phone: "detail",
+    },
+    {
+      key: "portions",
+      label: "Portions",
+      align: "right",
+      cell: (event) => (
+        <>
+          <span className="desk:hidden">Portions </span>
+          {formatInventoryUsageQuantity(event.totalPortions)}
+        </>
+      ),
+      phone: "figure",
+    },
+    {
+      key: "lines",
+      label: "Lines",
+      align: "right",
+      cell: (event) => (
+        <>
+          <span className="desk:hidden">Lines </span>
+          {event.lines.length}
+        </>
+      ),
+      phone: "meta",
+    },
+    {
+      key: "issues",
+      label: "Issues",
+      align: "right",
+      cell: (event) => (
+        <span className={event.issues.length > 0 ? "font-semibold text-warn" : "text-ink-muted"}>
+          <span className="desk:hidden">Issues </span>
+          {event.issues.length}
+        </span>
+      ),
+      phone: "meta",
+    },
+  ];
+
+  const lineColumns: Column<InventoryUsageLine>[] = [
+    {
+      key: "item",
+      label: "Menu item",
+      cell: (line) => <span className="font-medium">{line.menuItemName}</span>,
+      phone: "title",
+      cellClassName: "whitespace-normal",
+    },
+    {
+      key: "portions",
+      label: "Portions",
+      align: "right",
+      cell: (line) => (
+        <>
+          <span className="desk:hidden">Portions </span>
+          {formatInventoryUsageQuantity(line.portionQuantity)}
+        </>
+      ),
+      phone: "meta",
+    },
+    {
+      key: "material",
+      label: "Material",
+      cell: (line) => <span>{line.materialName}</span>,
+      phone: "detail",
+      cellClassName: "whitespace-normal",
+    },
+    {
+      key: "usage",
+      label: "Usage",
+      align: "right",
+      cell: (line) => <span className="font-semibold">{formatInventoryUsageQuantity(line.quantity)} {line.unit}</span>,
+      phone: "figure",
+    },
+    {
+      key: "path",
+      label: "Recipe path",
+      cell: (line) => <span className="text-small text-ink-muted">{line.recipePath.join(" → ")}</span>,
+      phone: "detail",
+      cellClassName: "max-w-72 whitespace-normal",
+    },
+  ];
+
+  // The open day's inner panel. It opens under its row, and it is the only level below the card.
+  function renderDetail(event: InventoryUsageEvent) {
+    const selectedExclusions = event.excludedItems ?? [];
+    const excludableMenuItems = excludableItemsFor(event);
+    const recalculatingThisDay = recalculatingDate === event.sourceDate;
+    return (
+      <div className="space-y-5 rounded-xl border border-line bg-canvas p-4 tablet:p-6">
+        <div className="flex flex-col gap-3 tablet:flex-row tablet:items-start tablet:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-title-3 text-ink">Calculation detail · {formatDisplay(event.sourceDate)}</h3>
+            <p className="mt-1 text-small text-ink-muted">
+              Calculated {new Date(event.calculatedAt).toLocaleString("en-GB")} · {event.lines.length} material {event.lines.length === 1 ? "line" : "lines"}. Recalculate after changing menu items or recipes to refresh this saved result.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <UsageStatusChip status={event.status} />
+            <Button variant="secondary" size="sm" onClick={() => void recalculateSelectedDay()} disabled={busy} loading={recalculatingThisDay}>
+              {recalculatingThisDay ? "Recalculating…" : (<><RefreshCw strokeWidth={1.5} aria-hidden="true" />Recalculate day</>)}
+            </Button>
           </div>
         </div>
-      )}
-      {selectedExclusions.length > 0 && (
-        <div className="rounded-xl border border-warning/25 bg-warning/5 p-4">
-          <p className="font-medium">Excluded from this day&apos;s material usage</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Sales remain recorded. No recipe-based stock usage was calculated or deducted for these items.
+
+        {event.issues.length > 0 && (
+          <Banner tone="warn">
+            <p className="font-medium">Review before trusting this day&apos;s material usage</p>
+            <ul className="mt-2 space-y-1 text-small text-ink-muted">
+              {event.issues.map((issue, index) => (
+                <li key={`${issue.code}-${issue.recipeId ?? ""}-${index}`}>
+                  {issue.message}
+                  {issue.sourceRef && <span className="ml-1 font-mono text-xs">({issue.sourceRef})</span>}
+                </li>
+              ))}
+            </ul>
+            {excludableMenuItems.length > 0 && (
+              <div className="mt-3 border-t border-line pt-3">
+                <p className="font-medium">Recipe not ready yet?</p>
+                <p className="mt-1 text-small text-ink-muted">
+                  Exclude an item for this day to calculate the rest. Its sold portions stay recorded, but its material usage will not be deducted from stock.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {excludableMenuItems.map((item) => {
+                    const acrossRange = daysNeedingExclusion(events, item.id).length;
+                    const running = bulkProgress?.menuItemId === item.id;
+                    const updating = updatingExclusionFor === item.id;
+                    return (
+                      <li key={item.id} className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          loading={updating}
+                          onClick={() => void updateMenuItemExclusion(item.id, item.name, true)}
+                        >
+                          {updating ? "Updating…" : `Exclude ${item.name} for this day`}
+                        </Button>
+                        {acrossRange > 1 && (
+                          <Button size="sm" variant="secondary" disabled={busy} loading={running} onClick={() => void excludeAcrossRange(item.id, item.name)}>
+                            {running
+                              ? `Excluding… ${bulkProgress?.done} of ${bulkProgress?.total}`
+                              : `Exclude on all ${acrossRange} days in range`}
+                          </Button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </Banner>
+        )}
+
+        {selectedExclusions.length > 0 && (
+          <div>
+            <h4 className="text-title-3 text-ink">Excluded from this day&apos;s material usage</h4>
+            <p className="mt-1 text-small text-ink-muted">
+              Sales remain recorded. No recipe-based stock usage was calculated or deducted for these items.
+            </p>
+            <ul className="mt-3 divide-y divide-line border-y border-line">
+              {selectedExclusions.map((item) => {
+                const updating = updatingExclusionFor === item.menuItemId;
+                return (
+                  <li key={item.menuItemId} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2 text-body">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <StatusChip tone="neutral">Excluded</StatusChip>
+                      <span>{item.menuItemName} · {formatInventoryUsageQuantity(item.portionQuantity)} portions · not deducted</span>
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      loading={updating}
+                      onClick={() => void updateMenuItemExclusion(item.menuItemId, item.menuItemName, false)}
+                    >
+                      {updating ? "Updating…" : "Include in calculation"}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <DataTable
+          caption={`Material lines for ${formatDisplay(event.sourceDate)}`}
+          columns={lineColumns}
+          rows={event.lines}
+          getKey={(line) => line.id}
+          density="compact"
+          listBelow="desk"
+          empty={
+            <p className="py-6 text-center text-small text-ink-muted">
+              {selectedExclusions.length > 0 ? "No material lines for included items; excluded sales have no stock deduction." : "No material lines were produced."}
+            </p>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-5">
+      <p className="max-w-[80ch] text-small text-ink-muted">
+        <span className="font-medium text-ink">How usage is calculated. </span>
+        Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Days you calculate record recipe usage for known recipe lines. Excluded items stay visible and are not deducted.
+      </p>
+
+      <div className="flex flex-col gap-3 tablet:flex-row tablet:items-end tablet:justify-between">
+        <div className="grid grid-cols-2 gap-3 tablet:w-[22rem]">
+          <FieldRow label="From">
+            {(id) => <Input id={id} type="date" value={from} onChange={(event) => setFrom(event.target.value)} />}
+          </FieldRow>
+          <FieldRow label="To">
+            {(id) => <Input id={id} type="date" value={to} onChange={(event) => setTo(event.target.value)} />}
+          </FieldRow>
+        </div>
+        <Button variant="ghost" onClick={() => void refresh()} disabled={loading || recalculatingDate !== null} loading={loading} className="self-start tablet:self-end">
+          {loading ? "Loading…" : (<><RefreshCw strokeWidth={1.5} aria-hidden="true" />Refresh</>)}
+        </Button>
+      </div>
+
+      {rangeInvalid ? (
+        <Banner tone="danger">Choose a valid date range.</Banner>
+      ) : error ? (
+        <ErrorBanner onRetry={() => void refresh()}>{error}</ErrorBanner>
+      ) : null}
+
+      <StatStrip label="Usage recap summary" cells={cells} />
+
+      <Card className="gap-0 py-0 shadow-card">
+        <div className="px-4 pt-4 tablet:px-6 tablet:pt-6">
+          <h2 className="font-display text-title-2 text-ink">Daily usage recap</h2>
+          <p className="mt-1 text-small text-ink-muted">Review calculated material quantities and open a day to see its recipe-level detail.</p>
+        </div>
+        {loading ? (
+          <div className="mt-4 border-t border-line">
+            <LoadingSkeleton rows={4} label="Loading usage events…" />
+          </div>
+        ) : events.length === 0 ? (
+          <EmptyState title="No usage events in this range">Save a new daily log from the go-live date onward to create the first calculation.</EmptyState>
+        ) : (
+          <div className="mt-4 border-t border-line">
+            <DataTable
+              caption="Usage by day"
+              columns={columns}
+              rows={events}
+              getKey={(event) => event.sourceDate}
+              density="compact"
+              listBelow="desk"
+              selectedKey={selectedDate ?? undefined}
+              openKey={selectedDate ?? undefined}
+              renderOpen={renderDetail}
+              actionsBelow
+              rowActions={(event) => {
+                const open = event.sourceDate === selectedDate;
+                return (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={open}
+                    aria-label={`${open ? "Close" : "Open"} day ${formatDisplay(event.sourceDate)}`}
+                    onClick={() => setSelectedDate(open ? null : event.sourceDate)}
+                  >
+                    {open ? "Close day" : "Open day"}
+                  </Button>
+                );
+              }}
+            />
+          </div>
+        )}
+      </Card>
+
+      <Card className="gap-0 py-0 shadow-card">
+        <div className="px-4 pt-4 tablet:px-6 tablet:pt-6">
+          <h2 className="font-display text-title-2 text-ink">Material totals</h2>
+          <p className="mt-1 text-small text-ink-muted">
+            Aggregated from calculated usage events in the selected range. Days with exclusions include only known recipe usage; excluded items are not deducted. Open Stock to see the resulting ledger balance.
           </p>
-          <ul className="mt-3 space-y-2">
-            {selectedExclusions.map((item) => (
-              <li key={item.menuItemId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span>{item.menuItemName} · {formatInventoryUsageQuantity(item.portionQuantity)} portions</span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void updateMenuItemExclusion(item.menuItemId, item.menuItemName, false)}
-                >
-                  {updatingExclusionFor === item.menuItemId ? "Updating…" : "Include in calculation"}
-                </Button>
+        </div>
+        {materialSummary.length === 0 ? (
+          <EmptyState title="No calculated material lines yet.">Material totals fill in once a day is calculated.</EmptyState>
+        ) : (
+          <ul className="grid px-4 pb-4 tablet:grid-cols-2 tablet:gap-x-10 tablet:px-6 tablet:pb-6">
+            {materialSummary.map((material) => (
+              <li key={`${material.materialId}:${material.unit}`} className="flex min-h-11 items-center justify-between gap-3 border-b border-line text-body text-ink">
+                <span className="min-w-0">{material.materialName}</span>
+                <span className="shrink-0 tabular-nums">{formatInventoryUsageQuantity(material.quantity)} {material.unit}</span>
               </li>
             ))}
           </ul>
-        </div>
-      )}
-      <div className="overflow-hidden rounded-xl border"><Table><TableHeader><TableRow><TableHead>Menu item</TableHead><TableHead className="text-right">Portions</TableHead><TableHead>Material</TableHead><TableHead className="text-right">Usage</TableHead><TableHead>Recipe path</TableHead></TableRow></TableHeader><TableBody>{selectedEvent.lines.map((line) => <TableRow key={line.id}><TableCell className="font-medium">{line.menuItemName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.portionQuantity)}</TableCell><TableCell>{line.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(line.quantity)} {line.unit}</TableCell><TableCell className="max-w-72 whitespace-normal text-xs text-muted-foreground">{line.recipePath.join(" → ")}</TableCell></TableRow>)}{selectedEvent.lines.length === 0 && <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground"><CircleCheck className="mx-auto mb-2 size-5 text-success" />{selectedExclusions.length > 0 ? "No material lines for included items; excluded sales have no stock deduction." : "No material lines were produced."}</TableCell></TableRow>}</TableBody></Table></div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-5">
-      <Card className="border-info/20 bg-info/5">
-        <CardContent className="flex gap-3 p-4">
-          <Calculator className="mt-0.5 size-5 shrink-0 text-info" />
-          <div>
-            <p className="font-medium">How usage is calculated</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Daily logs saved from {formatDisplay(INVENTORY_USAGE_GO_LIVE_DATE)} are expanded into material usage. Days you calculate record recipe usage for known recipe lines. Excluded items stay visible and are not deducted.
-            </p>
-          </div>
-        </CardContent>
+        )}
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Daily usage recap</CardTitle>
-          <CardDescription>Review calculated material quantities and open a day to see its recipe-level detail.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5"><Label htmlFor="usage-from">From</Label><Input id="usage-from" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="usage-to">To</Label><Input id="usage-to" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></div>
-            </div>
-            <Button variant="outline" onClick={() => void refresh()} disabled={loading || recalculatingDate !== null}><RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />{loading ? "Loading…" : "Refresh"}</Button>
-          </div>
-
-          {error && <div className="rounded-xl border border-danger/20 bg-danger/5 p-3 text-sm text-danger">{error}</div>}
-
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Stat variant="card" size="sm" label="Days calculated" value={events.length} />
-            <Stat variant="card" size="sm" label="Recorded portions" value={formatInventoryUsageQuantity(totalPortions)} />
-            <Stat variant="card" size="sm" label="Material totals" value={materialSummary.length} />
-            <Stat variant="card" size="sm" label="Review issues" value={<>{issueCount}{(reviewEvents > 0 || exclusionEvents > 0) && <span className="ml-1 text-xs font-normal text-warning">({reviewEvents} review · {exclusionEvents} with exclusions)</span>}</>} />
-          </div>
-
-          {loading ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Loading usage events…</p>
-          ) : events.length === 0 ? (
-            <div className="rounded-xl border border-dashed p-8 text-center">
-              <p className="font-medium">No usage events in this range</p>
-              <p className="mt-1 text-sm text-muted-foreground">Save a new daily log from the go-live date onward to create the first calculation.</p>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl border">
-              <Table>
-                <TableHeader><TableRow><TableHead className="w-8"><span className="sr-only">Expand</span></TableHead><TableHead>Date</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Portions</TableHead><TableHead className="hidden text-right sm:table-cell">Ingredients</TableHead><TableHead className="hidden text-right sm:table-cell">Issues</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {events.map((event) => {
-                    const selected = event.sourceDate === selectedDate;
-                    return (
-                      <Fragment key={event.id}>
-                        <TableRow className={selected ? "bg-muted/60" : undefined}>
-                          <TableCell className="p-1"><Button size="icon-sm" variant="ghost" onClick={() => setSelectedDate(selected ? null : event.sourceDate)} aria-expanded={selected} aria-label={`${selected ? "Collapse" : "Expand"} usage for ${event.sourceDate}`}>{selected ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}</Button></TableCell>
-                          <TableCell className="whitespace-normal"><button type="button" className="text-left font-medium hover:text-primary" onClick={() => setSelectedDate(selected ? null : event.sourceDate)}>{formatDisplay(event.sourceDate)}</button><span className="block text-xs text-muted-foreground">{sourceStatusLabel(event.sourceStatus)}</span></TableCell>
-                          <TableCell>{statusBadge(event)}</TableCell>
-                          <TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(event.totalPortions)}</TableCell>
-                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{event.lines.length}</TableCell>
-                          <TableCell className="hidden text-right tabular-nums sm:table-cell">{event.issues.length}</TableCell>
-                        </TableRow>
-                        {selected && detail && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="whitespace-normal bg-surface p-4">{detail}</TableCell>
-                          </TableRow>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Material totals</CardTitle><CardDescription>Aggregated from calculated usage events in the selected range. Days with exclusions include only known recipe usage; excluded items are not deducted. Open Stock to see the resulting ledger balance.</CardDescription></CardHeader>
-        <CardContent>
-          {materialSummary.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">No calculated material lines yet.</p> : <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead className="text-right">Calculated usage</TableHead></TableRow></TableHeader><TableBody>{materialSummary.map((material) => <TableRow key={`${material.materialId}:${material.unit}`}><TableCell className="font-medium">{material.materialName}</TableCell><TableCell className="text-right tabular-nums">{formatInventoryUsageQuantity(material.quantity)} {material.unit}</TableCell></TableRow>)}</TableBody></Table>}
-        </CardContent>
-      </Card>
-    </div>
+    </section>
   );
 }

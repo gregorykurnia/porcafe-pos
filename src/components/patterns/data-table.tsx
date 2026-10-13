@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { SortableHead, type Sort } from "@/components/sortable-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,6 +43,12 @@ export type DataTableProps<R> = {
   /** Where the table gives way to the list rows. Tablet by default; desk when the table needs the full desk width. */
   listBelow?: "tablet" | "desk";
   selectedKey?: string;
+  /**
+   * An open row shows its panel directly under it, full width, on every breakpoint (Usage recap's open day).
+   * The panel is one level only: it should be an inner panel, not a card. Both props are optional.
+   */
+  openKey?: string;
+  renderOpen?: (row: R) => ReactNode;
   empty?: ReactNode;
 };
 
@@ -66,6 +72,8 @@ export function DataTable<R>({
   actionsBelow = false,
   listBelow = "tablet",
   selectedKey,
+  openKey,
+  renderOpen,
   empty,
 }: DataTableProps<R>) {
   // Literal class names, so Tailwind generates both breakpoints.
@@ -116,18 +124,26 @@ export function DataTable<R>({
                   </TableCell>
                 </TableRow>
               ) : (
-                <TableRow
-                  key={getKey(row)}
-                  data-state={selectedKey === getKey(row) ? "selected" : undefined}
-                  className={cn("border-line hover:bg-canvas data-[state=selected]:bg-brand-soft", rowHeight)}
-                >
-                  {columns.map((column) => (
-                    <TableCell key={column.key} className={cn("text-table text-ink", column.align === "right" && "text-right tabular-nums", column.cellClassName)}>
-                      {column.cell(row)}
-                    </TableCell>
-                  ))}
-                  {rowActions ? <TableCell className="w-10 text-right">{rowActions(row)}</TableCell> : null}
-                </TableRow>
+                <Fragment key={getKey(row)}>
+                  <TableRow
+                    data-state={selectedKey === getKey(row) ? "selected" : undefined}
+                    className={cn("border-line hover:bg-canvas data-[state=selected]:bg-brand-soft", rowHeight)}
+                  >
+                    {columns.map((column) => (
+                      <TableCell key={column.key} className={cn("text-table text-ink", column.align === "right" && "text-right tabular-nums", column.cellClassName)}>
+                        {column.cell(row)}
+                      </TableCell>
+                    ))}
+                    {rowActions ? <TableCell className="w-10 text-right">{rowActions(row)}</TableCell> : null}
+                  </TableRow>
+                  {renderOpen && openKey === getKey(row) ? (
+                    <TableRow className="border-line hover:bg-transparent">
+                      <TableCell colSpan={columns.length + (rowActions ? 1 : 0)} className="whitespace-normal p-4 text-body text-ink">
+                        {renderOpen(row)}
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </Fragment>
               )
             )}
           </TableBody>
@@ -141,22 +157,27 @@ export function DataTable<R>({
               {row.band}
             </li>
           ) : (
-            <li key={getKey(row)} className={cn("flex items-center gap-3 px-4 py-3", actionsBelow && "flex-wrap")}>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-baseline justify-between gap-3">
-                  <div className="min-w-0 truncate text-body font-medium text-ink">{phoneColumns.title.map((c) => <span key={c.key}>{c.cell(row)}</span>)}</div>
-                  <div className="shrink-0 text-body tabular-nums text-ink">{phoneColumns.figure.map((c) => <span key={c.key}>{c.cell(row)}</span>)}</div>
+            <Fragment key={getKey(row)}>
+              <li className={cn("flex items-center gap-3 px-4 py-3", actionsBelow && "flex-wrap")}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="min-w-0 truncate text-body font-medium text-ink">{phoneColumns.title.map((c) => <span key={c.key}>{c.cell(row)}</span>)}</div>
+                    <div className="shrink-0 text-body tabular-nums text-ink">{phoneColumns.figure.map((c) => <span key={c.key}>{c.cell(row)}</span>)}</div>
+                  </div>
+                  {phoneColumns.meta.length > 0 ? (
+                    <div className="mt-0.5 truncate text-small text-ink-muted">{phoneColumns.meta.map((c, i) => <span key={c.key}>{i > 0 ? " · " : null}{c.cell(row)}</span>)}</div>
+                  ) : null}
+                  {phoneColumns.detail.length > 0 ? (
+                    <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneColumns.detail.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>
+                  ) : null}
+                  {actionsBelow && rowActions ? <div className="mt-2">{rowActions(row)}</div> : null}
                 </div>
-                {phoneColumns.meta.length > 0 ? (
-                  <div className="mt-0.5 truncate text-small text-ink-muted">{phoneColumns.meta.map((c, i) => <span key={c.key}>{i > 0 ? " · " : null}{c.cell(row)}</span>)}</div>
-                ) : null}
-                {phoneColumns.detail.length > 0 ? (
-                  <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneColumns.detail.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>
-                ) : null}
-                {actionsBelow && rowActions ? <div className="mt-2">{rowActions(row)}</div> : null}
-              </div>
-              {!actionsBelow && rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
-            </li>
+                {!actionsBelow && rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
+              </li>
+              {renderOpen && openKey === getKey(row) ? (
+                <li className="px-4 pb-4 text-body text-ink">{renderOpen(row)}</li>
+              ) : null}
+            </Fragment>
           )
         )}
       </ul>
