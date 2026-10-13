@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UnsavedGuardDialog } from "@/components/patterns/dialogs";
+import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes";
 import { saveInventoryRecipeVersion } from "@/lib/data";
 import { INVENTORY_UNITS, normalizeRecipeBoxLines, validateRecipe } from "@/lib/inventory";
 import {
@@ -76,6 +78,16 @@ function recipeBadge(status: InventoryRecipeVersion["status"]) {
   return <StatusBadge view={recipeStatusView(status)} />;
 }
 
+/** What the editor would save, without ids and timestamps. The draft is unsaved when this differs from the saved copy. */
+function recipeSnapshot(recipe: InventoryRecipeVersion | null, lines: InventoryRecipeLine[]): string {
+  return JSON.stringify([
+    recipe
+      ? [recipe.id, recipe.targetType, recipe.targetId, recipe.targetName, recipe.version, recipe.status, recipe.basis, recipe.effectiveFrom, recipe.yieldQuantity, recipe.yieldUnit]
+      : null,
+    lines.map((line) => [line.ingredientType, line.ingredientId, line.ingredientName, line.quantity, line.unit, line.sourceRef, line.note ?? null, line.reviewStatus]),
+  ]);
+}
+
 function recipeLineApprovalIssue(
   line: InventoryRecipeLine,
   materials: InventoryMaterial[],
@@ -108,6 +120,20 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   const [draftLines, setDraftLines] = useState<InventoryRecipeLine[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The saved copy the draft is compared with. Null means the draft has no saved copy yet (a copied version).
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  // An in-page choice (another version, a new recipe) that waits for the unsaved-changes dialog.
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
+
+  const dirty = draftRecipe !== null && recipeSnapshot(draftRecipe, draftLines) !== savedSnapshot;
+  // Nav links, browser back and forward, reload and tab close are guarded by the shared provider.
+  useUnsavedChangesGuard({
+    dirty,
+    message: `You have unsaved changes to ${draftRecipe?.targetName || "this recipe"}. Save the recipe to keep them.`,
+    onSave: () => saveRecipe(),
+  });
 
   const componentOptions = useMemo(() => {
     const options = new Map(INVENTORY_COMPONENT_TARGET_NAMES.map((name) => [inventoryComponentId(name), name]));
@@ -123,16 +149,30 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
     return [...materialOptions, ...components].sort((a, b) => a.name.localeCompare(b.name));
   }, [componentOptions, materials]);
 
+  // Runs `action` now, or after the user has chosen what to do with the unsaved draft.
+  function leaveThen(action: () => void) {
+    if (!dirty) {
+      action();
+      return;
+    }
+    setLeaveError(null);
+    setPendingLeave(() => action);
+  }
+
   function editRecipe(recipe: InventoryRecipeVersion) {
+    const lines = normalizeRecipeBoxLines(recipe, recipeLines.filter((line) => line.recipeId === recipe.id).map((line) => ({ ...line })));
     setSelectedId(recipe.id);
     setDraftRecipe({ ...recipe });
-    setDraftLines(normalizeRecipeBoxLines(recipe, recipeLines.filter((line) => line.recipeId === recipe.id).map((line) => ({ ...line }))));
+    setDraftLines(lines);
+    setSavedSnapshot(recipeSnapshot(recipe, lines));
   }
 
   function startNewRecipe() {
+    const recipe = newRecipe(menuItems, recipes);
     setSelectedId(null);
-    setDraftRecipe(newRecipe(menuItems, recipes));
+    setDraftRecipe(recipe);
     setDraftLines([]);
+    setSavedSnapshot(recipeSnapshot(recipe, []));
   }
 
   function updateRecipe(patch: Partial<InventoryRecipeVersion>) {
@@ -231,13 +271,16 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
     setSelectedId(null);
     setDraftRecipe({ ...draftRecipe, id: "", version, status: "draft", reviewStatus: "approved", createdAt: now, updatedAt: now });
     setDraftLines((current) => current.map((line) => ({ ...line, id: draftLineId(), recipeId: "", createdAt: now, updatedAt: now })));
+    // A copied version has no saved copy yet, so it counts as unsaved until it is saved.
+    setSavedSnapshot(null);
   }
 
-  async function saveRecipe() {
-    if (!draftRecipe) return;
+  // Resolves true only when the recipe was saved. The unsaved-changes guard uses this to decide whether to leave.
+  async function saveRecipe(): Promise<boolean> {
+    if (!draftRecipe) return false;
     if (!draftRecipe.targetId) {
       toast.error("Choose a recipe target before saving.");
-      return;
+      return false;
     }
     const version = draftRecipe.version || 1;
     const recipeId = draftRecipe.id || inventoryRecipeId(draftRecipe.targetType, draftRecipe.targetId, version);
@@ -260,7 +303,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
     const validation = validateRecipe(recipe, lines, materials, recipes, recipeLines);
     if (!validation.valid) {
       toast.error(validation.errors[0] ?? "Recipe needs review before saving.");
-      return;
+      return false;
     }
     if (validation.warnings.length > 0) toast.warning(validation.warnings[0]);
 
@@ -273,10 +316,13 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
       setSelectedId(recipe.id);
       setDraftRecipe(recipe);
       setDraftLines(lines);
+      setSavedSnapshot(recipeSnapshot(recipe, lines));
       await onChanged();
+      return true;
     } catch (error) {
       console.error("Failed to save recipe", error);
       toast.error(error instanceof Error ? error.message : "Failed to save recipe");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -285,11 +331,11 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(240px,0.38fr)_minmax(0,1fr)]">
       <Card className="h-fit">
-        <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Recipe versions</CardTitle><CardDescription>Draft and review versions are safe to edit; active versions should be copied forward.</CardDescription></div><Button size="icon-sm" variant="outline" onClick={startNewRecipe} aria-label="Create recipe"><Plus className="size-4" /></Button></div></CardHeader>
+        <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>Recipe versions</CardTitle><CardDescription>Draft and review versions are safe to edit; active versions should be copied forward.</CardDescription></div><Button size="icon-sm" variant="outline" onClick={() => leaveThen(startNewRecipe)} aria-label="Create recipe"><Plus className="size-4" /></Button></div></CardHeader>
         <CardContent className="space-y-2">
           {recipes.length === 0 && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">No recipe versions yet. Review the import or create one.</p>}
           {recipes.map((recipe) => (
-            <button key={recipe.id} type="button" onClick={() => editRecipe(recipe)} className={`w-full rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${selectedId === recipe.id ? "border-primary bg-primary/5" : "border-border/70"}`}>
+            <button key={recipe.id} type="button" onClick={() => leaveThen(() => editRecipe(recipe))} className={`w-full rounded-xl border p-3 text-left transition-colors hover:bg-muted/50 ${selectedId === recipe.id ? "border-primary bg-primary/5" : "border-border/70"}`}>
               <div className="flex items-start justify-between gap-2"><span className="font-medium">{recipe.targetName}</span>{recipeBadge(recipe.status)}</div>
               <p className="mt-1 text-xs text-muted-foreground">v{recipe.version} · {recipe.targetType === "menu_item" ? "Menu item" : "Prepared component"} · {recipe.basis === "batch" ? `Yield ${recipe.yieldQuantity ?? "—"} ${recipe.yieldUnit ?? ""}` : "Per portion"}</p>
             </button>
@@ -301,7 +347,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
         <CardHeader><CardTitle>{draftRecipe ? `${draftRecipe.targetName || "New recipe"} · v${draftRecipe.version}` : "Recipe editor"}</CardTitle><CardDescription>Recipe lines retain source references where they came from the reviewed workbook preview.</CardDescription></CardHeader>
         <CardContent>
           {!draftRecipe ? (
-            <div className="rounded-xl border border-dashed p-10 text-center"><p className="font-medium">Choose a version to edit</p><p className="mt-1 text-sm text-muted-foreground">Or use the plus button to define a new menu or prepared-component recipe.</p><Button className="mt-4" onClick={startNewRecipe}><Plus className="size-4" />New recipe</Button></div>
+            <div className="rounded-xl border border-dashed p-10 text-center"><p className="font-medium">Choose a version to edit</p><p className="mt-1 text-sm text-muted-foreground">Or use the plus button to define a new menu or prepared-component recipe.</p><Button className="mt-4" onClick={() => leaveThen(startNewRecipe)}><Plus className="size-4" />New recipe</Button></div>
           ) : (
             <div className="space-y-5">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -416,6 +462,30 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
           )}
         </CardContent>
       </Card>
+
+      <UnsavedGuardDialog
+        open={pendingLeave !== null}
+        saving={leaveSaving}
+        error={leaveError}
+        onSaveAndContinue={async () => {
+          const action = pendingLeave;
+          setLeaveSaving(true);
+          const saved = await saveRecipe();
+          setLeaveSaving(false);
+          if (!saved) {
+            setLeaveError("The recipe wasn't saved, so it is still open with your changes. Fix the message above and try again.");
+            return;
+          }
+          setPendingLeave(null);
+          action?.();
+        }}
+        onStay={() => setPendingLeave(null)}
+        onDiscard={() => {
+          const action = pendingLeave;
+          setPendingLeave(null);
+          action?.();
+        }}
+      />
     </div>
   );
 }

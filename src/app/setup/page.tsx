@@ -8,6 +8,7 @@ import { PushNotificationsSettings } from "@/components/push-notifications-setti
 import { DataMaintenance } from "@/components/setup/data-maintenance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useNavigationGuard } from "@/components/navigation-guard";
 import { useQueryState } from "@/hooks/use-query-state";
 import { SETUP_TABS, isSetupTab, type SetupTab } from "@/lib/workspace-tabs";
 
@@ -39,13 +40,19 @@ export default function SetupPage() {
 // The open tab lives in the URL (?tab=), so a link such as the Stock alert chip opens the right section.
 function SetupWorkspace() {
   const [tab, setTab] = useQueryState<SetupTab>("tab", { default: "menu", validate: isSetupTab });
+  // Leaving the Recipes tab with an unsaved draft asks first (the recipe editor registers the guard).
+  const guard = useNavigationGuard();
+  async function changeTab(next: SetupTab) {
+    if (next === tab) return;
+    if (await guard.confirmLeave()) setTab(next);
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader title="Setup" description="Menu, stock setup, notifications, and checks on the stored data." />
 
       <div className="overflow-x-auto">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as SetupTab)}>
+        <Tabs value={tab} onValueChange={(value) => void changeTab(value as SetupTab)}>
           <TabsList className="w-max">
             {SETUP_TABS.map((item) => (
               <TabsTrigger key={item.key} id={`setup-tab-${item.key}`} aria-controls={`setup-panel-${item.key}`} value={item.key}>
