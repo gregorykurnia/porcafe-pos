@@ -15,8 +15,8 @@ export type StatVariant = "tile" | "plain" | "card";
 const VALUE_TONE: Record<StatTone, string> = {
   default: "text-foreground",
   primary: "text-primary",
-  success: "text-success",
-  warning: "text-warning",
+  success: "text-ok",
+  warning: "text-warn",
   danger: "text-danger",
 };
 
@@ -61,7 +61,7 @@ export function Stat({
   const good = hasDelta && (deltaUpIsGood ? up : !up);
 
   const deltaLine = hasDelta ? (
-    <p className={cn("mt-0.5 flex items-center gap-0.5 text-xs font-medium", good ? "text-success" : "text-danger")}>
+    <p className={cn("mt-0.5 flex items-center gap-0.5 text-xs font-medium", good ? "text-ok" : "text-danger")}>
       {up ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden />}
       <span>{Math.abs(Math.round(delta * 100))}%</span>
       {deltaLabel && <span className="font-normal text-muted-foreground">{deltaLabel}</span>}

@@ -6,8 +6,8 @@ import type { StatusTone, StatusView } from "@/lib/status";
 const TONE_CLASS: Record<StatusTone, string> = {
   neutral: "border-border bg-surface text-muted-foreground",
   info: "border-info/25 bg-info/10 text-info",
-  success: "border-success/25 bg-success/10 text-success",
-  warning: "border-warning/25 bg-warning/10 text-warning",
+  success: "border-ok/25 bg-ok/10 text-ok",
+  warning: "border-warn/25 bg-warn/10 text-warn",
   danger: "border-danger/25 bg-danger/10 text-danger",
   primary: "border-primary/20 bg-primary/10 text-primary",
 };

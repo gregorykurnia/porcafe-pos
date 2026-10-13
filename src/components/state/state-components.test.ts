@@ -13,14 +13,14 @@ test("Stat shows its label, period, value and a signed change with the colour th
   assert.match(up, /Reported total/);
   assert.match(up, / · 1–12 Oct 2026/);
   assert.match(up, /12%/);
-  assert.match(up, /text-success/);
+  assert.match(up, /text-ok/);
   assert.match(up, /vs 1–12 Sep/);
 
   const downBad = renderToStaticMarkup(createElement(Stat, { label: "Net", value: "Rp 1", delta: -0.2 }));
   assert.match(downBad, /text-danger/);
 
   const downGoodForStock = renderToStaticMarkup(createElement(Stat, { label: "To order", value: "3", delta: -0.2, deltaUpIsGood: false }));
-  assert.match(downGoodForStock, /text-success/);
+  assert.match(downGoodForStock, /text-ok/);
 });
 
 test("Stat without a delta shows no change line", () => {
@@ -56,5 +56,5 @@ test("StatusBadge shows the label with its tone colour", () => {
   assert.match(markup, /Partially Received/);
   assert.match(markup, /text-primary/);
   const warning = renderToStaticMarkup(createElement(StatusBadge, { view: { label: "Needs review", tone: "warning" } }));
-  assert.match(warning, /text-warning/);
+  assert.match(warning, /text-warn/);
 });
