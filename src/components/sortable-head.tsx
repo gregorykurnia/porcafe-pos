@@ -29,7 +29,7 @@ export function SortableHead<K extends string>({
         type="button"
         onClick={() => onSort(sortKey)}
         aria-label={`${label}, ${active ? (sort!.dir === "asc" ? "ascending" : "descending") : "not sorted"}`}
-        className={`inline-flex items-center gap-1 hover:text-foreground ${
+        className={`inline-flex items-center gap-1 hover:text-foreground [@media(pointer:coarse)]:min-h-11 ${
           className?.includes("text-right") ? "flex-row-reverse" : ""
         } ${active ? "text-foreground" : ""}`}
       >
