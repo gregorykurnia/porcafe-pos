@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addDaysISO, formatDisplay, todayISO } from "@/lib/dates";
@@ -19,8 +19,8 @@ type DateStepperProps = {
 };
 
 /**
- * ‹ readable date › with Today and the native picker. Clearing the picker keeps the
- * current date instead of jumping to today.
+ * ‹ long date › with a Today tag (or a Future date chip), a Today button and the native picker (DESIGN_SYSTEM §10).
+ * Clearing the picker keeps the current date instead of jumping to today.
  */
 export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFuture = false }: DateStepperProps) {
   async function move(next: string) {
@@ -34,30 +34,40 @@ export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFu
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-1 rounded-xl border border-border bg-surface px-1 py-1 shadow-sm">
-        <Button type="button" variant="ghost" size="icon" aria-label="Previous day" onClick={() => void move(addDaysISO(value, -1))}>
-          <ChevronLeft />
+      <div className="inline-flex items-center gap-1 rounded-full border border-line bg-surface p-1">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Previous day" onClick={() => void move(addDaysISO(value, -1))}>
+          <ChevronLeft strokeWidth={1.5} />
         </Button>
-        <div className="min-w-36 px-2 text-center">
-          <p className="text-sm font-semibold text-foreground">{formatDisplay(value)}</p>
-          {isToday && <p className="text-xs text-muted-foreground">Today</p>}
-          {isFuture && <p className="text-xs text-warning">Future date</p>}
+        <div className="min-w-44 px-2 text-center">
+          <p className="font-display text-title-3 text-ink">{formatDisplay(value)}</p>
+          {isToday && (
+            <span className="inline-flex h-5 items-center rounded-md bg-ok-tint px-2 text-micro font-semibold text-ok">Today</span>
+          )}
+          {isFuture && (
+            <span className="inline-flex h-5 items-center gap-1 rounded-md bg-warn-tint px-2 text-micro font-semibold text-warn">
+              <TriangleAlert className="size-3" strokeWidth={1.5} aria-hidden="true" />
+              Future date
+            </span>
+          )}
         </div>
-        <Button type="button" variant="ghost" size="icon" aria-label="Next day" onClick={() => void move(addDaysISO(value, 1))}>
-          <ChevronRight />
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="Next day" onClick={() => void move(addDaysISO(value, 1))}>
+          <ChevronRight strokeWidth={1.5} />
         </Button>
       </div>
-      <Button type="button" variant="ghost" disabled={isToday} onClick={() => void move(todayISO())}>
+      <Button type="button" variant="ghost" size="sm" disabled={isToday} onClick={() => void move(todayISO())}>
         Today
       </Button>
-      <Input
-        id={id}
-        aria-label={label}
-        type="date"
-        value={value}
-        onChange={(event) => void move(acceptDateInput(event.target.value, value))}
-        className="h-10 w-[9.5rem] bg-surface"
-      />
+      <div className="relative inline-flex items-center">
+        <CalendarDays className="pointer-events-none absolute left-3 size-4 text-ink-muted" strokeWidth={1.5} aria-hidden="true" />
+        <Input
+          id={id}
+          aria-label={label}
+          type="date"
+          value={value}
+          onChange={(event) => void move(acceptDateInput(event.target.value, value))}
+          className="h-11 w-[10.5rem] bg-surface pl-9 sm:h-10"
+        />
+      </div>
     </div>
   );
 }

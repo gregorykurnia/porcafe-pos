@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "@/lib/toast";
+import { LabFields } from "@/components/lab/lab-fields";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -76,6 +77,10 @@ export function LabCanvas() {
           <Input defaultValue="1.500" disabled aria-label="Disabled example" />
           <Input defaultValue="Use digits" aria-invalid="true" aria-label="Invalid example" />
         </div>
+      </LabSection>
+
+      <LabSection id="lab-fields" title="Fields" note="Money, portions, material quantities, dates and periods. Shorthand money is read back on blur.">
+        <LabFields />
       </LabSection>
 
       <LabSection id="lab-sheets" title="Sheets and dialogs" note="Sheets are 680 px on tablet and desk, full screen on phone. Confirmations are AlertDialogs.">

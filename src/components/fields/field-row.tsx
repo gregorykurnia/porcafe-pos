@@ -9,9 +9,9 @@ export function FieldRow({ label, hint, children }: { label: string; hint?: Reac
   const id = useId();
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id} className="text-small text-ink-muted">{label}</Label>
       {children(id)}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-small text-ink-muted">{hint}</p>}
     </div>
   );
 }

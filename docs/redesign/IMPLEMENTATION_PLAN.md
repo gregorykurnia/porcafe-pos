@@ -81,7 +81,7 @@ Goal: every building block in DESIGN_SYSTEM §10 exists in code and can be revie
   - Button: primary, secondary, ghost, destructive and inverse variants; sm 36, md 44 and lg 48 sizes; a loading state.
   - Input with the `line-input` border, plus select, popover, dropdown (⋯ row menus), dialog/AlertDialog, sheet (680 px side sheet on desk and tablet, full screen on phone), separator, calendar.
   - Toasts per §10: tone shown only in the icon disc, bottom-right on desk and top-centre on phone, errors stay until dismissed.
-- [ ] **R2.3 Fields.**
+- [x] **R2.3 Fields.**
   - Money input: `Rp` prefix, digits right-aligned, a read-back hint, using the existing `parseRupiah`. Payment-row layout: label on the left, input on the right.
   - Quantity stepper: a pill track that turns `brand-soft` when the value is above 0, accessible labels that name the item, 36/44 px buttons.
   - Material quantity input with a unit suffix.
