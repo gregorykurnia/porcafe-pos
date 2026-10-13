@@ -1,42 +1,28 @@
 "use client";
 
-import { PageHeader } from "@/components/page-header";
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { CalendarDays } from "lucide-react";
 import { listSalesEntries, listItemSales, listMonthlyAdjustments, listDailyItemLogs, listMenuItems } from "@/lib/data";
 import type { SalesEntry, ItemSale, MonthlyAdjustment, DailyItemLog, MenuItem } from "@/lib/types";
 import { calendarMonthTrend, distinctDaysLogged, getAttentionItems, getCanonicalItemRows, monthIsOver, monthReportedView, monthToDateComparison, monthTakeaway } from "@/lib/reporting";
-import { idr, todayISO, weekKey, monthKey } from "@/lib/dates";
+import { formatDisplay, idr, todayISO, weekKey, monthKey } from "@/lib/dates";
 import { chartColors } from "@/lib/chart-colors";
-import { Stat } from "@/components/state/stat";
+import { format, parseISO, subDays, subWeeks, addDays, getDaysInMonth } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ErrorBanner } from "@/components/patterns/states";
+import { StatusChip, type StatusTone } from "@/components/patterns/status-chip";
 import {
-  format,
-  parseISO,
-  subDays,
-  subWeeks,
-  addDays,
-  getDaysInMonth,
-} from "date-fns";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
-import {
-  Wallet,
-  TrendingUp,
-  CalendarDays,
-  UtensilsCrossed,
-  ArrowRight,
-  Trophy,
-  Package,
-} from "lucide-react";
+  AttentionCard,
+  CompositionCard,
+  Delta,
+  GlanceCard,
+  ShareList,
+  TodayCard,
+  TopItemsCard,
+  TrendCard,
+  type GlanceCell,
+  type TrendPoint,
+} from "@/components/home/home-cards";
 
 // Payment-method categorical colors (dataviz skill: fixed hue order, never cycled)
 const PAYMENT_COLORS = chartColors.payment;
@@ -44,6 +30,11 @@ const PAYMENT_COLORS = chartColors.payment;
 // Fixed categorical order for item categories - first 4 slots, rest fold into "Other"
 const CATEGORY_COLOR_SLOTS = chartColors.categorySlots;
 const CATEGORY_OTHER_COLOR = chartColors.other;
+
+// The clock is read after mount only, so the server render and the first client render agree.
+const subscribeNever = () => () => {};
+const readClock = () => `${todayISO()}|${new Date().getHours()}`;
+const noClock = () => "";
 
 export default function Dashboard() {
   const [sales, setSales] = useState<SalesEntry[]>([]);
@@ -56,6 +47,7 @@ export default function Dashboard() {
   const [retryKey, setRetryKey] = useState(0);
   const [reportMonth, setReportMonth] = useState(monthKey(todayISO()));
   const [showAllAttention, setShowAllAttention] = useState(false);
+  const clock = useSyncExternalStore(subscribeNever, readClock, noClock);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +83,8 @@ export default function Dashboard() {
 
   const todayTotal = sales.find((s) => s.date === today)?.total ?? 0;
   const yesterdayTotal = sales.find((s) => s.date === yesterday)?.total ?? 0;
+  const todayLog = dailyLogs.find((log) => log.date === today);
+  const todayPortions = todayLog ? sumPortions(todayLog) : null;
 
   const weekTotal = sales
     .filter((s) => weekKey(s.date) === thisWeek)
@@ -120,12 +114,24 @@ export default function Dashboard() {
     .reduce((a, x) => a + x.amount, 0);
   const monthTotalWithAdjustment = monthView.reported;
   const allTimeTotalWithAdjustment = allTimeTotal + allAdjustments;
-  const weekRangeLabel = formatWeekLabel(thisWeek);
+  const weekRangeLabel = formatWeekRange(thisWeek);
 
-  const trend = useMemo(
-    () => calendarMonthTrend(sales, reportMonth).map((day) => ({ date: formatDayLabel(day.date), total: day.total })),
-    [sales, reportMonth]
-  );
+  const hasMonthSales = sales.some((s) => monthKey(s.date) === thisMonth);
+
+  const bestDay = useMemo(() => {
+    const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
+    if (monthSales.length === 0) return null;
+    return monthSales.reduce((best, s) => (s.total > best.total ? s : best), monthSales[0]);
+  }, [sales, thisMonth]);
+
+  const trendPoints: TrendPoint[] = calendarMonthTrend(sales, thisMonth).map((day) => ({
+    date: day.date,
+    day: String(Number(day.date.slice(-2))),
+    total: day.total ?? 0,
+    kind: day.date > today ? "future" : day.total === null ? "missing" : "sales",
+    isToday: day.date === today,
+    isBest: bestDay?.date === day.date,
+  }));
 
   const paymentMix = useMemo(() => {
     const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
@@ -178,12 +184,6 @@ export default function Dashboard() {
     return rows.map((r) => ({ ...r, pct: sum > 0 ? r.qty / sum : 0 }));
   }, [items, thisMonth]);
 
-  const bestDay = useMemo(() => {
-    const monthSales = sales.filter((s) => monthKey(s.date) === thisMonth);
-    if (monthSales.length === 0) return null;
-    return monthSales.reduce((best, s) => (s.total > best.total ? s : best), monthSales[0]);
-  }, [sales, thisMonth]);
-
   const daysElapsed = thisMonth === monthKey(today) ? Number(today.slice(-2)) : getDaysInMonth(parseISO(`${thisMonth}-01`));
   // Average per Main portion, the figure the owner compares across months.
   const monthMainQty = items
@@ -208,369 +208,215 @@ export default function Dashboard() {
     formatMoney: idr,
   });
 
+  const clientReady = clock !== "";
+  const clockHour = clientReady ? Number(clock.split("|")[1]) : 0;
+  const greeting = clientReady ? greetingFor(clockHour) : "Selamat datang";
+  const dateLabel = clientReady ? formatDisplay(today) : "";
+  const shortToday = clientReady ? format(parseISO(today), "EEE, d MMM") : "";
+
+  const close = closeViewFor(todayLog);
+  const todayActionLabel = !todayLog ? "Start tonight's close" : todayLog.status === "draft" ? "Continue tonight's close" : "Open tonight's close";
+
+  const monthLabel = formatMonthLabel(thisMonth);
+  const glanceCells: GlanceCell[] = [
+    {
+      label: clientReady ? `This week · ${weekRangeLabel}` : "This week",
+      value: idr(weekTotal),
+      note: <Delta value={pctDelta(weekTotal, lastWeekTotal)} comparedTo="vs last week" />,
+    },
+    {
+      label: "Reported month total",
+      value: idr(monthTotalWithAdjustment),
+      note: (
+        <>
+          <Delta value={monthComparison.deltaPct} comparedTo={`vs ${monthComparison.label}`} />
+          <span className="block">{monthOver ? "Recorded sales + selisih" : "Selisih added at month end"}</span>
+        </>
+      ),
+    },
+    {
+      label: "Average per day",
+      value: idr(avgPerDay),
+      note: monthDaysLogged > 0 ? `${monthDaysLogged} closed ${monthDaysLogged === 1 ? "day" : "days"}` : "No closed days yet",
+    },
+    {
+      label: "Portions sold",
+      value: monthQty.toLocaleString("id-ID"),
+      note: monthMainQty > 0 ? `${idr(avgOrderValue)} per Main portion` : "No Main portions yet",
+    },
+    {
+      label: "Best day",
+      value: bestDay ? idr(bestDay.total) : "—",
+      note: bestDay ? formatDayLabel(bestDay.date) : undefined,
+    },
+    {
+      label: "Best seller",
+      value: topItems[0]?.name ?? "—",
+      note: topItems[0] ? `${topItems[0].qty} sold` : undefined,
+    },
+    {
+      label: "Days logged",
+      value: `${monthDaysLogged} / ${daysElapsed}`,
+      note: thisMonth === monthKey(today) ? "of the days so far" : "of the days in the month",
+    },
+    {
+      label: "All-time reported total",
+      value: idr(allTimeTotalWithAdjustment),
+      note: "Includes selisih",
+    },
+  ];
+
+  const paymentRows = paymentMix.map((d) => ({
+    label: d.label,
+    color: PAYMENT_COLORS[d.label],
+    amount: idr(d.value),
+    share: `${Math.round(d.pct * 100)}%`,
+    width: d.pct * 100,
+  }));
+  const paymentTotal = paymentMix.reduce((a, d) => a + d.value, 0);
+
+  const categoryRows = categoryBreakdown.map((d) => ({
+    label: d.label,
+    color: d.color,
+    amount: `${d.qty.toLocaleString("id-ID")} sold`,
+    share: `${Math.round(d.pct * 100)}%`,
+    width: d.pct * 100,
+  }));
+
   return (
-    <div className="space-y-6">
-      <PageHeader title="Home" description="What needs closing today, and what has been recorded." />
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-small text-ink-muted">{dateLabel || " "}</p>
+          <h1 className="mt-1 font-display text-title-1 text-brand tablet:text-display">{greeting}</h1>
+        </div>
+        <Select value={thisMonth} onValueChange={setReportMonth}>
+          <SelectTrigger
+            aria-label="Reporting month"
+            className="sm:data-[size=default]:h-11 gap-2 rounded-full border-line-input bg-surface px-4 text-body font-medium text-ink"
+          >
+            <CalendarDays className="size-5 text-ink-muted" strokeWidth={1.5} aria-hidden="true" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {reportMonths.map((month) => (
+              <SelectItem key={month} value={month} className="min-h-11 desk:min-h-8">
+                {formatMonthLabel(month)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </header>
 
-      {loadError && (
-        <Card className="border-danger/20 bg-danger/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-            <div>
-              <p className="font-medium text-foreground">Dashboard data could not be loaded</p>
-              <p className="mt-1 text-sm text-muted-foreground">Your existing view is preserved. Try again when the connection is available.</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setLoadError(false);
-                setLoading(true);
-                setRetryKey((key) => key + 1);
-              }}
-            >
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {loadError ? (
+        <ErrorBanner
+          onRetry={() => {
+            setLoadError(false);
+            setLoading(true);
+            setRetryKey((key) => key + 1);
+          }}
+        >
+          <span className="font-semibold text-ink">Dashboard data could not be loaded.</span> Your existing view is preserved. Try again when the connection is available.
+        </ErrorBanner>
+      ) : null}
 
-      <Card className="border-warning/20 bg-warning/5">
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg">Needs attention <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">{attentionItems.length}</span></CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">A quick close-status check before reviewing performance.</p>
-          </div>
-          <Button asChild variant="outline" className="border-warning/20 bg-surface text-foreground hover:bg-surface-elevated">
-            <Link href="/items">Open Daily close <ArrowRight className="size-4" /></Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {attentionItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing needs attention. Today and recent days agree.</p>
-          ) : (
-            <ul className="space-y-2">
-              {(showAllAttention ? attentionItems : attentionItems.slice(0, 6)).map((item) => (
-                <li key={`${item.kind}-${item.date ?? item.label}`}>
-                  <Link href={item.href} className="flex items-center justify-between gap-3 rounded-lg border border-warning/15 bg-surface/70 px-3 py-2 text-sm hover:bg-surface-elevated">
-                    <span className="min-w-0 text-foreground">{item.label}</span>
-                    <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                  </Link>
-                </li>
-              ))}
-              {attentionItems.length > 6 && (
-                <li>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowAllAttention((current) => !current)}>
-                    {showAllAttention ? "Show fewer" : `Show all ${attentionItems.length}`}
-                  </Button>
-                </li>
-              )}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-primary/15 bg-warm-accent/35">
-        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="flex items-center gap-2 text-primary">
-            <Trophy className="size-4" />
-            {formatMonthLabel(thisMonth)} at a glance
-          </CardTitle>
-          <label className="flex items-center gap-2 text-sm font-medium text-primary">
-            <span className="sr-only">Reporting month</span>
-            <select
-              aria-label="Reporting month"
-              value={thisMonth}
-              onChange={(event) => setReportMonth(event.target.value)}
-              className="h-10 rounded-lg border border-primary/15 bg-surface px-3 text-sm font-medium text-primary outline-none focus-visible:ring-3 focus-visible:ring-primary/30"
-            >
-              {reportMonths.map((month) => <option key={month} value={month}>{formatMonthLabel(month)}</option>)}
-            </select>
-          </label>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-              <div className="flex h-16 items-center justify-center text-sm text-muted-foreground">
-              Loading…
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
-              <Stat variant="plain" tone="primary" label="All-time reported total" value={idr(allTimeTotalWithAdjustment)} sub="Includes selisih" />
-              <Stat variant="plain" tone="primary" label="Reported month total" value={idr(monthTotalWithAdjustment)} sub={monthOver ? "Recorded sales + selisih" : "Selisih added at month end"} />
-              <Stat variant="plain" tone="primary" label="Portions sold" value={monthQty.toLocaleString("id-ID")} />
-              <Stat variant="plain" tone="primary" label="Avg revenue per Main portion" value={idr(avgOrderValue)} />
-              <Stat
-                variant="plain"
-                tone="primary"
-                label="Best day"
-                value={bestDay ? idr(bestDay.total) : "—"}
-                sub={bestDay ? formatDayLabel(bestDay.date) : undefined}
-              />
-              <Stat
-                variant="plain"
-                tone="primary"
-                label="Best seller"
-                value={topItems[0]?.name ?? "—"}
-                sub={topItems[0] ? `${topItems[0].qty} sold` : undefined}
-              />
-              <Stat variant="plain" tone="primary" label="Days logged" value={`${monthDaysLogged} / ${daysElapsed}`} />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="border-primary/10 bg-surface">
-        <CardHeader>
-          <CardTitle className="text-lg">Revenue composition · {formatMonthLabel(thisMonth)}</CardTitle>
-          <p className="text-sm text-muted-foreground">{monthOver ? "Reported total is recorded sales plus the monthly reconciliation adjustment." : "This month is still open. Its selisih is added when the month ends."}</p>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-3">
-          <Stat label="Recorded sales" value={idr(monthTotal)} />
-          <Stat label="Reconciliation adjustment" value={monthView.selisih === null ? "Pending" : idr(monthView.selisih)} sub={monthOver ? "Selisih" : "Added at month end"} />
-          <Stat label="Reported total" value={idr(monthTotalWithAdjustment)} emphasized />
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Stat
-          variant="card"
-          icon={<Wallet className="size-4" />}
-          iconClassName="bg-primary"
-          label="Today"
-          value={idr(todayTotal)}
+      <div className="grid gap-3 tablet:gap-5 min-[1024px]:grid-cols-[minmax(0,1fr)_340px]">
+        <AttentionCard
+          loading={loading}
+          items={attentionItems}
+          showAll={showAllAttention}
+          onToggle={() => setShowAllAttention((current) => !current)}
+        />
+        <TodayCard
+          dateLabel={shortToday}
+          loading={loading}
+          close={loading ? null : close}
+          total={todayTotal}
           delta={pctDelta(todayTotal, yesterdayTotal)}
-          deltaLabel="vs yesterday"
-        />
-        <Stat
-          variant="card"
-          icon={<TrendingUp className="size-4" />}
-          iconClassName="bg-primary-hover"
-          label="This week"
-          range={weekRangeLabel}
-          value={idr(weekTotal)}
-          delta={pctDelta(weekTotal, lastWeekTotal)}
-          deltaLabel="vs last week"
-        />
-        <Stat
-          variant="card"
-          icon={<TrendingUp className="size-4" />}
-          iconClassName="bg-warning"
-          label="Reported month total"
-          range={formatMonthLabel(thisMonth)}
-          value={idr(monthTotalWithAdjustment)}
-          delta={monthComparison.deltaPct}
-          deltaLabel={`vs ${monthComparison.label}`}
-        />
-        <Stat
-          variant="card"
-          icon={<CalendarDays className="size-4" />}
-          iconClassName="bg-info"
-          label="Avg / day selected month"
-          value={idr(avgPerDay)}
-        />
-        <Stat
-          variant="card"
-          icon={<Package className="size-4" />}
-          iconClassName="bg-primary"
-          label="Portions selected month"
-          value={monthQty.toLocaleString("id-ID")}
+          portions={todayPortions}
+          actionLabel={todayActionLabel}
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Sales trend · {formatMonthLabel(thisMonth)}</CardTitle>
-            <Link
-              href="/reports?tab=revenue"
-              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-            >
-              View recap <ArrowRight className="size-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex h-56 items-center justify-center text-sm text-muted-foreground">
-                Loading…
-              </div>
-            ) : trend.length === 0 ? (
-              <EmptyChart label="No sales entries yet" />
-            ) : (
-              <ResponsiveContainer width="100%" height={240}>
-                <AreaChart data={trend}>
-                  <defs>
-                    <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={chartColors.primary} stopOpacity={0.25} />
-                      <stop offset="100%" stopColor={chartColors.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    stroke={chartColors.other}
-                  />
-                  <YAxis
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    stroke={chartColors.other}
-                    tickFormatter={(v) => `${Math.round(v / 1000)}k`}
-                    width={40}
-                  />
-                  <Tooltip formatter={(v) => idr(Number(v))} />
-                  <Area
-                    type="monotone"
-                    dataKey="total"
-                    stroke={chartColors.primary}
-                    strokeWidth={2.5}
-                    fill="url(#salesFill)"
-                    dot={{ r: 3, fill: chartColors.primary }}
-                    activeDot={{ r: 5 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-            {!loading && <p className="mt-3 border-t border-border pt-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">Takeaway:</span> {trendTakeaway}</p>}
-          </CardContent>
-        </Card>
+      <GlanceCard
+        title={`${monthLabel} at a glance`}
+        range={`1–${daysElapsed} ${format(parseISO(`${thisMonth}-01`), "MMM")}`}
+        loading={loading}
+        cells={glanceCells}
+      />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment mix this month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {paymentMix.length === 0 ? (
-              <EmptyChart label="No sales logged yet" />
-            ) : (
-              <div className="space-y-4">
-                <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-                  {paymentMix.map((d) => (
-                    <div
-                      key={d.label}
-                      style={{
-                        width: `${d.pct * 100}%`,
-                        backgroundColor: PAYMENT_COLORS[d.label],
-                      }}
-                      className="h-full first:ml-0 [&:not(:first-child)]:ml-[2px]"
-                    />
-                  ))}
-                </div>
-                <ul className="space-y-2.5">
-                  {paymentMix.map((d) => (
-                    <li key={d.label} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: PAYMENT_COLORS[d.label] }}
-                        />
-                        <span className="text-foreground">{d.label}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>{idr(d.value)}</span>
-                        <span className="w-10 text-right text-xs text-muted-foreground">
-                          {Math.round(d.pct * 100)}%
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 tablet:gap-5 min-[1024px]:grid-cols-[minmax(0,1fr)_340px]">
+        <TrendCard
+          loading={loading}
+          points={trendPoints}
+          average={avgPerDay}
+          takeaway={trendTakeaway}
+          monthLabel={monthLabel}
+          hasSales={hasMonthSales}
+          recapHref="/reports?tab=revenue"
+          bestDayLabel={bestDay ? formatDayLabel(bestDay.date) : null}
+          bestTotal={bestDay?.total ?? 0}
+        />
+        <ShareList
+          headingId="home-payment-heading"
+          title="Payment mix this month"
+          subtitle="Largest first"
+          rows={paymentRows}
+          emptyLabel="No sales logged yet"
+          loading={loading}
+          totalLabel="Total"
+          totalValue={idr(paymentTotal)}
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <UtensilsCrossed className="size-4 text-primary" />
-              Top items this month ({monthQty} sold)
-            </CardTitle>
-            <Link
-              href="/items"
-              className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-            >
-              View recap <ArrowRight className="size-3.5" />
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {topItems.length === 0 ? (
-              <EmptyChart label="No item sales logged yet" />
-            ) : (
-              <ul className="space-y-3">
-                {topItems.map((item, idx) => (
-                  <li key={item.name} className="flex items-center gap-3">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-warm-accent text-xs font-semibold text-primary">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-foreground">
-                          {item.name}
-                        </span>
-                        <span className="shrink-0 text-sm text-muted-foreground">{item.qty} sold</span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${Math.max(item.pct * 100, 4)}%` }}
-                        />
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Category mix this month</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {categoryBreakdown.length === 0 ? (
-              <EmptyChart label="No item sales logged yet" />
-            ) : (
-              <div className="space-y-4">
-                <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
-                  {categoryBreakdown.map((d) => (
-                    <div
-                      key={d.label}
-                      style={{ width: `${d.pct * 100}%`, backgroundColor: d.color }}
-                      className="h-full first:ml-0 [&:not(:first-child)]:ml-[2px]"
-                    />
-                  ))}
-                </div>
-                <ul className="space-y-2.5">
-                  {categoryBreakdown.map((d) => (
-                    <li key={d.label} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-full"
-                          style={{ backgroundColor: d.color }}
-                        />
-                        <span className="text-foreground">{d.label}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>{d.qty} sold</span>
-                        <span className="w-10 text-right text-xs text-muted-foreground">
-                          {Math.round(d.pct * 100)}%
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-3 tablet:gap-5 min-[1024px]:grid-cols-[minmax(0,1fr)_340px]">
+        <TopItemsCard
+          loading={loading}
+          rows={topItems.map((item) => ({ name: item.name, qty: item.qty, width: item.pct * 100 }))}
+          monthLabel={monthLabel}
+          soldLabel={`${monthQty.toLocaleString("id-ID")} portions sold`}
+          recapHref="/items"
+        />
+        <div className="grid gap-3 tablet:gap-5">
+          <ShareList
+            headingId="home-category-heading"
+            title="Category mix this month"
+            rows={categoryRows}
+            emptyLabel="No item sales logged yet"
+            loading={loading}
+          />
+          <CompositionCard
+            monthLabel={monthLabel}
+            monthOver={monthOver}
+            recorded={idr(monthTotal)}
+            adjustment={
+              monthView.selisih === null ? <StatusChip tone="info">Pending</StatusChip> : idr(monthView.selisih)
+            }
+            reported={idr(monthTotalWithAdjustment)}
+          />
+        </div>
       </div>
     </div>
   );
+}
+
+function sumPortions(log: DailyItemLog): number {
+  return Object.values(log.quantities ?? {}).reduce((sum, qty) => sum + (qty > 0 ? qty : 0), 0);
+}
+
+/** The Daily close status for today, using the design's set (DESIGN_SYSTEM §6). */
+function closeViewFor(log: DailyItemLog | undefined): { tone: StatusTone; label: string } {
+  if (!log) return { tone: "neutral", label: "Not started" };
+  if (log.status === "draft") return { tone: "info", label: "Draft" };
+  if (log.status === "complete") return { tone: "ok", label: "Complete" };
+  return { tone: "neutral", label: "No sales" };
+}
+
+function greetingFor(hour: number): string {
+  if (hour < 11) return "Selamat pagi";
+  if (hour < 15) return "Selamat siang";
+  if (hour < 18) return "Selamat sore";
+  return "Selamat malam";
 }
 
 function formatMonthLabel(monthISO: string): string {
@@ -581,19 +427,14 @@ function formatDayLabel(dateISO: string): string {
   return format(parseISO(dateISO), "EEEE, d MMM");
 }
 
-function formatWeekLabel(dateISO: string): string {
-  return `${formatDayLabel(dateISO)} – ${format(addDays(parseISO(dateISO), 6), "EEEE, d MMM")}`;
+/** "Mon 12 – Sun 18 Oct" (DESIGN_SYSTEM §7 short forms). */
+function formatWeekRange(dateISO: string): string {
+  const end = addDays(parseISO(dateISO), 6);
+  return `${format(parseISO(dateISO), "EEE d")} – ${format(end, "EEE d MMM")}`;
 }
 
+// No comparison when the earlier period is zero: a percentage of nothing is not shown.
 function pctDelta(current: number, previous: number): number | null {
-  if (previous === 0) return current > 0 ? null : 0;
+  if (previous === 0) return null;
   return (current - previous) / previous;
-}
-
-function EmptyChart({ label }: { label: string }) {
-  return (
-    <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-      {label}
-    </div>
-  );
 }
