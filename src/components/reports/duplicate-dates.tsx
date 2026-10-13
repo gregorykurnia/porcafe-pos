@@ -99,7 +99,7 @@ function DuplicateDateReviewDialog({
           {group.entries.map((entry) => (
             <label
               key={entry.id}
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${keepId === entry.id ? "border-primary bg-accent" : "border-border bg-surface hover:bg-muted"}`}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors ${keepId === entry.id ? "border-primary bg-brand-soft" : "border-border bg-surface hover:bg-muted"}`}
             >
               <input
                 type="radio"

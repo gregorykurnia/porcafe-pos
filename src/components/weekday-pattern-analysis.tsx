@@ -221,7 +221,7 @@ export function WeekdayPatternAnalysis({
                     }}
                     cursor={{ fill: "rgba(0,0,0,0.03)" }}
                   />
-                  <Bar dataKey="value" name={selectedMetric.valueLabel} fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                  <Bar dataKey="value" name={selectedMetric.valueLabel} fill="var(--color-brand)" radius={[6, 6, 0, 0]} maxBarSize={48} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

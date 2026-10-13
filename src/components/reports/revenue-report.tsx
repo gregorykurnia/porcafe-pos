@@ -239,9 +239,9 @@ export function RevenueReport({
                 <Line
                   type="monotone"
                   dataKey="total"
-                  stroke="var(--primary-brand)"
+                  stroke="var(--color-brand)"
                   strokeWidth={2.5}
-                  dot={{ r: 3, fill: "var(--primary-brand)" }}
+                  dot={{ r: 3, fill: "var(--color-brand)" }}
                   connectNulls={false}
                 />
               </LineChart>

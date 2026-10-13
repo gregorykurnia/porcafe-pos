@@ -49,7 +49,7 @@ Done by a stronger-model review (`HANDOFF_CANOPY_REVIEW.md` → `CANOPY_REVIEW.m
 
 Goal: put the new tokens and fonts in place so the whole live app re-themes coherently **without breaking any old screen**. Old classes stay valid until R4.
 
-- [ ] **R1.1 Tokens, added alongside the old ones.** Add the DESIGN_SYSTEM §2 `@theme` tokens to `src/app/globals.css`, **leaving out `--color-*: initial`** (that reset moves to R4.1). Then:
+- [x] **R1.1 Tokens, added alongside the old ones.** Add the DESIGN_SYSTEM §2 `@theme` tokens to `src/app/globals.css`, **leaving out `--color-*: initial`** (that reset moves to R4.1). Then:
   - **Bridge the shadcn variables** onto the new palette so the ~600 existing usages pick it up:
     - `--background` → canvas, `--foreground` → ink, `--muted-foreground` → ink-muted
     - `--card` and `--popover` → surface
@@ -177,6 +177,7 @@ The design assumes these, but each one changes behaviour or data, not just the l
 | 2026-10-13 | Build note: new tokens go in alongside the old ones (bridge) because `main` is live. The palette reset waits until R4.1. |
 | 2026-10-13 | R0.6: the owner accepted all recommendations (cream sidebar, payments after items, line amounts on desk and tablet, rail covers tablet, honey retired, brief amended, nav signals declined, recipes guard approved). |
 | 2026-10-13 | Charts: keep `recharts` (already a dependency), restyled to the DESIGN_SYSTEM chart rules through `src/lib/chart-colors.ts`, rather than rewriting them as inline SVG. Same look, less risk. |
+| 2026-10-13 | R1.1 bridge choices: `warm-accent` aliases to `sunken` (the old tan tint), not `brand`, because `brand` under brand-coloured text (Home's `text-primary` badge) would be invisible. `--muted` and `--secondary` take `sunken`. The DESIGN_SYSTEM §5 radii (8 / 12 / 20) replace the old `--radius-sm/md/xl`. Chart series map to the new palette (series 1 accent, 2 chart-2, 3 info, 4 neutral) until R2.4 restyles them. `@theme static` keeps the tokens in `:root` so the bridge can reference them. |
 
 ## Out of scope (noted for later)
 

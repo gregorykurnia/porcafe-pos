@@ -4,123 +4,162 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Canopy design tokens (docs/redesign/DESIGN_SYSTEM.md §2).
+ * Bridge phase: the default Tailwind palette is not reset yet (that waits for R4.1), and the
+ * old names below stay as aliases until then. `static` keeps every variable in :root, so the
+ * shadcn bridge and the card shadow can reference them even where no utility uses them.
+ */
+@theme static {
+  --color-white: #FFFFFF;
+
+  /* Surfaces */
+  --color-canvas: #F6F0E6;
+  --color-surface: #FFFCF7;
+  --color-sunken: #EFE8DB;
+
+  /* Lines */
+  --color-line: #E6DDCD;
+  --color-line-strong: #D3C7B3;
+  --color-line-input: #9A8E79;
+
+  /* Text */
+  --color-ink: #1F2B25;
+  --color-ink-muted: #5E655D;
+  --color-ink-faint: #8B8E85;
+
+  /* Brand */
+  --color-brand: #163D2F;
+  --color-brand-hover: #0F2E23;
+  --color-brand-on: #F6F0E6;
+  --color-brand-soft: #E3EDE4;
+  --color-accent: #2F6B50;
+
+  /* Status: ink on its own tint */
+  --color-ok: #2B6047;        --color-ok-tint: #E3EDE4;
+  --color-warn: #85540A;      --color-warn-tint: #F7EAD1;   --color-warn-mark: #B07A1C;
+  --color-danger: #A23B22;    --color-danger-tint: #F7E2DA; --color-danger-solid: #A9432A;
+  --color-info: #355F73;      --color-info-tint: #E2ECEF;
+  --color-neutral: #5E655D;   --color-neutral-tint: #EDE7DC;
+
+  /* Charts */
+  --color-chart-1: #2F6B50;
+  --color-chart-2: #8DAE98;
+  --color-chart-base: #D9CFBE;
+
+  /* Legacy aliases, remove in R4.1 */
+  --color-success: var(--color-ok);                /* legacy — remove in R4.1 */
+  --color-warning: var(--color-warn);              /* legacy — remove in R4.1 */
+  --color-warm-accent: var(--color-sunken);        /* legacy — remove in R4.1 */
+  --color-primary-hover: var(--color-brand-hover); /* legacy — remove in R4.1 */
+  --color-surface-elevated: var(--color-surface);  /* legacy — remove in R4.1 */
+
+  /* Type */
+  --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+
+  --text-display: 2.5rem;    --text-display--line-height: 2.875rem; --text-display--letter-spacing: -0.02em;  --text-display--font-weight: 500;
+  --text-title-1: 1.875rem;  --text-title-1--line-height: 2.25rem;  --text-title-1--letter-spacing: -0.015em; --text-title-1--font-weight: 500;
+  --text-title-2: 1.1875rem; --text-title-2--line-height: 1.625rem; --text-title-2--font-weight: 500;
+  --text-title-3: 0.9375rem; --text-title-3--line-height: 1.375rem; --text-title-3--font-weight: 600;
+  --text-body-lg: 1rem;      --text-body-lg--line-height: 1.5rem;
+  --text-body: 0.9375rem;    --text-body--line-height: 1.375rem;
+  --text-table: 0.875rem;    --text-table--line-height: 1.25rem;
+  --text-small: 0.8125rem;   --text-small--line-height: 1.125rem;
+  --text-micro: 0.75rem;     --text-micro--line-height: 1rem;
+  --text-fig-xl: 2.5rem;     --text-fig-xl--line-height: 2.75rem;   --text-fig-xl--letter-spacing: -0.02em;   --text-fig-xl--font-weight: 500;
+  --text-fig-l: 1.5rem;      --text-fig-l--line-height: 1.875rem;   --text-fig-l--letter-spacing: -0.01em;    --text-fig-l--font-weight: 500;
+  --text-fig-m: 1.25rem;     --text-fig-m--line-height: 1.625rem;   --text-fig-m--font-weight: 500;
+
+  /* Radius */
+  --radius-sm: 8px;   /* tooltip, tag */
+  --radius-md: 12px;  /* input, menu, banner, inner panels */
+  --radius-xl: 20px;  /* card, dialog, sheet */
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgb(22 61 47 / .04);
+  --shadow-raised: 0 1px 2px rgb(22 61 47 / .06), 0 8px 20px -10px rgb(22 61 47 / .22);
+  --shadow-overlay: 0 2px 6px rgb(22 61 47 / .08), 0 24px 48px -16px rgb(22 61 47 / .30);
+
+  /* Motion */
+  --ease-soft: cubic-bezier(.2, .8, .2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+
+  /* Breakpoints */
+  --breakpoint-tablet: 48rem;  /* 768: rail replaces the tab bar */
+  --breakpoint-desk: 74rem;    /* 1184: sidebar replaces the rail */
+}
+
+/* shadcn names, mapped onto the Canopy tokens */
 @theme inline {
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-primary-brand: var(--primary-brand);
-  --color-primary-hover: var(--primary-hover);
-  --color-text-main: var(--text-main);
-  --color-text-muted: var(--text-muted);
-  --color-text-subtle: var(--text-subtle);
-  --color-border-soft: var(--border-soft);
-  --color-warm-accent: var(--warm-accent);
-  --color-ember: var(--ember);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-danger: var(--danger);
-  --color-info: var(--info);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-app-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --font-heading: var(--font-display);
 }
 
 :root {
-  /* Calm Café Ledger design tokens. Keep page components semantic and token-driven. */
-  --canvas: #f7f3ea;
-  --surface: #fffdf9;
-  --surface-elevated: #ffffff;
-  --primary-brand: #1f3a2f;
-  /* Chart series, in fixed order. Read through src/lib/chart-colors.ts. */
-  --chart-1: #2a78d6;
-  --chart-2: #eb6834;
-  --chart-3: #1baf7a;
-  --chart-4: #eda100;
-  --chart-other: #898781;
-  --chart-grid: #e1e0d9;
-  --primary-hover: #16291f;
-  --text-main: #18231f;
-  --text-muted: #5e6963;
-  --text-subtle: #718078;
-  --border-soft: #e3ded3;
-  --warm-accent: #e9e2d0;
-  --ember: #d86d3e;
-  --success: #1f7046;
-  --warning: #7d5300;
-  --danger: #b83a36;
-  --info: #2358b8;
-
-  --background: var(--canvas);
-  --foreground: var(--text-main);
-  --card: var(--surface);
-  --card-foreground: var(--text-main);
-  --popover: var(--surface-elevated);
-  --popover-foreground: var(--text-main);
-  --primary: var(--primary-brand);
-  --primary-foreground: #fffdf9;
-  --secondary: var(--warm-accent);
-  --secondary-foreground: var(--primary-brand);
-  --muted: #f1ede4;
-  --muted-foreground: var(--text-muted);
-  --accent: #e2ebe4;
-  --accent-foreground: var(--primary-brand);
-  --destructive: var(--danger);
-  --border: var(--border-soft);
-  --input: var(--border-soft);
-  --ring: var(--primary-brand);
-  --chart-1: var(--primary-brand);
-  --chart-2: var(--success);
-  --chart-3: var(--ember);
-  --chart-4: var(--warning);
-  --chart-5: var(--info);
+  /* shadcn variables, bridged onto the Canopy palette so existing screens pick it up */
+  --background: var(--color-canvas);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-brand);
+  --primary-foreground: var(--color-brand-on);
+  --secondary: var(--color-sunken);
+  --secondary-foreground: var(--color-ink);
+  --muted: var(--color-sunken);
+  --muted-foreground: var(--color-ink-muted);
+  --destructive: var(--color-danger-solid);
+  --border: var(--color-line);
+  --input: var(--color-line-input);
+  --ring: var(--color-accent);
   --radius: 1rem;
-  --shadow-card: 0 1px 2px rgb(31 58 47 / 4%), 0 8px 24px -12px rgb(31 58 47 / 12%);
-  --sidebar: var(--surface);
-  --sidebar-foreground: var(--text-main);
-  --sidebar-primary: var(--primary-brand);
-  --sidebar-primary-foreground: var(--surface);
-  --sidebar-accent: #e2ebe4;
-  --sidebar-accent-foreground: var(--primary-brand);
-  --sidebar-border: var(--border-soft);
-  --sidebar-ring: var(--primary-brand);
+  --sidebar: var(--color-canvas);
+  --sidebar-foreground: var(--color-ink);
+  --sidebar-primary: var(--color-brand);
+  --sidebar-primary-foreground: var(--color-brand-on);
+  --sidebar-accent: var(--color-brand-soft);
+  --sidebar-accent-foreground: var(--color-ink);
+  --sidebar-border: var(--color-line);
+  --sidebar-ring: var(--color-accent);
+
+  /* Chart series, in fixed order. Read through src/lib/chart-colors.ts. */
+  --chart-1: var(--color-chart-1);
+  --chart-2: var(--color-chart-2);
+  --chart-3: var(--color-info);
+  --chart-4: var(--color-neutral);
+  --chart-grid: var(--color-chart-base);
+  --chart-other: var(--color-neutral);
 }
 
 .dark {
@@ -136,8 +175,6 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
@@ -162,10 +199,15 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-ink font-sans text-body antialiased;
+    font-variant-numeric: tabular-nums;
   }
   html {
     @apply font-sans;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   button,
   a,

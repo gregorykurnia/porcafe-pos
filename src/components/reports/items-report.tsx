@@ -217,7 +217,7 @@ export function ItemsReport({
                   <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
                   <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
                   <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                  <Bar dataKey="qty" name={detailName ?? "Portions"} fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                  <Bar dataKey="qty" name={detailName ?? "Portions"} fill="var(--color-brand)" radius={[6, 6, 0, 0]} maxBarSize={32} />
                 </BarChart>
               </ResponsiveContainer>
               <div className="max-h-72 overflow-y-auto rounded-xl border" role="region" tabIndex={0} aria-label="Item detail table">
@@ -358,7 +358,7 @@ export function ItemsReport({
                 <XAxis dataKey="label" fontSize={12} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={16} />
                 <YAxis fontSize={12} tickLine={false} axisLine={false} width={30} />
                 <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: "rgba(0,0,0,0.03)" }} />
-                <Bar dataKey="qty" name="Portions" fill="var(--primary-brand)" radius={[6, 6, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="qty" name="Portions" fill="var(--color-brand)" radius={[6, 6, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           )}

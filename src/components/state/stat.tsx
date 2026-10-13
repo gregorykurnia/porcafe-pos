@@ -121,7 +121,7 @@ export function Stat({
     <div
       className={cn(
         "min-w-0 rounded-lg px-3 py-2",
-        emphasized ? "bg-accent" : "border border-border bg-surface/70",
+        emphasized ? "bg-brand-soft" : "border border-border bg-surface/70",
         className
       )}
     >

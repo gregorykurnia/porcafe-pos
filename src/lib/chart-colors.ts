@@ -2,7 +2,7 @@
 // variables, so one token change updates every chart. Single-series charts use `primary`.
 // The four payment and category slots keep a fixed order and never cycle.
 export const chartColors = {
-  primary: "var(--primary-brand)",
+  primary: "var(--color-brand)",
   grid: "var(--chart-grid)",
   other: "var(--chart-other)",
   payment: {

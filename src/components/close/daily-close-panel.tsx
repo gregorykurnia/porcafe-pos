@@ -286,7 +286,7 @@ export function DailyClosePanel({
             </CardContent>
           </Card>
 
-          <Card className="border-primary/10 bg-accent lg:sticky lg:top-24">
+          <Card className="border-primary/10 bg-brand-soft lg:sticky lg:top-24">
             <CardHeader>
               <CardTitle className="text-lg">Day summary</CardTitle>
               <p className="text-sm text-muted-foreground">{formatDisplay(date)}</p>
