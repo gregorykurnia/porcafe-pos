@@ -76,7 +76,7 @@ Goal: put the new tokens and fonts in place so the whole live app re-themes cohe
 
 Goal: every building block in DESIGN_SYSTEM §10 exists in code and can be reviewed without real data.
 
-- [ ] **R2.1 `/lab` route.** A development-only page that renders every component in every state with fake data. It must make no Firestore calls and must not be reachable in production. Include a width switcher (390 / 820 / 1024 / 1280).
+- [x] **R2.1 `/lab` route.** A development-only page that renders every component in every state with fake data. It must make no Firestore calls and must not be reachable in production. Include a width switcher (390 / 820 / 1024 / 1280).
 - [ ] **R2.2 Primitives (`src/components/ui/*`).**
   - Button: primary, secondary, ghost, destructive and inverse variants; sm 36, md 44 and lg 48 sizes; a loading state.
   - Input with the `line-input` border, plus select, popover, dropdown (⋯ row menus), dialog/AlertDialog, sheet (680 px side sheet on desk and tablet, full screen on phone), separator, calendar.
