@@ -1,3 +1,5 @@
+> **Superseded.** This document describes the previous design. The current design is the Canopy redesign: see [docs/redesign/DESIGN_SYSTEM.md](redesign/DESIGN_SYSTEM.md). Kept for history.
+
 # Porcafe POS — UX Audit
 
 Date: 2026-10-12
