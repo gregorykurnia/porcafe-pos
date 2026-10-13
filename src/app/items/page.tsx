@@ -1,12 +1,12 @@
 "use client";
 
-import { PageHeader } from "@/components/page-header";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Banner } from "@/components/patterns/banner";
+import { PageTabs } from "@/components/patterns/page-tabs";
+import { ErrorBanner } from "@/components/patterns/states";
 import { useConfirm } from "@/components/confirm-dialog";
 import { ScanSheet } from "@/components/close/scan-sheet/scan-sheet";
 import { useQueryState } from "@/hooks/use-query-state";
@@ -272,51 +272,46 @@ function ItemsWorkspace() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Daily close"
-        description={activeView === "daily" ? "Record portions and confirm revenue for one operating day." : "Review recorded item sales."}
-        actions={
-          <>
-        <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary />
-        {activeView === "daily" && (
-          <Button asChild variant="outline" className="flex-1 sm:flex-none">
-            <Link href="/reports?tab=revenue">
-              <ExternalLink className="size-4" /> Open revenue
-            </Link>
-          </Button>
-        )}
-          </>
-        }
-      />
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-[1.5rem] font-medium leading-[1.875rem] text-brand tablet:text-title-1">Daily close</h1>
+          <p className="mt-1 text-small text-ink-muted">
+            {activeView === "daily" ? "Record portions and confirm revenue for one operating day." : "Review recorded item sales."}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <ScanSheet menuItems={menuItems} onSaved={handleScanSaved} primary={false} />
+          {activeView === "daily" && (
+            <Button asChild variant="ghost">
+              <Link href="/reports?tab=revenue">
+                <ExternalLink className="size-4" aria-hidden="true" /> Open revenue
+              </Link>
+            </Button>
+          )}
+        </div>
+      </header>
 
       {loadError && (
-        <Card className="border-danger/20 bg-danger/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
-            <div>
-              <p className="font-medium text-foreground">Item data could not be loaded</p>
-              <p className="mt-1 text-sm text-muted-foreground">Your current view and filters are preserved. Try again when the connection is available.</p>
-            </div>
-            <Button type="button" variant="outline" onClick={() => refresh()}>Retry</Button>
-          </CardContent>
-        </Card>
+        <ErrorBanner onRetry={() => refresh()}>
+          Item data could not be loaded. Your current view and filters are preserved. Try again when the connection is available.
+        </ErrorBanner>
       )}
 
-      <Tabs
+      <PageTabs
+        label="Daily close sections"
         value={activeView}
-        onValueChange={(value) => void switchView(value as ItemsView)}
-        className="w-full"
-      >
-        <TabsList className="grid h-10 w-full grid-cols-2 rounded-xl bg-muted/80 p-1 sm:w-fit sm:min-w-[20rem]">
-          <TabsTrigger id="items-tab-daily" aria-controls="items-panel-daily" value="daily" className="rounded-lg px-3">Daily close</TabsTrigger>
-          <TabsTrigger id="items-tab-history" aria-controls="items-panel-history" value="history" className="rounded-lg px-3">History</TabsTrigger>
-        </TabsList>
-      </Tabs>
+        tabs={[
+          { value: "daily", label: "Daily close" },
+          { value: "history", label: "History" },
+        ]}
+        onChange={(value) => void switchView(value)}
+      />
 
       {activeView === "history" && legacyEditable && (
-        <p className="rounded-xl border border-warning/25 bg-warning/5 px-4 py-3 text-sm text-foreground">
+        <Banner tone="warn">
           {legacyOnlyDates.length} {legacyOnlyDates.length === 1 ? "date is" : "dates are"} still stored only as legacy item rows, so they stay editable here. Copy them into Daily close in{" "}
-          <Link href="/setup?tab=data" className="font-medium underline underline-offset-2">Setup → Data maintenance</Link>.
-        </p>
+          <Link href="/setup?tab=data" className="font-medium text-accent underline underline-offset-2">Setup → Data maintenance</Link>.
+        </Banner>
       )}
 
       {activeView === "daily" && (
