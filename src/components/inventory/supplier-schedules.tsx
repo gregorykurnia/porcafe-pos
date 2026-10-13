@@ -1,16 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarClock, Pause, Play, Plus, RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "@/lib/toast";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { FieldRow } from "@/components/fields/field-row";
+import { MaterialQuantityInput } from "@/components/fields/material-quantity-input";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { StatusChip } from "@/components/patterns/status-chip";
+import { EmptyState } from "@/components/patterns/states";
 import { todayISO, formatDisplay } from "@/lib/dates";
+import { formatInventoryUsageQuantity } from "@/lib/inventory-usage";
 import { runDueInventorySupplierDeliverySchedules, upsertInventorySupplierDeliverySchedule } from "@/lib/data";
 import type { InventoryMaterial, InventorySupplier, InventorySupplierDeliveryFrequency, InventorySupplierDeliverySchedule, InventorySupplierItem } from "@/lib/types";
 
@@ -29,11 +33,21 @@ const FREQUENCIES: Array<{ value: InventorySupplierDeliveryFrequency; label: str
   { value: "custom", label: "Custom interval" },
 ];
 
+function frequencyLabel(schedule: InventorySupplierDeliverySchedule): string {
+  if (schedule.frequency === "custom") return `Every ${schedule.customIntervalDays} days`;
+  return FREQUENCIES.find((option) => option.value === schedule.frequency)?.label ?? schedule.frequency;
+}
+
+/**
+ * Recurring supplier deliveries (inventory §3.10). Run due now creates the deliveries that fall due. Each schedule
+ * can be paused or resumed. New schedules are set up in a sheet.
+ */
 export function SupplierSchedules({ materials, suppliers, supplierItems, schedules, onChanged }: SupplierSchedulesProps) {
   const activeMaterials = useMemo(() => materials.filter((material) => material.active), [materials]);
   const activeSuppliers = useMemo(() => suppliers.filter((supplier) => supplier.active), [suppliers]);
   const supplierById = useMemo(() => new Map(suppliers.map((supplier) => [supplier.id, supplier])), [suppliers]);
   const materialById = useMemo(() => new Map(activeMaterials.map((material) => [material.id, material])), [activeMaterials]);
+  const [formOpen, setFormOpen] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [materialId, setMaterialId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -50,6 +64,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
     .filter((item) => item.supplierId === supplierId && materialById.has(item.materialId))
     .map((item) => materialById.get(item.materialId))
     .filter((material): material is InventoryMaterial => Boolean(material)), [materialById, supplierId, supplierItems]);
+  const selectedMaterial = materialId ? materialById.get(materialId) : undefined;
 
   function resetForm() {
     setSupplierId("");
@@ -109,6 +124,7 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
       });
       toast.success("Recurring delivery schedule saved");
       resetForm();
+      setFormOpen(false);
       await onChanged();
     } catch (error) {
       console.error("Failed to save delivery schedule", error);
@@ -143,36 +159,186 @@ export function SupplierSchedules({ materials, suppliers, supplierItems, schedul
     }
   }
 
+  // Shown in the sheet's save bar. Saving still runs the same checks and reports each problem as a toast.
+  const saveBlocker = !supplierId
+    ? "Choose a supplier first."
+    : !materialId
+      ? "Choose a linked material."
+      : !(Number(quantity) > 0)
+        ? "Enter a delivery quantity greater than zero."
+        : frequency === "custom" && !(Number.isInteger(Number(customIntervalDays)) && Number(customIntervalDays) > 0)
+          ? "Enter the interval in whole days."
+          : "";
+
+  const columns: Column<InventorySupplierDeliverySchedule>[] = [
+    {
+      key: "supplier",
+      label: "Supplier",
+      cell: (schedule) => (
+        <>
+          <span className="font-medium">{schedule.supplierName}</span>
+          <span className="block text-small text-ink-muted">{schedule.materialName} · {schedule.unit}</span>
+        </>
+      ),
+      phone: "title",
+    },
+    {
+      key: "quantity",
+      label: "Quantity",
+      align: "right",
+      cell: (schedule) => `${formatInventoryUsageQuantity(schedule.quantity)} ${schedule.unit}`,
+      phone: "figure",
+    },
+    {
+      key: "frequency",
+      label: "Frequency",
+      cell: (schedule) => frequencyLabel(schedule),
+      phone: "meta",
+    },
+    {
+      key: "nextRun",
+      label: "Next run",
+      cell: (schedule) => <><span className="tablet:hidden">Next </span>{formatDisplay(schedule.nextRunOn)}<span className="text-ink-muted"> · {schedule.executionTime ?? "08:00"}</span></>,
+      phone: "detail",
+    },
+    {
+      key: "lastRun",
+      label: "Last run",
+      cell: (schedule) => <><span className="tablet:hidden">Last run </span>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</>,
+      phone: "detail",
+    },
+    {
+      key: "status",
+      label: "Status",
+      cell: (schedule) => schedule.active
+        ? <StatusChip tone="ok">Active</StatusChip>
+        : <StatusChip tone="neutral">Paused</StatusChip>,
+      phone: "meta",
+    },
+  ];
+
   return (
-    <div className="space-y-5">
-      <Card className="border-primary/15 bg-primary/5">
-        <CardContent className="flex items-start justify-between gap-3 p-4"><div className="flex gap-3"><CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" /><div><p className="font-medium">Recurring supplier deliveries</p><p className="mt-1 text-sm text-muted-foreground">Deliveries are created when they fall due. Opening Stock checks for due deliveries too.</p></div></div><Button variant="outline" onClick={() => void runDueNow()} disabled={running}><RefreshCw className={`size-4 ${running ? "animate-spin" : ""}`} />{running ? "Checking…" : "Run due now"}</Button></CardContent>
+    <section aria-labelledby="recurring-deliveries-title" className="space-y-4">
+      <Card className="gap-0 py-0 shadow-card">
+        <div className="flex flex-col gap-3 px-4 py-4 tablet:flex-row tablet:items-center tablet:justify-between tablet:px-6">
+          <div className="min-w-0">
+            <h2 id="recurring-deliveries-title" className="font-display text-title-2 text-ink">Recurring supplier deliveries</h2>
+            <p className="mt-1 text-small text-ink-muted">Deliveries are created when they fall due. Opening Stock checks for due deliveries too.</p>
+          </div>
+          <Button type="button" variant="secondary" className="self-start tablet:self-auto" loading={running} onClick={() => void runDueNow()}>
+            {running ? "Checking…" : "Run due now"}
+          </Button>
+        </div>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Delivery schedules</CardTitle><CardDescription>{schedules.length} schedule{schedules.length === 1 ? "" : "s"} currently defined.</CardDescription></CardHeader>
-        <CardContent>{schedules.length === 0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No recurring delivery schedules yet.</p> : <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Supplier</TableHead><TableHead>Material</TableHead><TableHead>Quantity</TableHead><TableHead>Frequency</TableHead><TableHead>Next run</TableHead><TableHead>Time</TableHead><TableHead>Last run</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Action</TableHead></TableRow></TableHeader><TableBody>{schedules.map((schedule) => <TableRow key={schedule.id}><TableCell className="font-medium">{schedule.supplierName}</TableCell><TableCell>{schedule.materialName}<span className="block text-xs text-muted-foreground">{schedule.unit}</span></TableCell><TableCell className="tabular-nums">{schedule.quantity}</TableCell><TableCell>{schedule.frequency === "custom" ? `Every ${schedule.customIntervalDays} days` : FREQUENCIES.find((option) => option.value === schedule.frequency)?.label}</TableCell><TableCell>{formatDisplay(schedule.nextRunOn)}</TableCell><TableCell>{schedule.executionTime ?? "08:00"}</TableCell><TableCell>{schedule.lastRunOn ? formatDisplay(schedule.lastRunOn) : "—"}</TableCell><TableCell><Badge variant={schedule.active ? "secondary" : "outline"}>{schedule.active ? "Active" : "Paused"}</Badge></TableCell><TableCell className="text-right"><Button size="sm" variant="outline" onClick={() => void toggleSchedule(schedule)}>{schedule.active ? <><Pause className="size-3.5" />Pause</> : <><Play className="size-3.5" />Resume</>}</Button></TableCell></TableRow>)}</TableBody></Table></div>}</CardContent>
+      <Card className="gap-0 py-0 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 tablet:px-6 tablet:pt-6">
+          <div className="min-w-0">
+            <h2 className="font-display text-title-2 text-ink">Delivery schedules</h2>
+            <p className="mt-1 text-small text-ink-muted">{schedules.length} schedule{schedules.length === 1 ? "" : "s"} currently defined.</p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setFormOpen(true)}>
+            <Plus />Set a recurring delivery
+          </Button>
+        </div>
+        <div className="mt-4 border-t border-line">
+          <DataTable
+            caption="Delivery schedules"
+            listBelow="desk"
+            columns={columns}
+            rows={schedules}
+            getKey={(schedule) => schedule.id}
+            density="compact"
+            rowActions={(schedule) => (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void toggleSchedule(schedule)}
+                aria-label={`${schedule.active ? "Pause" : "Resume"} ${schedule.materialName} from ${schedule.supplierName}`}
+              >
+                {schedule.active ? "Pause" : "Resume"}
+              </Button>
+            )}
+            empty={<EmptyState title="No recurring delivery schedules yet.">Set a recurring delivery and it appears here.</EmptyState>}
+          />
+        </div>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Set a recurring delivery</CardTitle><CardDescription>Only materials already linked to the selected supplier can be scheduled.</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          {activeSuppliers.length === 0 ? <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add an active supplier and supplier-material link first.</p> : <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <div className="space-y-1.5"><Label htmlFor="schedule-supplier">Supplier</Label><Select value={supplierId} onValueChange={(value) => { setSupplierId(value); setMaterialId(""); }}><SelectTrigger id="schedule-supplier" className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger><SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-material">Material</Label><Select value={materialId} onValueChange={setMaterialId} disabled={!supplierId}><SelectTrigger id="schedule-material" className="w-full"><SelectValue placeholder={supplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger><SelectContent>{linkedMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-quantity">Delivery quantity</Label><Input id="schedule-quantity" type="number" min="0" step="0.01" value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="0" /></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-frequency">Frequency</Label><Select value={frequency} onValueChange={(value) => setFrequency(value as InventorySupplierDeliveryFrequency)}><SelectTrigger id="schedule-frequency" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{FREQUENCIES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
-              {frequency === "custom" && <div className="space-y-1.5"><Label htmlFor="schedule-custom-days">Every (days)</Label><Input id="schedule-custom-days" type="number" min="1" step="1" value={customIntervalDays} onChange={(event) => setCustomIntervalDays(event.target.value)} placeholder="e.g. 10" /></div>}
-              <div className="space-y-1.5"><Label htmlFor="schedule-start">Start date</Label><Input id="schedule-start" type="date" value={startOn} onChange={(event) => setStartOn(event.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-time">Delivery time</Label><Input id="schedule-time" type="time" value={executionTime} onChange={(event) => setExecutionTime(event.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-end">End date</Label><Input id="schedule-end" type="date" value={endOn} onChange={(event) => setEndOn(event.target.value)} /></div>
-              <div className="space-y-1.5"><Label htmlFor="schedule-notes">Notes</Label><Input id="schedule-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" /></div>
-            </div>
-            <Button onClick={() => void saveSchedule()} disabled={saving}><Plus className="size-4" />{saving ? "Saving…" : "Save schedule"}</Button>
-          </>}
-        </CardContent>
-      </Card>
-    </div>
+      <Sheet open={formOpen} onOpenChange={setFormOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Set a recurring delivery</SheetTitle>
+            <SheetDescription>Only materials already linked to the selected supplier can be scheduled.</SheetDescription>
+          </SheetHeader>
+
+          {activeSuppliers.length === 0 ? (
+            <EmptyState title="No active supplier.">Add an active supplier and supplier-material link first.</EmptyState>
+          ) : (
+            <>
+              <div className="grid gap-4 tablet:grid-cols-2">
+                <FieldRow label="Supplier">
+                  {(id) => (
+                    <Select value={supplierId} onValueChange={(value) => { setSupplierId(value); setMaterialId(""); }}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue placeholder="Choose supplier" /></SelectTrigger>
+                      <SelectContent>{activeSuppliers.map((supplier) => <SelectItem key={supplier.id} value={supplier.id}>{supplier.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                </FieldRow>
+                <FieldRow label="Material">
+                  {(id) => (
+                    <Select value={materialId} onValueChange={setMaterialId} disabled={!supplierId}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue placeholder={supplierId ? "Choose linked material" : "Choose supplier first"} /></SelectTrigger>
+                      <SelectContent>{linkedMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name} · {material.baseUnit}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                </FieldRow>
+                <FieldRow label="Delivery quantity">
+                  {(id) => (
+                    <MaterialQuantityInput id={id} label="Delivery quantity" value={quantity} unit={selectedMaterial?.baseUnit ?? ""} onChange={setQuantity} />
+                  )}
+                </FieldRow>
+                <FieldRow label="Frequency">
+                  {(id) => (
+                    <Select value={frequency} onValueChange={(value) => setFrequency(value as InventorySupplierDeliveryFrequency)}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>{FREQUENCIES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                </FieldRow>
+                {frequency === "custom" && (
+                  <FieldRow label="Every (days)">
+                    {(id) => <Input id={id} type="number" min="1" step="1" value={customIntervalDays} onChange={(event) => setCustomIntervalDays(event.target.value)} placeholder="e.g. 10" />}
+                  </FieldRow>
+                )}
+                <FieldRow label="Start date">
+                  {(id) => <Input id={id} type="date" value={startOn} onChange={(event) => setStartOn(event.target.value)} />}
+                </FieldRow>
+                <FieldRow label="Delivery time">
+                  {(id) => <Input id={id} type="time" value={executionTime} onChange={(event) => setExecutionTime(event.target.value)} />}
+                </FieldRow>
+                <FieldRow label="End date" hint="Optional.">
+                  {(id) => <Input id={id} type="date" value={endOn} onChange={(event) => setEndOn(event.target.value)} />}
+                </FieldRow>
+                <FieldRow label="Notes">
+                  {(id) => <Input id={id} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Optional" />}
+                </FieldRow>
+              </div>
+            </>
+          )}
+
+          <SheetFooter>
+            {activeSuppliers.length > 0 && (
+              <p className="mr-auto self-center text-small text-ink-muted" aria-live="polite">{saveBlocker}</p>
+            )}
+            {activeSuppliers.length > 0 && (
+              <Button type="button" loading={saving} disabled={saving} onClick={() => void saveSchedule()}>
+                {saving ? "Saving…" : "Save schedule"}
+              </Button>
+            )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    </section>
   );
 }

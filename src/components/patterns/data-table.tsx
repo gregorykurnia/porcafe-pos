@@ -18,6 +18,10 @@ export type Column<R> = {
   /** Set when the column can be sorted. The sort key is passed back to onSort. */
   sortKey?: string;
   phone?: "title" | "figure" | "meta" | "detail" | "hidden";
+  /** Extra classes for the header cell, e.g. whitespace-normal to let a long heading wrap. */
+  headClassName?: string;
+  /** Extra classes for each body cell in the table. */
+  cellClassName?: string;
 };
 
 /** A band row (date bands in History, categories in Menu) groups the rows under it. */
@@ -34,6 +38,10 @@ export type DataTableProps<R> = {
   onSort?: (key: string) => void;
   /** The ⋯ menu for a row, usually a DropdownMenu. Keep at most one text action per row. */
   rowActions?: (row: R) => ReactNode;
+  /** Phone and tablet list rows put the action on a line of its own under the details, not beside them. */
+  actionsBelow?: boolean;
+  /** Where the table gives way to the list rows. Tablet by default; desk when the table needs the full desk width. */
+  listBelow?: "tablet" | "desk";
   selectedKey?: string;
   empty?: ReactNode;
 };
@@ -55,9 +63,14 @@ export function DataTable<R>({
   sort,
   onSort,
   rowActions,
+  actionsBelow = false,
+  listBelow = "tablet",
   selectedKey,
   empty,
 }: DataTableProps<R>) {
+  // Literal class names, so Tailwind generates both breakpoints.
+  const tableShow = listBelow === "desk" ? "desk:block" : "tablet:block";
+  const listHide = listBelow === "desk" ? "desk:hidden" : "tablet:hidden";
   const rowHeight = density === "compact" ? "h-10 [@media(pointer:coarse)]:h-14" : "h-14";
   const phoneColumns = {
     title: columns.filter((c) => c.phone === "title"),
@@ -70,7 +83,7 @@ export function DataTable<R>({
 
   return (
     <div>
-      <div className="hidden overflow-x-auto tablet:block">
+      <div className={cn("hidden overflow-x-auto", tableShow)}>
         <Table>
           <caption className="sr-only">{caption}</caption>
           <TableHeader className="sticky top-0 z-10 bg-surface">
@@ -83,10 +96,10 @@ export function DataTable<R>({
                     sortKey={column.sortKey}
                     sort={sort}
                     onSort={onSort}
-                    className={cn("text-small text-ink-muted", column.align === "right" && "text-right")}
+                    className={cn("text-small text-ink-muted", column.align === "right" && "text-right", column.headClassName)}
                   />
                 ) : (
-                  <TableHead key={column.key} className={cn("text-small text-ink-muted", column.align === "right" && "text-right")}>
+                  <TableHead key={column.key} className={cn("text-small text-ink-muted", column.align === "right" && "text-right", column.headClassName)}>
                     {column.label}
                   </TableHead>
                 )
@@ -109,7 +122,7 @@ export function DataTable<R>({
                   className={cn("border-line hover:bg-canvas data-[state=selected]:bg-brand-soft", rowHeight)}
                 >
                   {columns.map((column) => (
-                    <TableCell key={column.key} className={cn("text-table text-ink", column.align === "right" && "text-right tabular-nums")}>
+                    <TableCell key={column.key} className={cn("text-table text-ink", column.align === "right" && "text-right tabular-nums", column.cellClassName)}>
                       {column.cell(row)}
                     </TableCell>
                   ))}
@@ -121,14 +134,14 @@ export function DataTable<R>({
         </Table>
       </div>
 
-      <ul className="divide-y divide-line tablet:hidden" aria-label={caption}>
+      <ul className={cn("divide-y divide-line", listHide)} aria-label={caption}>
         {rows.map((row, index) =>
           isBand(row) ? (
             <li key={`band-${index}`} className="bg-canvas px-4 py-2 text-small font-semibold text-ink">
               {row.band}
             </li>
           ) : (
-            <li key={getKey(row)} className="flex items-center gap-3 px-4 py-3">
+            <li key={getKey(row)} className={cn("flex items-center gap-3 px-4 py-3", actionsBelow && "flex-wrap")}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-3">
                   <div className="min-w-0 truncate text-body font-medium text-ink">{phoneColumns.title.map((c) => <span key={c.key}>{c.cell(row)}</span>)}</div>
@@ -140,8 +153,9 @@ export function DataTable<R>({
                 {phoneColumns.detail.length > 0 ? (
                   <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneColumns.detail.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>
                 ) : null}
+                {actionsBelow && rowActions ? <div className="mt-2">{rowActions(row)}</div> : null}
               </div>
-              {rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
+              {!actionsBelow && rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
             </li>
           )
         )}
