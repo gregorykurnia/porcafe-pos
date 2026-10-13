@@ -1,23 +1,22 @@
 "use client";
 
-import { Stat } from "@/components/state/stat";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format, parseISO } from "date-fns";
 import { toast } from "@/lib/toast";
-import {
-  AlertTriangle,
-  ClipboardCheck,
-  PackagePlus,
-  RefreshCw,
-  Scale,
-  TriangleAlert,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { PackagePlus, RefreshCw, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Banner } from "@/components/patterns/banner";
+import { DataTable, type Column } from "@/components/patterns/data-table";
+import { StatusChip, ToneShape } from "@/components/patterns/status-chip";
+import { EmptyState, ErrorBanner, LoadingSkeleton } from "@/components/patterns/states";
+import { FieldRow } from "@/components/fields/field-row";
+import { MaterialQuantityInput } from "@/components/fields/material-quantity-input";
 import { todayISO, formatDisplay } from "@/lib/dates";
 import { getInventoryReorderStatus } from "@/lib/reorder-status";
 import {
@@ -36,7 +35,6 @@ import { CurrentStockCard } from "@/components/inventory/current-stock-card";
 import { CountSheet } from "@/components/inventory/count-sheet";
 import { describeSourceRef } from "@/lib/source-ref";
 import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "@/lib/session-draft";
-import { acceptQuantityInput } from "@/lib/field-input";
 import { countVariance, parseCountQuantity } from "@/lib/stock-count";
 import type {
   InventoryMaterial,
@@ -127,15 +125,19 @@ function formatMovementQuantity(quantity: number, unit: string): string {
   return `${prefix}${formatInventoryUsageQuantity(quantity)} ${unit}`;
 }
 
-function movementQuantityClass(quantity: number): string {
-  if (quantity > 0) return "text-success";
-  if (quantity < 0) return "text-danger";
-  return "text-muted-foreground";
-}
-
 function materialBalanceLabel(balance: InventoryBalance): string {
   if (balance.currentQuantity === null) return "Not initialized";
   return `${formatInventoryUsageQuantity(balance.currentQuantity)} ${balance.unit}`;
+}
+
+/** A short date for tables and figures: "Mon, 13 Oct 2026". */
+function formatShortDate(dateISO: string): string {
+  return format(parseISO(dateISO), "EEE, d MMM yyyy");
+}
+
+/** The audit trail date, narrower so the table fits beside the reason on tablet: "13 Oct 2026". */
+function formatTableDate(dateISO: string): string {
+  return format(parseISO(dateISO), "d MMM yyyy");
 }
 
 function sortMovementsByDate(movements: InventoryMovement[]): InventoryMovement[] {
@@ -172,6 +174,9 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     setOpeningQuantities(next);
     writeSessionDraft(openingDraftKey, next);
   }
+  // The movement and single-count forms open in sheets. Their state lives here, so a sheet keeps what was typed.
+  const [movementSheetOpen, setMovementSheetOpen] = useState(false);
+  const [countSheetOpen, setCountSheetOpen] = useState(false);
   const [movementType, setMovementType] = useState<ManualMovementType>("receiving");
   const [movementMaterialId, setMovementMaterialId] = useState("");
   const [movementDate, setMovementDate] = useState(todayISO());
@@ -230,9 +235,10 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     if (loading || !onSummaryChange) return;
     onSummaryChange(stockSummary);
   }, [loading, onSummaryChange, stockSummary]);
-  function focusCount(materialId: string) {
+  // The Count action in a row opens the single-material count for that row.
+  function openRecordCount(materialId: string) {
     setCountMaterialId(materialId);
-    document.getElementById("stock-count")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCountSheetOpen(true);
   }
   const lowStockBalances = currentStockBalances.filter((balance) => balance.currentQuantity !== null && balance.currentQuantity <= 0);
   const selectedMovementMaterialId = movementMaterialId || activeMaterials[0]?.id || "";
@@ -462,6 +468,8 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
       });
       const balanceBefore = balanceTotals[material.id] ?? 0;
       const quantity = observedQuantity - balanceBefore;
+      // Set in the save handler after the await, never during render. The purity rule cannot see that here.
+      // eslint-disable-next-line react-hooks/purity
       const createdAt = Date.now();
       const movement: InventoryMovement = {
         id,
@@ -491,246 +499,436 @@ export function StockDashboard({ materials, onChanged, scheduleRefreshKey, openO
     }
   }
 
+  // The first problem with the movement form, in the order saveMovement checks them. Shown in the sheet's save bar.
+  const movementQuantityNumber = Number(movementQuantity);
+  const movementBlocker = !selectedMovementMaterial
+    ? "Choose a material."
+    : !Number.isFinite(movementQuantityNumber) || movementQuantityNumber <= 0
+      ? "Enter a quantity greater than zero."
+      : !movementReason.trim()
+        ? "Add a reason for this movement."
+        : "";
+
+  // The first problem with the count form, in the order saveStockCount checks them.
+  const countBlocker = !selectedCountMaterial
+    ? "Choose a material."
+    : selectedCounted === null
+      ? "Enter a stock count of zero or greater."
+      : selectedVariance?.needsReason && !countReason.trim()
+        ? "This count differs from the system by more than 20 %. Add a reason."
+        : "";
+
+  function chooseMovementType(nextType: ManualMovementType) {
+    setMovementType(nextType);
+    if (nextType === "receiving") {
+      fillReceivingDefaults(selectedMovementMaterialId);
+    } else {
+      if (movementQuantityAutoFilledRef.current) setMovementQuantity("");
+      movementQuantityAutoFilledRef.current = false;
+      if (movementReason === "Stock In") setMovementReason("");
+    }
+  }
+
+  const openingColumns: Column<InventoryMaterial>[] = [
+    {
+      key: "material",
+      label: "Material",
+      cell: (material) => <span className="font-medium">{material.name}</span>,
+      phone: "title",
+    },
+    {
+      key: "unit",
+      label: "Base unit",
+      cell: (material) => <span className="text-ink-muted">{material.baseUnit}</span>,
+      phone: "meta",
+    },
+    {
+      key: "opening",
+      label: "Opening quantity",
+      align: "right",
+      cell: (material) => (
+        <div className="ml-auto w-32 tablet:w-44">
+          <MaterialQuantityInput
+            label={`Opening quantity for ${material.name}`}
+            value={openingQuantities[material.id] ?? ""}
+            onChange={(value) => updateOpeningQuantity(material.id, value)}
+            unit={material.baseUnit}
+          />
+        </div>
+      ),
+      phone: "figure",
+    },
+  ];
+
+  const auditColumns: Column<InventoryMovement>[] = [
+    {
+      key: "date",
+      label: "Date",
+      cell: (movement) => <span className="whitespace-nowrap text-ink-muted">{formatTableDate(movement.occurredOn)}</span>,
+      phone: "meta",
+    },
+    {
+      key: "material",
+      label: "Material",
+      cell: (movement) => <span className="font-medium">{movement.materialName}</span>,
+      phone: "title",
+    },
+    {
+      key: "type",
+      label: "Type",
+      cell: (movement) => <span className="text-ink-muted">{MOVEMENT_LABELS[movement.movementType]}</span>,
+      phone: "meta",
+    },
+    {
+      key: "quantity",
+      label: "Quantity",
+      align: "right",
+      cell: (movement) => <span className="font-semibold whitespace-nowrap">{formatMovementQuantity(movement.quantity, movement.unit)}</span>,
+      phone: "figure",
+    },
+    {
+      key: "reason",
+      label: "Reason / source",
+      cell: (movement) => (
+        <>
+          <span>{movement.reason}</span>
+          {movement.sourceRef && (
+            <span className="block text-small text-ink-muted" title={movement.sourceRef}>
+              {describeSourceRef(movement.sourceRef)?.label ?? movement.sourceRef}
+            </span>
+          )}
+        </>
+      ),
+      phone: "detail",
+    },
+  ];
+
   if (loading && !hasSnapshot) {
-    return <Card><CardContent className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><RefreshCw className="size-4 animate-spin" />Loading stock ledger…</CardContent></Card>;
+    return (
+      <Card className="gap-0 py-0 shadow-card">
+        <p className="px-4 pt-4 text-small text-ink-muted tablet:px-6 tablet:pt-6">Loading stock ledger…</p>
+        <LoadingSkeleton rows={4} label="Loading stock ledger…" />
+      </Card>
+    );
   }
 
   if (error && !hasSnapshot) {
-    return <Card className="border-danger/20 bg-danger/5"><CardContent className="flex items-center justify-between gap-3 p-5"><div><p className="font-medium">Could not load stock ledger</p><p className="mt-1 text-sm text-muted-foreground">{error}</p></div><Button variant="outline" onClick={() => void refresh()}>Retry</Button></CardContent></Card>;
+    return <ErrorBanner onRetry={() => void refresh()}>Could not load stock ledger. {error}</ErrorBanner>;
   }
 
   return (
     <div className="space-y-5">
-      {error && hasSnapshot && <Card className="border-warning/25 bg-warning/5"><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium">Showing saved stock data</p><p className="mt-1 text-sm text-muted-foreground">The live refresh failed: {error}</p></div><Button variant="outline" onClick={() => void refresh()} disabled={refreshing}>Retry</Button></CardContent></Card>}
-      {refreshing && <p className="text-xs text-muted-foreground">Updating stock from the server…</p>}
+      {error && hasSnapshot && (
+        <Banner tone="warn" action={refreshing ? undefined : { label: "Retry", onClick: () => void refresh() }}>
+          <span className="font-semibold">Showing saved stock data.</span> The live refresh failed: {error}
+        </Banner>
+      )}
+      {refreshing && <p className="text-small text-ink-muted">Updating stock from the server…</p>}
+
       {!setup?.initialized ? (
-        <Card className="border-warning/25 bg-warning/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><AlertTriangle className="size-5 text-warning" />Opening stock required</CardTitle>
-            <CardDescription>Enter the current quantity for every active material. Until this one-time setup is saved, balances stay uninitialized and low-stock alerts remain disabled.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <Card className="gap-0 py-0 shadow-card">
+          <div className="space-y-5 p-4 tablet:p-6">
+            <div>
+              <h2 className="font-display text-title-2 text-ink">Opening stock required</h2>
+              <p className="mt-1 text-small text-ink-muted">
+                Enter the current quantity for every active material. Until this one-time setup is saved, balances stay uninitialized and low-stock alerts remain disabled.
+              </p>
+            </div>
             {activeMaterials.length === 0 ? (
-              <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Add active materials in the Materials tab first.</p>
+              <EmptyState
+                title="No active materials."
+                action={
+                  <Button asChild variant="secondary">
+                    <Link href="/setup?tab=materials">Open Materials</Link>
+                  </Button>
+                }
+              >
+                Add active materials in the Materials tab first.
+              </EmptyState>
             ) : (
               <>
-                <div className="max-w-52 space-y-1.5"><Label htmlFor="opening-stock-date">Opening date</Label><Input id="opening-stock-date" type="date" value={openingDate} onChange={(event) => setOpeningDate(event.target.value)} /></div>
-                <p className="text-sm text-muted-foreground" aria-live="polite">{openingEntered} of {activeMaterials.length} entered</p>
-                <div className="overflow-hidden rounded-xl border bg-background">
-                  <Table><TableHeader><TableRow><TableHead>Material</TableHead><TableHead>Base unit</TableHead><TableHead className="w-44 text-right">Opening quantity</TableHead></TableRow></TableHeader><TableBody>{activeMaterials.map((material) => <TableRow key={material.id}><TableCell className="font-medium">{material.name}</TableCell><TableCell className="text-muted-foreground">{material.baseUnit}</TableCell><TableCell className="p-1"><Input aria-label={`Opening quantity for ${material.name}`} type="number" min="0" step="0.01" value={openingQuantities[material.id] ?? ""} onChange={(event) => updateOpeningQuantity(material.id, event.target.value)} className="h-8 text-right" /></TableCell></TableRow>)}</TableBody></Table>
+                <FieldRow label="Opening date">
+                  {(id) => (
+                    <Input id={id} type="date" value={openingDate} onChange={(event) => setOpeningDate(event.target.value)} className="w-full tablet:w-56" />
+                  )}
+                </FieldRow>
+                <p className="text-small text-ink-muted" aria-live="polite">{openingEntered} of {activeMaterials.length} entered</p>
+                <DataTable
+                  caption="Opening stock by material"
+                  columns={openingColumns}
+                  rows={activeMaterials}
+                  getKey={(material) => material.id}
+                  density="compact"
+                />
+                <div>
+                  <Button onClick={() => void initializeOpeningStock()} loading={saving}>
+                    <Scale className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                    {saving ? "Initializing…" : "Initialize opening stock"}
+                  </Button>
                 </div>
-                <Button onClick={() => void initializeOpeningStock()} disabled={saving}><Scale className="size-4" />{saving ? "Initializing…" : "Initialize opening stock"}</Button>
               </>
             )}
-          </CardContent>
+          </div>
         </Card>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Stat variant="card" size="sm" label="Stock status" value="Initialized" tone="success" sub={setup.openingDate ? `From ${formatDisplay(setup.openingDate)}` : "Opening date not recorded"} />
-            <Stat variant="card" size="sm" label="Active materials" value={currentStockBalances.length} sub="Numeric balances enabled" />
-            <Stat variant="card" size="sm" label="Low / negative" value={lowStockBalances.length} tone={lowStockBalances.length > 0 ? "danger" : "success"} sub="At or below zero; warnings only" />
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-small text-ink-muted">
+            <StatusChip tone="ok">Initialized</StatusChip>
+            <span>{setup.openingDate ? `From ${formatShortDate(setup.openingDate)}` : "Opening date not recorded"}</span>
+            <span>
+              <span className="font-semibold tabular-nums text-ink">{currentStockBalances.length}</span> active materials
+            </span>
+            <span>
+              <span className="font-semibold tabular-nums text-ink">{lowStockBalances.length}</span> low or negative
+              <span className="text-ink-muted"> · at or below zero; warnings only</span>
+            </span>
           </div>
 
-          {lowStockBalances.length > 0 && <Card className="border-danger/25 bg-danger/5"><CardContent className="flex gap-3 p-4"><TriangleAlert className="mt-0.5 size-5 shrink-0 text-danger" /><div><p className="font-medium text-danger">Low or negative stock needs attention</p><p className="mt-1 text-sm text-muted-foreground">{lowStockBalances.map((balance) => `${balance.materialName} (${materialBalanceLabel(balance)})`).join(" · ")}. You can keep recording movements while the balance is negative.</p></div></CardContent></Card>}
+          {lowStockBalances.length > 0 && (
+            <Banner tone="danger">
+              <p className="font-semibold">Low or negative stock needs attention</p>
+              <p className="mt-1 text-small">
+                {lowStockBalances.map((balance) => `${balance.materialName} (${materialBalanceLabel(balance)})`).join(" · ")}. You can keep recording movements while the balance is negative.
+              </p>
+            </Banner>
+          )}
 
-          <CurrentStockCard rows={stockRows} onOrder={(materialId) => onOrderMaterial?.(materialId)} onCount={focusCount} />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <CountSheet materials={activeMaterials} systemTotals={balanceTotals} onSaved={() => void refresh(false)} />
+            <Button onClick={() => setMovementSheetOpen(true)} disabled={activeMaterials.length === 0}>
+              <PackagePlus className="size-5" strokeWidth={1.5} aria-hidden="true" />
+              Record movement
+            </Button>
+          </div>
 
-          <div className="grid gap-5 lg:grid-cols-2">
-            <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2"><PackagePlus className="size-4" />Record movement</CardTitle><CardDescription>Use signed stock changes for receipts, waste, adjustments, and corrections. Every entry needs a reason.</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label>Movement type</Label>
-                    <Select value={movementType} onValueChange={(value) => {
-                      const nextType = value as ManualMovementType;
-                      setMovementType(nextType);
-                      if (nextType === "receiving") {
-                        fillReceivingDefaults(selectedMovementMaterialId);
-                      } else {
-                        if (movementQuantityAutoFilledRef.current) setMovementQuantity("");
-                        movementQuantityAutoFilledRef.current = false;
-                        if (movementReason === "Stock In") setMovementReason("");
-                      }
-                    }}>
-                      <SelectTrigger aria-label="Movement type" className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>{MANUAL_MOVEMENT_TYPES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+          <CurrentStockCard rows={stockRows} onOrder={(materialId) => onOrderMaterial?.(materialId)} onCount={openRecordCount} />
+
+          <Card className="gap-0 py-0 shadow-card">
+            <div className="space-y-4 px-4 pt-4 tablet:px-6 tablet:pt-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-display text-title-2 text-ink">Movement audit trail</h2>
+                  <p className="mt-1 text-small text-ink-muted">
+                    Full stock history, including manual entries, recipe consumption, and automatic reversals. Showing {filteredMovements.length} of {movements.length} movements.
+                  </p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={refreshing}>
+                  <RefreshCw className={refreshing ? "size-4 animate-spin" : "size-4"} strokeWidth={1.5} aria-hidden="true" />
+                  Refresh
+                </Button>
+              </div>
+              <div className="grid gap-3 tablet:grid-cols-2 desk:grid-cols-5">
+                <FieldRow label="Movement type">
+                  {(id) => (
+                    <Select value={auditMovementType} onValueChange={(value) => setAuditMovementType(value as "all" | InventoryMovementType)}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All types</SelectItem>
+                        {Object.entries(MOVEMENT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Material</Label>
+                  )}
+                </FieldRow>
+                <FieldRow label="Material">
+                  {(id) => (
+                    <Select value={auditMaterialId} onValueChange={setAuditMaterialId}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All materials</SelectItem>
+                        {auditMaterials.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </FieldRow>
+                <FieldRow label="From date">
+                  {(id) => <Input id={id} type="date" value={auditFrom} onChange={(event) => setAuditFrom(event.target.value)} />}
+                </FieldRow>
+                <FieldRow label="To date">
+                  {(id) => <Input id={id} type="date" value={auditTo} onChange={(event) => setAuditTo(event.target.value)} />}
+                </FieldRow>
+                <div className="flex items-end">
+                  <Button variant="ghost" className="w-full" disabled={auditMovementType === "all" && auditMaterialId === "all" && !auditFrom && !auditTo} onClick={() => {
+                    setAuditMovementType("all");
+                    setAuditMaterialId("all");
+                    setAuditFrom("");
+                    setAuditTo("");
+                  }}>Clear filters</Button>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-line">
+              <DataTable
+                caption="Stock movements"
+                columns={auditColumns}
+                rows={filteredMovements.slice(0, historyLimit)}
+                getKey={(movement) => movement.id}
+                density="compact"
+                empty={movements.length === 0
+                  ? <EmptyState title="No movements recorded yet.">Record a movement or a stock count and it appears here.</EmptyState>
+                  : <EmptyState title="No movements match these filters.">Clear the filters to see every movement.</EmptyState>}
+              />
+            </div>
+            {filteredMovements.length > historyLimit && (
+              <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3 text-small text-ink-muted tablet:px-6">
+                <span>Showing {historyLimit} of {filteredMovements.length}</span>
+                <Button variant="ghost" size="sm" onClick={() => setHistoryLimit((limit) => limit + 50)}>Show 50 more</Button>
+              </div>
+            )}
+          </Card>
+
+          <Sheet open={movementSheetOpen} onOpenChange={setMovementSheetOpen}>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>Record movement</SheetTitle>
+                <SheetDescription>Use signed stock changes for receipts, waste, adjustments, and corrections. Every entry needs a reason.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <p className="text-small text-ink-muted">Movement type</p>
+                  <SegmentedControl label="Movement type" value={movementType} options={MANUAL_MOVEMENT_TYPES} onChange={chooseMovementType} />
+                </div>
+                <FieldRow label="Material">
+                  {(id) => (
                     <Select value={selectedMovementMaterialId} onValueChange={(value) => {
                       setMovementMaterialId(value);
                       if (movementType === "receiving") fillReceivingDefaults(value);
                     }}>
-                      <SelectTrigger aria-label="Movement material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                      <SelectTrigger id={id} className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
                       <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
                     </Select>
-                  </div>
-                </div>
+                  )}
+                </FieldRow>
                 {movementType === "receiving" && openReceipts.map(({ order, line, remaining }) => (
-                  <div key={`${order.id}-${line.id}`} role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-info/20 bg-info/5 p-3 text-sm">
-                    <p className="min-w-0 flex-1 text-foreground">
+                  <div key={`${order.id}-${line.id}`} role="status" className="space-y-3 rounded-xl border border-line bg-canvas p-4">
+                    <p className="text-body text-ink">
                       {order.orderReference} from {order.supplierName} has {formatInventoryUsageQuantity(remaining)} {line.unit} of {line.materialName} on the way.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {onReceiveAgainst && (
-                        <Button type="button" size="sm" onClick={() => onReceiveAgainst(order.id)}>Receive against this order</Button>
-                      )}
-                    </div>
+                    {onReceiveAgainst && (
+                      <Button type="button" variant="secondary" onClick={() => {
+                        setMovementSheetOpen(false);
+                        onReceiveAgainst(order.id);
+                      }}>
+                        Receive against this order
+                      </Button>
+                    )}
                   </div>
                 ))}
                 {movementType === "receiving" && openReceipts.length > 0 && (
-                  <p className="text-xs text-muted-foreground">Different delivery? Keep recording it below.</p>
+                  <p className="text-small text-ink-muted">Different delivery? Keep recording it below.</p>
                 )}
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="space-y-1.5"><Label htmlFor="movement-date">Date</Label><Input id="movement-date" type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} /></div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="movement-quantity">Quantity{selectedMovementMaterial ? ` (${selectedMovementMaterial.baseUnit})` : ""}</Label>
-                    <Input
-                      id="movement-quantity"
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={movementQuantity}
-                      onChange={(event) => {
-                        const next = acceptQuantityInput(event.target.value, true);
-                        if (next === null) return;
-                        movementQuantityAutoFilledRef.current = false;
-                        setQuantityFromDefault(false);
-                        setMovementQuantity(next);
-                      }}
-                      placeholder={movementType === "receiving" ? "Usual order quantity, if set" : "0"}
-                    />
-                    {quantityFromDefault && movementQuantity !== "" && (
-                      <p className="text-xs text-muted-foreground">Pre-filled from usual order quantity · change if different</p>
+                <div className="grid gap-4 tablet:grid-cols-3">
+                  <FieldRow label="Date">
+                    {(id) => <Input id={id} type="date" value={movementDate} onChange={(event) => setMovementDate(event.target.value)} />}
+                  </FieldRow>
+                  <FieldRow
+                    label={`Quantity${selectedMovementMaterial ? ` (${selectedMovementMaterial.baseUnit})` : ""}`}
+                    hint={quantityFromDefault && movementQuantity !== "" ? "Pre-filled from usual order quantity · change if different" : undefined}
+                  >
+                    {(id) => (
+                      <MaterialQuantityInput
+                        id={id}
+                        label="Quantity"
+                        value={movementQuantity}
+                        unit={selectedMovementMaterial?.baseUnit ?? ""}
+                        placeholder={movementType === "receiving" ? "Usual order quantity, if set" : "0"}
+                        onChange={(next) => {
+                          movementQuantityAutoFilledRef.current = false;
+                          setQuantityFromDefault(false);
+                          setMovementQuantity(next);
+                        }}
+                      />
                     )}
-                  </div>
+                  </FieldRow>
                   {movementType !== "receiving" && movementType !== "waste_spoilage" ? (
-                    <div className="space-y-1.5">
-                      <Label>Direction</Label>
-                      <Select value={movementDirection} onValueChange={(value) => setMovementDirection(value as typeof movementDirection)}>
-                        <SelectTrigger aria-label="Movement direction" className="w-full"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectItem value="add">Add stock</SelectItem><SelectItem value="remove">Remove stock</SelectItem></SelectContent>
-                      </Select>
-                    </div>
+                    <FieldRow label="Direction">
+                      {(id) => (
+                        <Select value={movementDirection} onValueChange={(value) => setMovementDirection(value as typeof movementDirection)}>
+                          <SelectTrigger id={id} className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="add">Add stock</SelectItem><SelectItem value="remove">Remove stock</SelectItem></SelectContent>
+                        </Select>
+                      )}
+                    </FieldRow>
                   ) : (
-                    <div className="flex items-end text-xs text-muted-foreground">{movementType === "receiving" ? "Adds stock" : "Removes stock"}</div>
+                    <p className="pt-7 text-small text-ink-muted">{movementType === "receiving" ? "Adds stock" : "Removes stock"}</p>
                   )}
                 </div>
-                <div className="space-y-1.5"><Label htmlFor="movement-reason">Reason</Label><Input id="movement-reason" value={movementReason} onChange={(event) => setMovementReason(event.target.value)} placeholder="e.g. Supplier delivery #123" /></div>
-                <div className="space-y-1.5"><Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={movementNotes} onChange={(event) => setMovementNotes(event.target.value)} placeholder="Additional context" /></div>
-                <Button onClick={() => void saveMovement()} disabled={saving || activeMaterials.length === 0}><PackagePlus className="size-4" />{saving ? "Saving…" : "Record movement"}</Button>
-              </CardContent>
-            </Card>
+                <FieldRow label="Reason">
+                  {(id) => <Input id={id} value={movementReason} onChange={(event) => setMovementReason(event.target.value)} placeholder="e.g. Supplier delivery #123" />}
+                </FieldRow>
+                <FieldRow label="Notes (optional)">
+                  {(id) => <Input id={id} value={movementNotes} onChange={(event) => setMovementNotes(event.target.value)} placeholder="Additional context" />}
+                </FieldRow>
+              </div>
+              <SheetFooter>
+                <p className="mr-auto self-center text-small text-ink-muted" aria-live="polite">{movementBlocker}</p>
+                <Button loading={saving} disabled={saving || activeMaterials.length === 0} onClick={() => void saveMovement()}>
+                  {saving ? "Saving…" : "Record movement"}
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
 
-            <Card id="stock-count">
-              <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="size-4" />Record stock count</CardTitle><CardDescription>Enter the physical quantity. The ledger records the delta needed to reach that count.</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Material</Label>
-                  <Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}>
-                    <SelectTrigger aria-label="Count material" className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
-                    <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="stock-count-quantity">Counted now</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="stock-count-quantity"
-                      inputMode="decimal"
+          <Sheet open={countSheetOpen} onOpenChange={setCountSheetOpen}>
+            <SheetContent>
+              <SheetHeader>
+                <SheetTitle>Record stock count</SheetTitle>
+                <SheetDescription>Enter the physical quantity. The ledger records the delta needed to reach that count.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4">
+                <FieldRow label="Material">
+                  {(id) => (
+                    <Select value={selectedCountMaterialId} onValueChange={setCountMaterialId}>
+                      <SelectTrigger id={id} className="w-full"><SelectValue placeholder="Choose material" /></SelectTrigger>
+                      <SelectContent>{activeMaterials.map((material) => <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  )}
+                </FieldRow>
+                <FieldRow label="Counted now">
+                  {(id) => (
+                    <MaterialQuantityInput
+                      id={id}
+                      label="Counted now"
                       value={countQuantity}
-                      onChange={(event) => {
-                        const next = acceptQuantityInput(event.target.value, true);
-                        if (next !== null) setCountQuantity(next);
-                      }}
-                      placeholder="0"
-                      className="w-36 text-right tabular-nums"
+                      unit={selectedCountMaterial?.baseUnit ?? ""}
+                      onChange={setCountQuantity}
                     />
-                    <span className="text-sm text-muted-foreground">{selectedCountMaterial?.baseUnit ?? ""}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">System: {formatInventoryUsageQuantity(selectedSystemQuantity)} {selectedCountMaterial?.baseUnit ?? ""}</p>
-                  {selectedVariance && (
-                    <p className={`text-sm tabular-nums ${selectedVariance.needsReason ? "text-warning" : "text-muted-foreground"}`}>
-                      Difference {selectedVariance.difference > 0 ? "+" : selectedVariance.difference < 0 ? "−" : ""}{formatInventoryUsageQuantity(Math.abs(selectedVariance.difference))} {selectedCountMaterial?.baseUnit ?? ""}
-                      {selectedVariance.percent !== null && selectedVariance.difference !== 0 ? ` (${Math.round(Math.abs(selectedVariance.percent))} %)` : ""}
+                  )}
+                </FieldRow>
+                <div className="space-y-2 rounded-xl border border-line bg-canvas p-4">
+                  <dl className="space-y-2 text-table">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <dt className="text-ink-muted">System</dt>
+                      <dd className="tabular-nums text-ink">{formatInventoryUsageQuantity(selectedSystemQuantity)} {selectedCountMaterial?.baseUnit ?? ""}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-4">
+                      <dt className="text-ink-muted">Difference</dt>
+                      <dd className="tabular-nums text-ink">
+                        {selectedVariance
+                          ? `${selectedVariance.difference > 0 ? "+" : selectedVariance.difference < 0 ? "−" : ""}${formatInventoryUsageQuantity(Math.abs(selectedVariance.difference))} ${selectedCountMaterial?.baseUnit ?? ""}${selectedVariance.percent !== null && selectedVariance.difference !== 0 ? ` (${Math.round(Math.abs(selectedVariance.percent))} %)` : ""}`
+                          : "—"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {selectedVariance?.needsReason && (
+                    <p className="flex items-center gap-2 text-small font-medium text-warn">
+                      <ToneShape tone="warn" className="text-warn-mark" />
+                      Over 20 %: a reason is required.
                     </p>
                   )}
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="stock-count-reason">{selectedVariance?.needsReason ? "Reason (required: difference over 20 %)" : "Reason (optional)"}</Label>
-                  <Input id="stock-count-reason" value={countReason} onChange={(event) => setCountReason(event.target.value)} placeholder="e.g. Weekly physical count" />
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" onClick={() => void saveStockCount()} disabled={saving || activeMaterials.length === 0}><ClipboardCheck className="size-4" />{saving ? "Saving…" : "Record count"}</Button>
-                  <CountSheet materials={activeMaterials} systemTotals={balanceTotals} onSaved={() => void refresh(false)} />
-                </div>
-                <p className="text-xs text-muted-foreground">Counting today: {formatDisplay(countDate)}.</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle>Movement audit trail</CardTitle>
-                  <CardDescription>Full stock history, including manual entries, recipe consumption, and automatic reversals. Showing {filteredMovements.length} of {movements.length} movements.</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={refreshing}><RefreshCw className={refreshing ? "size-3.5 animate-spin" : "size-3.5"} />Refresh</Button>
+                <FieldRow label={selectedVariance?.needsReason ? "Reason (required: difference over 20 %)" : "Reason (optional)"}>
+                  {(id) => <Input id={id} value={countReason} onChange={(event) => setCountReason(event.target.value)} placeholder="e.g. Weekly physical count" />}
+                </FieldRow>
+                <p className="text-small text-ink-muted">Counting today: {formatDisplay(countDate)}.</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <div className="space-y-1.5">
-                  <Label>Movement type</Label>
-                  <Select value={auditMovementType} onValueChange={(value) => setAuditMovementType(value as "all" | InventoryMovementType)}>
-                    <SelectTrigger aria-label="Movement type filter" className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All types</SelectItem>
-                      {Object.entries(MOVEMENT_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Material</Label>
-                  <Select value={auditMaterialId} onValueChange={setAuditMaterialId}>
-                    <SelectTrigger aria-label="Material filter" className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All materials</SelectItem>
-                      {auditMaterials.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5"><Label htmlFor="movement-audit-from">From date</Label><Input id="movement-audit-from" type="date" value={auditFrom} onChange={(event) => setAuditFrom(event.target.value)} /></div>
-                <div className="space-y-1.5"><Label htmlFor="movement-audit-to">To date</Label><Input id="movement-audit-to" type="date" value={auditTo} onChange={(event) => setAuditTo(event.target.value)} /></div>
-                <div className="flex items-end"><Button variant="ghost" className="w-full" disabled={auditMovementType === "all" && auditMaterialId === "all" && !auditFrom && !auditTo} onClick={() => {
-                  setAuditMovementType("all");
-                  setAuditMaterialId("all");
-                  setAuditFrom("");
-                  setAuditTo("");
-                }}>Clear filters</Button></div>
-              </div>
-              {filteredMovements.length === 0 ? (
-                <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{movements.length === 0 ? "No movements recorded yet." : "No movements match these filters."}</p>
-              ) : (
-                <div className="overflow-x-auto" role="region" tabIndex={0} aria-label="Stock movements table">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Material</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead>Reason / source</TableHead></TableRow></TableHeader>
-                    <TableBody>{filteredMovements.slice(0, historyLimit).map((movement) => <TableRow key={movement.id}><TableCell className="whitespace-nowrap text-muted-foreground">{formatDisplay(movement.occurredOn)}</TableCell><TableCell className="font-medium">{movement.materialName}</TableCell><TableCell><Badge variant={movement.movementType === "recipe_consumption" ? "secondary" : movement.movementType === "reversal" ? "outline" : "default"}>{MOVEMENT_LABELS[movement.movementType]}</Badge></TableCell><TableCell className={`whitespace-nowrap text-right font-medium tabular-nums ${movementQuantityClass(movement.quantity)}`}>{formatMovementQuantity(movement.quantity, movement.unit)}</TableCell><TableCell className="max-w-72 whitespace-normal"><span>{movement.reason}</span>{movement.sourceRef && <span className="block text-xs text-muted-foreground" title={movement.sourceRef}>{describeSourceRef(movement.sourceRef)?.label ?? movement.sourceRef}</span>}</TableCell></TableRow>)}</TableBody>
-                  </Table>
-                  {filteredMovements.length > historyLimit && (
-                    <div className="flex items-center justify-between gap-3 pt-3 text-sm text-muted-foreground">
-                      <span>Showing {historyLimit} of {filteredMovements.length}</span>
-                      <Button variant="outline" size="sm" onClick={() => setHistoryLimit((limit) => limit + 50)}>Show 50 more</Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <SheetFooter>
+                <p className="mr-auto self-center text-small text-ink-muted" aria-live="polite">{countBlocker}</p>
+                <Button loading={saving} disabled={saving || activeMaterials.length === 0} onClick={() => void saveStockCount()}>
+                  {saving ? "Saving…" : "Record count"}
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
         </>
       )}
     </div>

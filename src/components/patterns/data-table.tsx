@@ -6,8 +6,9 @@ import { SortableHead, type Sort } from "@/components/sortable-head";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 /**
- * A column. `phone` says where it goes in the two-line list on phone: `title` (left, line 1), `figure` (right,
- * line 1) or `meta` (line 2). `hidden` leaves it out on phone.
+ * A column. `phone` says where it goes in the list on phone: `title` (left, line 1), `figure` (right,
+ * line 1), `meta` (line 2, one line) or `detail` (a third line that wraps rather than truncates). `hidden` leaves it
+ * out on phone.
  */
 export type Column<R> = {
   key: string;
@@ -16,7 +17,7 @@ export type Column<R> = {
   cell: (row: R) => ReactNode;
   /** Set when the column can be sorted. The sort key is passed back to onSort. */
   sortKey?: string;
-  phone?: "title" | "figure" | "meta" | "hidden";
+  phone?: "title" | "figure" | "meta" | "detail" | "hidden";
 };
 
 /** A band row (date bands in History, categories in Menu) groups the rows under it. */
@@ -62,6 +63,7 @@ export function DataTable<R>({
     title: columns.filter((c) => c.phone === "title"),
     figure: columns.filter((c) => c.phone === "figure"),
     meta: columns.filter((c) => c.phone === "meta"),
+    detail: columns.filter((c) => c.phone === "detail"),
   };
 
   if (rows.length === 0 && empty) return <>{empty}</>;
@@ -134,6 +136,9 @@ export function DataTable<R>({
                 </div>
                 {phoneColumns.meta.length > 0 ? (
                   <div className="mt-0.5 truncate text-small text-ink-muted">{phoneColumns.meta.map((c, i) => <span key={c.key}>{i > 0 ? " · " : null}{c.cell(row)}</span>)}</div>
+                ) : null}
+                {phoneColumns.detail.length > 0 ? (
+                  <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneColumns.detail.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>
                 ) : null}
               </div>
               {rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}

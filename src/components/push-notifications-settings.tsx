@@ -6,7 +6,7 @@ import { Bell, BellOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { shouldShowIosHint } from "@/lib/push-alerts";
-import { cn } from "@/lib/utils";
+import { StatusChip, type StatusTone } from "@/components/patterns/status-chip";
 
 export type PushState = "loading" | "ready" | "enabled" | "unsupported" | "not-configured" | "denied";
 
@@ -60,19 +60,19 @@ export function PushAlertsChip() {
   // Hidden where alerts cannot work at all, so the header stays uncluttered.
   if (state === "unsupported" || state === "not-configured") return null;
 
+  // Canopy push status (DESIGN_SYSTEM §6): word, shape and tone together. Checking is info, Blocked is danger.
   const on = state === "enabled";
   const label = state === "loading" ? "Checking…" : on ? "On" : state === "denied" ? "Blocked" : "Off";
+  const tone: StatusTone = state === "loading" ? "info" : on ? "ok" : state === "denied" ? "danger" : "neutral";
   return (
     <Link
       href="/setup?tab=notifications"
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
-        on ? "border-success/25 bg-success/10 text-success" : "border-border bg-surface text-muted-foreground"
-      )}
+      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-surface py-1 pr-2 pl-4 text-small whitespace-nowrap text-ink shadow-card hover:bg-sunken"
     >
-      <Bell className="size-3.5" aria-hidden />
-      Alerts on this phone: {label}
-      {!on && state === "ready" && <span className="font-semibold text-primary">· Turn on</span>}
+      <Bell className="size-4 text-ink-muted" strokeWidth={1.5} aria-hidden="true" />
+      <span>Alerts on this phone</span>
+      <StatusChip tone={tone}>{label}</StatusChip>
+      {!on && state === "ready" && <span className="font-medium text-accent underline underline-offset-4">Turn on</span>}
     </Link>
   );
 }

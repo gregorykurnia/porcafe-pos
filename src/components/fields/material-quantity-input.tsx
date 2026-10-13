@@ -10,13 +10,14 @@ type MaterialQuantityInputProps = {
   /** Always shown after the number, for example "g" or "ml". */
   unit: string;
   disabled?: boolean;
+  placeholder?: string;
 };
 
 /**
  * Material quantity (DESIGN_SYSTEM §10): a plain input with the unit suffix, not a stepper. Decimals are allowed.
  * The unit stays visible so "1.250 g" reads without a label.
  */
-export function MaterialQuantityInput({ id, label, value, onChange, unit, disabled }: MaterialQuantityInputProps) {
+export function MaterialQuantityInput({ id, label, value, onChange, unit, disabled, placeholder = "0" }: MaterialQuantityInputProps) {
   return (
     <div className="relative">
       <Input
@@ -25,7 +26,7 @@ export function MaterialQuantityInput({ id, label, value, onChange, unit, disabl
         type="text"
         inputMode="decimal"
         autoComplete="off"
-        placeholder="0"
+        placeholder={placeholder}
         value={value}
         disabled={disabled}
         onChange={(event) => {

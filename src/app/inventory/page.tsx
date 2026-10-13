@@ -1,15 +1,16 @@
 "use client";
 
-import { PageHeader } from "@/components/page-header";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen, Handshake, Loader2, Scale, Truck } from "lucide-react";
+import { format, parseISO } from "date-fns";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsageRecap } from "@/components/inventory/usage-recap";
 import type { StockSummary } from "@/components/inventory/stock-dashboard";
-import { Stat } from "@/components/state/stat";
 import { PushAlertsChip } from "@/components/push-notifications-settings";
+import { PageTabs, type PageTab } from "@/components/patterns/page-tabs";
+import { StatStrip, type StatCell } from "@/components/patterns/stat-strip";
+import { ToneShape } from "@/components/patterns/status-chip";
 import { AsyncSection, type AsyncStatus } from "@/components/state/async-section";
 import {
   listInventoryMaterials,
@@ -19,7 +20,7 @@ import {
   listInventorySuppliers,
   runDueInventorySupplierDeliverySchedules,
 } from "@/lib/data";
-import { formatDisplay, todayISO } from "@/lib/dates";
+import { todayISO } from "@/lib/dates";
 import { isOffline } from "@/lib/connection";
 import { stockTabFromParam, type StockTab } from "@/lib/workspace-tabs";
 import type {
@@ -34,9 +35,17 @@ type DataTab = Exclude<StockTab, "usage">;
 type SupplierView = "to-order" | "orders";
 
 const INVENTORY_MATERIALS_CACHE_KEY = "porcafe.inventory.materials.v1";
-const TAB_CLASS =
-  "min-h-11 min-w-0 w-full whitespace-normal px-1.5 py-2 text-xs leading-tight lg:min-h-0 lg:w-auto lg:whitespace-nowrap lg:px-3.5 lg:py-1.5 lg:text-sm";
-const TAB_ICON_CLASS = "hidden size-4 shrink-0 lg:block";
+const STOCK_PAGE_TABS: PageTab<StockTab>[] = [
+  { value: "stock", label: "Stock" },
+  { value: "to-order", label: "To order" },
+  { value: "orders", label: "Orders" },
+  { value: "usage", label: "Usage recap" },
+];
+
+/** A short date for the summary figure: "Mon, 12 Oct". */
+function formatCountDate(dateISO: string): string {
+  return format(parseISO(dateISO), "EEE, d MMM");
+}
 
 function readCachedMaterials(): InventoryMaterial[] | null {
   try {
@@ -275,39 +284,64 @@ export default function InventoryPage() {
   // To order and Orders share one Suppliers panel, so an order being drafted survives a switch between them.
   const supplierView: SupplierView = activeTab === "orders" ? "orders" : "to-order";
 
+  // Figures for the summary strip. A warning shape marks To order above zero, and only Negative takes the danger tone.
+  const toOrderCount = stockSummary?.toOrder ?? null;
+  const negativeCount = stockSummary?.negative ?? null;
+  const summaryCells: StatCell[] = [
+    {
+      label: "To order",
+      value: (
+        <span className="inline-flex items-center gap-2">
+          {toOrderCount !== null && toOrderCount > 0 ? <ToneShape tone="warn" className="text-warn-mark" /> : null}
+          {toOrderCount ?? "—"}
+        </span>
+      ),
+      note: "At or below alert level",
+    },
+    { label: "Materials on order", value: stockSummary?.onOrder ?? "—" },
+    {
+      label: "Negative",
+      value: (
+        <span className="inline-flex items-center gap-2">
+          {negativeCount !== null && negativeCount > 0 ? <ToneShape tone="danger" className="text-danger" /> : null}
+          {negativeCount ?? "—"}
+        </span>
+      ),
+      tone: negativeCount !== null && negativeCount > 0 ? "danger" : undefined,
+      note: "Warnings only",
+    },
+    { label: "Last count", value: stockSummary?.lastCount ? formatCountDate(stockSummary.lastCount) : "—" },
+  ];
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Stock"
-        description="Stock on hand, movements, and what the menu used. Negative stock is flagged for review."
-        actions={<PushAlertsChip />}
-      />
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-[1.5rem] leading-[1.875rem] font-medium text-brand tablet:text-title-1">Stock</h1>
+          <p className="mt-1 text-small text-ink-muted">Stock on hand, movements, and what the menu used. Negative stock is flagged for review.</p>
+        </div>
+        <PushAlertsChip />
+      </header>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="To order" value={stockSummary?.toOrder ?? "—"} tone={stockSummary && stockSummary.toOrder > 0 ? "warning" : "default"} />
-        <Stat label="Materials on order" value={stockSummary?.onOrder ?? "—"} />
-        <Stat label="Negative" value={stockSummary?.negative ?? "—"} tone={stockSummary && stockSummary.negative > 0 ? "danger" : "default"} />
-        <Stat label="Last count" value={stockSummary?.lastCount ? formatDisplay(stockSummary.lastCount) : "—"} />
-      </div>
+      <StatStrip label="Stock summary" cells={summaryCells} />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList aria-label="Inventory sections" className="grid w-full grid-cols-2 gap-1 p-1 group-data-horizontal/tabs:h-auto lg:inline-flex lg:w-auto lg:gap-0 lg:group-data-horizontal/tabs:h-8">
-          <TabsTrigger value="stock" className={TAB_CLASS}><Scale className={TAB_ICON_CLASS} /><span>Stock</span></TabsTrigger>
-          <TabsTrigger value="to-order" className={TAB_CLASS}><Handshake className={TAB_ICON_CLASS} /><span>To order</span></TabsTrigger>
-          <TabsTrigger value="orders" className={TAB_CLASS}><Truck className={TAB_ICON_CLASS} /><span>Orders</span></TabsTrigger>
-          <TabsTrigger value="usage" className={TAB_CLASS}><BookOpen className={TAB_ICON_CLASS} /><span>Usage recap</span></TabsTrigger>
-        </TabsList>
+      <PageTabs label="Inventory sections" value={activeTab} tabs={STOCK_PAGE_TABS} onChange={handleTabChange} />
 
-        <TabsContent value="stock" forceMount={visitedTabs.has("stock") ? true : undefined} className={activeTab === "stock" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("stock") && section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} onOrderMaterial={openOrderFor} onSummaryChange={setStockSummary} />)}
-        </TabsContent>
-        <TabsContent value="usage" forceMount={visitedTabs.has("usage") ? true : undefined} className={activeTab === "usage" ? "mt-5" : "mt-5 hidden"}>
-          {visitedTabs.has("usage") && <UsageRecap />}
-        </TabsContent>
-        <TabsContent key="suppliers" value={supplierView} className="mt-5">
+      {visitedTabs.has("stock") && (
+        <div role="tabpanel" aria-label="Stock" hidden={activeTab !== "stock"}>
+          {section("stock", <StockDashboard materials={materials} onChanged={refresh} scheduleRefreshKey={scheduleRefreshKey} openOrders={supplierOrders} onReceiveAgainst={openReceiveAgainst} onOrderMaterial={openOrderFor} onSummaryChange={setStockSummary} />)}
+        </div>
+      )}
+      {visitedTabs.has("usage") && (
+        <div role="tabpanel" aria-label="Usage recap" hidden={activeTab !== "usage"}>
+          <UsageRecap />
+        </div>
+      )}
+      {(activeTab === "to-order" || activeTab === "orders") && (
+        <div role="tabpanel" aria-label={supplierView === "orders" ? "Orders" : "To order"}>
           {section(supplierView, <Suppliers view={supplierView} onViewChange={handleTabChange} materials={materials} suppliers={suppliers} supplierItems={supplierItems} orders={supplierOrders} schedules={supplierSchedules} receiveRequest={receiveRequest} orderRequest={orderRequest} onChanged={refresh} />)}
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 }
