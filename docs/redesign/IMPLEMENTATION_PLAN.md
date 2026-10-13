@@ -64,11 +64,11 @@ Goal: put the new tokens and fonts in place so the whole live app re-themes cohe
   - Global base layer: body canvas and ink, tabular figures, and the `:focus-visible` ring.
 - [x] **R1.2 Fonts.** Add `src/app/fonts.ts` with Outfit and Figtree (DESIGN_SYSTEM §3) and wire them in `layout.tsx`, replacing Inter and Geist Mono. Add the type-scale tokens (§4).
 - [x] **R1.3 Design rules doc.** `DESIGN_SYSTEM.md` was written by the review.
-- [ ] **R1.4 Brand assets.**
+- [x] **R1.4 Brand assets.**
   - Make the ruled lockup ("CHARRED / — BY PORCAFE —") and the round mark, as SVG if possible.
   - Make the single line illustration for empty states, using `canopy-final.html` as the reference.
   - Replace `public/logo.png`, `logo-mark.png` and `icon-192/512.png`. Set the `manifest.json` theme colour to brand and the background to `#F6F0E6`.
-- [ ] **R1.5 Check.** Walk every screen once at 390 and 1280 to confirm nothing is unreadable under the bridge theme. Run lint and build.
+- [x] **R1.5 Check.** Walk every screen once at 390 and 1280 to confirm nothing is unreadable under the bridge theme. Run lint and build.
 
 **Exit:** the live app is on the new colours and fonts, every old screen is still usable, and the build passes.
 

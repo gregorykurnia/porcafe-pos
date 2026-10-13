@@ -4,8 +4,8 @@
   "description": "Sales & menu item recap for Charred by Porcafe",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f7f2e9",
-  "theme_color": "#1f3a2f",
+  "background_color": "#F6F0E6",
+  "theme_color": "#163D2F",
   "icons": [
     {
       "src": "/icon-192.png",
