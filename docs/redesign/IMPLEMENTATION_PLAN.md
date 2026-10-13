@@ -62,7 +62,7 @@ Goal: put the new tokens and fonts in place so the whole live app re-themes cohe
     - `surface`, `danger`, `info`: these take the new values, which is the intended re-theme. Check the old usages (44, 34 and 18) still read well.
     - Old `success`, `warning` and `warm-accent`: point them at `ok`, `warn` and `brand` as temporary aliases, and mark them `/* legacy — remove in R4.1 */`.
   - Global base layer: body canvas and ink, tabular figures, and the `:focus-visible` ring.
-- [ ] **R1.2 Fonts.** Add `src/app/fonts.ts` with Outfit and Figtree (DESIGN_SYSTEM §3) and wire them in `layout.tsx`, replacing Inter and Geist Mono. Add the type-scale tokens (§4).
+- [x] **R1.2 Fonts.** Add `src/app/fonts.ts` with Outfit and Figtree (DESIGN_SYSTEM §3) and wire them in `layout.tsx`, replacing Inter and Geist Mono. Add the type-scale tokens (§4).
 - [x] **R1.3 Design rules doc.** `DESIGN_SYSTEM.md` was written by the review.
 - [ ] **R1.4 Brand assets.**
   - Make the ruled lockup ("CHARRED / — BY PORCAFE —") and the round mark, as SVG if possible.
