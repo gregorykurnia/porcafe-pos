@@ -1,10 +1,9 @@
 "use client";
 
-import { AsyncSection } from "@/components/state/async-section";
-import { PageHeader } from "@/components/page-header";
 import { Suspense, useCallback, useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Banner } from "@/components/patterns/banner";
+import { PageTabs, type PageTab } from "@/components/patterns/page-tabs";
+import { ErrorBanner, LoadingSkeleton } from "@/components/patterns/states";
 import { ItemsReport } from "@/components/reports/items-report";
 import { PeriodSelector } from "@/components/reports/period-selector";
 import { RevenueReport } from "@/components/reports/revenue-report";
@@ -17,15 +16,19 @@ import { getCanonicalItemRows } from "@/lib/reporting";
 import type { ItemSale } from "@/lib/types";
 
 type ReportsTab = "revenue" | "items" | "weekday";
-const REPORT_TABS: ReportsTab[] = ["revenue", "items", "weekday"];
+const REPORT_TABS: PageTab<ReportsTab>[] = [
+  { value: "revenue", label: "Revenue" },
+  { value: "items", label: "Items" },
+  { value: "weekday", label: "Weekday patterns" },
+];
 
 function isReportsTab(value: string): boolean {
-  return REPORT_TABS.some((tab) => tab === value);
+  return REPORT_TABS.some((tab) => tab.value === value);
 }
 
 export default function ReportsPage() {
   return (
-    <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted" aria-busy="true" />}>
+    <Suspense fallback={<LoadingSkeleton rows={4} label="Loading reports" />}>
       <ReportsWorkspace />
     </Suspense>
   );
@@ -63,57 +66,56 @@ function ReportsWorkspace() {
   );
 
   const valid = isValidPeriod(period);
+  const activeTab = REPORT_TABS.find((item) => item.value === tab);
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Reports" description="Revenue, items and weekday patterns for one period." />
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-[1.5rem] leading-[1.875rem] font-medium text-brand tablet:text-title-1">Reports</h1>
+          <p className="mt-1 text-small text-ink-muted">Revenue, items and weekday patterns for one period.</p>
+        </div>
+        <PeriodSelector period={period} today={today} onChange={setPeriod} />
+      </header>
 
-      <PeriodSelector period={period} today={today} onChange={setPeriod} />
+      <PageTabs label="Report sections" value={tab} tabs={REPORT_TABS} onChange={setTab} />
 
       {!valid ? (
-        <Card className="border-warning/25 bg-warning/5">
-          <CardContent className="p-5 text-sm text-foreground">
-            The start date must be on or before the end date.
-          </CardContent>
-        </Card>
+        <Banner tone="danger">
+          The start date must be on or before the end date. Reports are hidden until the period is fixed.
+        </Banner>
+      ) : data.status === "loading" ? (
+        <LoadingSkeleton rows={4} label="Loading reports" />
+      ) : data.status === "error" ? (
+        <ErrorBanner onRetry={() => void data.reload()}>
+          Couldn&apos;t load reports. Check the connection and try again.
+        </ErrorBanner>
       ) : (
-        <>
-          <Tabs value={tab} onValueChange={(value) => setTab(value as ReportsTab)}>
-            <TabsList>
-              <TabsTrigger id="reports-tab-revenue" aria-controls="reports-panel-revenue" value="revenue">Revenue</TabsTrigger>
-              <TabsTrigger id="reports-tab-items" aria-controls="reports-panel-items" value="items">Items</TabsTrigger>
-              <TabsTrigger id="reports-tab-weekday" aria-controls="reports-panel-weekday" value="weekday">Weekday patterns</TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          <AsyncSection status={data.status} label="Loading reports" errorTitle="Couldn't load reports" onRetry={() => void data.reload()}>
-            <div id={`reports-panel-${tab}`} role="tabpanel" aria-labelledby={`reports-tab-${tab}`} tabIndex={0}>
-              {tab === "revenue" && (
-                <RevenueReport
-                  period={period}
-                  today={today}
-                  entries={data.salesEntries}
-                  adjustments={data.adjustments}
-                  onChanged={() => void data.reload()}
-                />
-              )}
-              {tab === "items" && (
-                <ItemsReport
-                  period={period}
-                  today={today}
-                  menuItems={data.menuItems}
-                  itemRows={itemRows}
-                  dailyLogs={data.dailyLogs}
-                  loggedDates={loggedDates}
-                  isMain={isMain}
-                />
-              )}
-              {tab === "weekday" && (
-                <WeekdayReport period={period} entries={data.salesEntries} itemRows={itemRows} isMain={isMain} />
-              )}
-            </div>
-          </AsyncSection>
-        </>
+        <div role="tabpanel" aria-label={activeTab?.label}>
+          {tab === "revenue" && (
+            <RevenueReport
+              period={period}
+              today={today}
+              entries={data.salesEntries}
+              adjustments={data.adjustments}
+              onChanged={() => void data.reload()}
+            />
+          )}
+          {tab === "items" && (
+            <ItemsReport
+              period={period}
+              today={today}
+              menuItems={data.menuItems}
+              itemRows={itemRows}
+              dailyLogs={data.dailyLogs}
+              loggedDates={loggedDates}
+              isMain={isMain}
+            />
+          )}
+          {tab === "weekday" && (
+            <WeekdayReport period={period} entries={data.salesEntries} itemRows={itemRows} isMain={isMain} />
+          )}
+        </div>
       )}
     </div>
   );

@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { SortableHead, type Sort } from "@/components/sortable-head";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 /**
  * A column. `phone` says where it goes in the list on phone: `title` (left, line 1), `figure` (right,
@@ -49,6 +49,13 @@ export type DataTableProps<R> = {
    */
   openKey?: string;
   renderOpen?: (row: R) => ReactNode;
+  /** A third line under a phone list row, for detail that does not fit one column (Revenue's payment split). */
+  phoneDetail?: (row: R) => ReactNode;
+  /**
+   * A totals row. Desk and tablet get it as the table's footer, with the label in the first column. Phone gets a
+   * totals block under the list, with the figure column's total and `phoneDetail` beneath it.
+   */
+  footer?: { label: ReactNode; cells: Partial<Record<string, ReactNode>>; phoneDetail?: ReactNode };
   empty?: ReactNode;
 };
 
@@ -74,6 +81,8 @@ export function DataTable<R>({
   selectedKey,
   openKey,
   renderOpen,
+  phoneDetail,
+  footer,
   empty,
 }: DataTableProps<R>) {
   // Literal class names, so Tailwind generates both breakpoints.
@@ -147,6 +156,21 @@ export function DataTable<R>({
               )
             )}
           </TableBody>
+          {footer ? (
+            <TableFooter className="bg-sunken">
+              <TableRow className="border-line hover:bg-sunken">
+                {columns.map((column, index) => (
+                  <TableCell
+                    key={column.key}
+                    className={cn("text-table font-semibold text-ink", column.align === "right" && "text-right tabular-nums", column.cellClassName)}
+                  >
+                    {index === 0 ? footer.label : footer.cells[column.key]}
+                  </TableCell>
+                ))}
+                {rowActions ? <TableCell className="w-10" /> : null}
+              </TableRow>
+            </TableFooter>
+          ) : null}
         </Table>
       </div>
 
@@ -170,6 +194,7 @@ export function DataTable<R>({
                   {phoneColumns.detail.length > 0 ? (
                     <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneColumns.detail.map((c) => <div key={c.key}>{c.cell(row)}</div>)}</div>
                   ) : null}
+                  {phoneDetail ? <div className="mt-0.5 text-small text-ink-muted [overflow-wrap:anywhere]">{phoneDetail(row)}</div> : null}
                   {actionsBelow && rowActions ? <div className="mt-2">{rowActions(row)}</div> : null}
                 </div>
                 {!actionsBelow && rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
@@ -180,6 +205,19 @@ export function DataTable<R>({
             </Fragment>
           )
         )}
+        {footer ? (
+          <li className="bg-sunken px-4 py-3 text-body font-semibold text-ink">
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="min-w-0">{footer.label}</div>
+              <div className="shrink-0 tabular-nums">
+                {phoneColumns.figure.map((c) => (
+                  <span key={c.key}>{footer.cells[c.key]}</span>
+                ))}
+              </div>
+            </div>
+            {footer.phoneDetail ? <div className="mt-0.5 text-small font-normal text-ink-muted [overflow-wrap:anywhere]">{footer.phoneDetail}</div> : null}
+          </li>
+        ) : null}
       </ul>
     </div>
   );

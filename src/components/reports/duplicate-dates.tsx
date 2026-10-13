@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
+import { Banner } from "@/components/patterns/banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -13,6 +15,16 @@ import {
 } from "@/components/ui/dialog";
 import { resolveDuplicateSalesDate, type DuplicateSalesDate } from "@/lib/data";
 import { formatDateTime, formatDisplay, idr } from "@/lib/dates";
+
+/** The Revenue tab's warning (inventory §3.5.1). It links to Setup → Data maintenance, where the records are kept. */
+export function DuplicateDatesBanner({ count }: { count: number }) {
+  const router = useRouter();
+  return (
+    <Banner tone="warn" action={{ label: "Review in Setup", onClick: () => router.push("/setup?tab=data") }}>
+      {count} {count === 1 ? "date has" : "dates have"} more than one revenue record. Review them in Setup → Data maintenance.
+    </Banner>
+  );
+}
 
 /** Shown while any date has more than one revenue record. The totals are not changed until one record is kept. */
 export function DuplicateDatesCard({

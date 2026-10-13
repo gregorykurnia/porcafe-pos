@@ -84,7 +84,7 @@ export function PeriodChoice({
           </div>
           {!valid && (
             <p role="alert" className="text-small text-danger">
-              The end date is before the start date. Pick an end date on or after {draft.from}.
+              The start date must be on or before the end date.
             </p>
           )}
           <div className="flex justify-end gap-2">

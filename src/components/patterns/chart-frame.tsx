@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type LegendItem = { label: string; swatch: string; dashed?: boolean };
+export type LegendItem = { label: string; swatch: string; dashed?: boolean; dotted?: boolean };
 
 /**
  * Wraps a recharts chart (DESIGN_SYSTEM §10 "Charts"): a legend that names each mark, a one-line takeaway under the
@@ -29,8 +29,12 @@ export function ChartFrame({
           <li key={item.label} className="inline-flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              className={cn("inline-block h-2.5 w-4 rounded-sm", item.dashed && "border border-dashed bg-transparent")}
-              style={item.dashed ? { borderColor: item.swatch } : { background: item.swatch }}
+              className={cn(
+                "inline-block h-2.5 w-4 rounded-sm",
+                item.dashed && "border border-dashed bg-transparent",
+                item.dotted && "border-t-2 border-dotted bg-transparent"
+              )}
+              style={item.dashed || item.dotted ? { borderColor: item.swatch } : { background: item.swatch }}
             />
             {item.label}
           </li>
