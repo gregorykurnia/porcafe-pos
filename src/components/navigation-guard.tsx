@@ -1,15 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { UnsavedGuardDialog } from "@/components/patterns/dialogs";
 
 export type GuardRegistration = {
   dirty: boolean;
@@ -47,6 +39,7 @@ export function NavigationGuardProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const activeRegistration = useCallback((): GuardRegistration | null => {
     for (const getRegistration of registrationsRef.current) {
@@ -71,6 +64,7 @@ export function NavigationGuardProvider({ children }: { children: ReactNode }) {
 
     // A second request while the prompt is open answers the first as "stay".
     pendingRef.current?.(false);
+    setSaveError(null);
     return new Promise<boolean>((resolve) => {
       pendingRef.current = resolve;
       setPrompt({
@@ -93,6 +87,7 @@ export function NavigationGuardProvider({ children }: { children: ReactNode }) {
   async function saveAndLeave() {
     if (!prompt?.onSave) return;
     setSaving(true);
+    setSaveError(null);
     let saved = false;
     try {
       saved = await prompt.onSave();
@@ -101,8 +96,9 @@ export function NavigationGuardProvider({ children }: { children: ReactNode }) {
     } finally {
       setSaving(false);
     }
-    // If the save failed, the dialog stays open so the user can still choose.
+    // If the save failed, the dialog stays open so the user can still choose, and says what is kept.
     if (saved) settle(true);
+    else setSaveError("Couldn't save. Your changes are still here.");
   }
 
   function discardAndLeave() {
@@ -115,27 +111,15 @@ export function NavigationGuardProvider({ children }: { children: ReactNode }) {
   return (
     <NavigationGuardContext.Provider value={value}>
       {children}
-      <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) settle(false); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="pr-8">Unsaved changes</DialogTitle>
-            <DialogDescription>{prompt?.message}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            {prompt?.onSave && (
-              <Button onClick={() => void saveAndLeave()} disabled={saving} autoFocus>
-                {saving ? "Saving…" : "Save draft & continue"}
-              </Button>
-            )}
-            <Button variant="destructive" onClick={discardAndLeave} disabled={saving}>
-              {prompt?.onSave ? "Discard" : "Leave without saving"}
-            </Button>
-            <Button variant="outline" onClick={() => settle(false)} disabled={saving} autoFocus={!prompt?.onSave}>
-              Stay
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <UnsavedGuardDialog
+        open={open}
+        saving={saving}
+        error={saveError}
+        description={prompt?.message}
+        onSaveAndContinue={prompt?.onSave ? () => void saveAndLeave() : undefined}
+        onStay={() => { if (!saving) settle(false); }}
+        onDiscard={discardAndLeave}
+      />
     </NavigationGuardContext.Provider>
   );
 }

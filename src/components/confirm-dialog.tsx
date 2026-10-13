@@ -1,15 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog as ConfirmDialogView } from "@/components/patterns/dialogs";
 
 export type ConfirmOptions = {
   title: string;
@@ -31,6 +23,8 @@ const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 /**
  * Promise-based replacement for the native confirm() prompt. Mount once in the root layout.
+ * The look is the shared ConfirmDialog (DESIGN_SYSTEM §10). Cancel, Escape and a new request resolve false;
+ * the confirm button resolves true.
  *
  * const ok = await confirm({ title: "Delete sale?", tone: "danger", confirmLabel: "Delete" });
  */
@@ -56,32 +50,21 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const danger = options.tone === "danger";
-
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <Dialog open={open} onOpenChange={(next) => { if (!next) settle(false); }}>
-        <DialogContent className={options.wide ? "sm:max-w-lg" : "sm:max-w-sm"}>
-          <DialogHeader>
-            <DialogTitle className="pr-8">{options.title}</DialogTitle>
-            <DialogDescription>{options.body}</DialogDescription>
-          </DialogHeader>
-          {options.details}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => settle(false)} autoFocus={danger}>
-              {options.cancelLabel ?? "Cancel"}
-            </Button>
-            <Button
-              variant={danger ? "destructive" : "default"}
-              onClick={() => settle(true)}
-              autoFocus={!danger}
-            >
-              {options.confirmLabel ?? "Confirm"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialogView
+        open={open}
+        onOpenChange={(next) => { if (!next) settle(false); }}
+        title={options.title}
+        description={options.body}
+        detail={options.details}
+        confirmLabel={options.confirmLabel ?? "Confirm"}
+        cancelLabel={options.cancelLabel ?? "Cancel"}
+        destructive={options.tone === "danger"}
+        wide={options.wide}
+        onConfirm={() => settle(true)}
+      />
     </ConfirmContext.Provider>
   );
 }
