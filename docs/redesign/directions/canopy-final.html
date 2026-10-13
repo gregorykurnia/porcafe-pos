@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canopy · final</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+/* Tokens mirror docs/redesign/DESIGN_SYSTEM.md (@theme). Names describe roles, not hues. */
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        canvas: '#F6F0E6', surface: '#FFFCF7', sunken: '#EFE8DB', studio: '#E8E1D3',
+        line: { DEFAULT: '#E6DDCD', strong: '#D3C7B3', input: '#9A8E79' },
+        ink: { DEFAULT: '#1F2B25', muted: '#5E655D', faint: '#8B8E85' },
+        brand: { DEFAULT: '#163D2F', hover: '#0F2E23', soft: '#E3EDE4', on: '#F6F0E6' },
+        accent: '#2F6B50',
+        ok: { DEFAULT: '#2B6047', tint: '#E3EDE4' },
+        warn: { DEFAULT: '#85540A', tint: '#F7EAD1', mark: '#B07A1C' },
+        danger: { DEFAULT: '#A23B22', tint: '#F7E2DA', solid: '#A9432A' },
+        info: { DEFAULT: '#355F73', tint: '#E2ECEF' },
+        neutral: { DEFAULT: '#5E655D', tint: '#EDE7DC' },
+        chart: { 1: '#2F6B50', 2: '#8DAE98', 3: '#C9D8CC', base: '#D9CFBE' }
+      },
+      fontFamily: {
+        display: ['Outfit', 'system-ui', 'sans-serif'],
+        sans: ['Figtree', 'system-ui', 'sans-serif']
+      },
+      fontSize: {
+        'display': ['40px', { lineHeight: '46px', letterSpacing: '-0.02em', fontWeight: '500' }],
+        'title-1': ['30px', { lineHeight: '36px', letterSpacing: '-0.015em', fontWeight: '500' }],
+        'title-2': ['19px', { lineHeight: '26px', letterSpacing: '-0.005em', fontWeight: '500' }],
+        'title-3': ['15px', { lineHeight: '22px', fontWeight: '600' }],
+        'body-lg': ['16px', '24px'],
+        'body': ['15px', '22px'],
+        'table': ['14px', '20px'],
+        'small': ['13px', '18px'],
+        'micro': ['12px', '16px'],
+        'fig-xl': ['40px', { lineHeight: '44px', letterSpacing: '-0.02em', fontWeight: '500' }],
+        'fig-l': ['24px', { lineHeight: '30px', letterSpacing: '-0.01em', fontWeight: '500' }],
+        'fig-m': ['20px', { lineHeight: '26px', fontWeight: '500' }]
+      },
+      borderRadius: { sm: '8px', md: '12px', lg: '16px', xl: '20px' },
+      boxShadow: {
+        card: '0 1px 2px rgba(22,61,47,.04)',
+        raised: '0 1px 2px rgba(22,61,47,.06), 0 8px 20px -10px rgba(22,61,47,.22)',
+        overlay: '0 2px 6px rgba(22,61,47,.08), 0 24px 48px -16px rgba(22,61,47,.30)'
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { background: #E8E1D3; font-variant-numeric: tabular-nums; }
+  .ico { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  .ico-sm { width: 16px; height: 16px; }
+  .ico-lg { width: 24px; height: 24px; }
+  .mark { position: relative; overflow: hidden; border-radius: 9999px; background: #F6F0E6; flex: none; }
+  .mark img { position: absolute; max-width: none; width: 288%; left: -100%; top: -66%; mix-blend-mode: multiply; }
+  .frame { box-shadow: 0 0 0 1px rgba(22,61,47,.07), 0 30px 60px -34px rgba(22,61,47,.40); }
+  .fit { width: 100%; }
+  .fit > * { transform-origin: 0 0; }
+  .focus-ring { box-shadow: 0 0 0 2px #FFFCF7, 0 0 0 4px #2F6B50; }
+  .focus-ring-canvas { box-shadow: 0 0 0 2px #F6F0E6, 0 0 0 4px #2F6B50; }
+  .skel { background: linear-gradient(90deg, #EFE8DB 0%, #F6F0E6 50%, #EFE8DB 100%); background-size: 200% 100%; animation: sk 1.4s ease-in-out infinite; border-radius: 6px; }
+  @keyframes sk { from { background-position: 100% 0 } to { background-position: -100% 0 } }
+  @media (prefers-reduced-motion: reduce) { .skel { animation: none } }
+  .hand { font-family: 'Bradley Hand', 'Segoe Print', 'Comic Sans MS', cursive; }
+  .doc-h { font-family: Outfit, sans-serif; font-weight: 300; letter-spacing: -0.01em; }
+  .scroll-x { overflow-x: auto; scrollbar-width: none; }
+  .scroll-x::-webkit-scrollbar { display: none; }
+  /* Outside the fixed-width mock frames, wide controls scroll inside their card instead of widening the page. */
+  #components [role=tablist] { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  #components .grid > * { min-width: 0; }
+  #components .flex > div { min-width: 0; max-width: 100%; }
+  #components .inline-flex.flex-none, #components .flex-wrap > .inline-flex { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<!-- Icon sprite. Every icon maps 1:1 to a lucide-react icon (see the Icon section); stroke 1.5 at 20 px. -->
+<svg width="0" height="0" class="absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h13V9"/><path d="M10 20v-5.5h4V20"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><rect x="5" y="4.5" width="14" height="16.5" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="m9 13 2.2 2.2L15.5 11"/></symbol>
+  <symbol id="i-reports" viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 16v-4"/><path d="M12 16V8"/><path d="M16 16v-6"/></symbol>
+  <symbol id="i-stock" viewBox="0 0 24 24"><path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4z"/><path d="M3.5 7.5 12 11.5l8.5-4"/><path d="M12 11.5v9"/></symbol>
+  <symbol id="i-setup" viewBox="0 0 24 24"><path d="M4 6.5h9M17 6.5h3M4 12h3M11 12h9M4 17.5h11M19 17.5h1"/><circle cx="15" cy="6.5" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17.5" r="2"/></symbol>
+  <symbol id="i-cl" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+  <symbol id="i-cr" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+  <symbol id="i-cd" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+  <symbol id="i-cu" viewBox="0 0 24 24"><path d="m6 14.5 6-6 6 6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m20.5 16-5-5-9 8.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 19.5h18z"/><path d="M12 10v4.5M12 17.2v.3"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5M5 19.5h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4m-4.5 4.5L12 4l4.5 4.5M5 19.5h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 6.5 4.5 11 9 15.5"/><path d="M5 11h9.5a5 5 0 0 1 0 10H12"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v10H3zM14 9.5h4l3 3.5V16h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 19.5 5.7 16A8 8 0 1 1 8.7 19z"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="6" cy="12" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="18" cy="12" r=".9"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10a2.8 2.8 0 0 0-4-4l-10 10z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1"/><path d="M17.5 3.5v3.4h-3.4M6.5 20.5v-3.4h3.4"/></symbol>
+  <symbol id="i-wifioff" viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M8.5 16.2a5 5 0 0 1 6.2-.5M5.2 12.8a9.5 9.5 0 0 1 3.6-2.2M18.8 12.8a9.6 9.6 0 0 0-3-2M2 9.5a14 14 0 0 1 4-2.6M22 9.5A14 14 0 0 0 11 5.6"/><path d="M12 19.5h.01"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="m7.5 4.5-3.5 3.5M7.5 4.5 11 8M7.5 4.5v15M16.5 19.5 13 16M16.5 19.5 20 16M16.5 19.5v-15"/></symbol>
+  <symbol id="i-bowl" viewBox="0 0 24 24"><path d="M3.5 11h17c0 5-3.8 8.5-8.5 8.5S3.5 16 3.5 11z"/><path d="M7 11c.8-2.5 2.8-4 5-4s4.2 1.5 5 4"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7v13M3.5 5.5h5A3.5 3.5 0 0 1 12 9a3.5 3.5 0 0 1 3.5-3.5h5V18h-5A3.5 3.5 0 0 0 12 20a3.5 3.5 0 0 0-3.5-2h-5z"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7.5" ry="2.5"/><path d="M4.5 6v12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M4 8h16v11.5H4zM3 4.5h18V8H3zM10 12h4"/></symbol>
+  <symbol id="i-zoom" viewBox="0 0 24 24"><path d="M14.5 4.5h5v5M9.5 19.5h-5v-5M19.5 4.5l-6 6M4.5 19.5l6-6"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3.5 17 6-6 4 4 7-7.5"/><path d="M15.5 7.5h5v5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3.5h12v17l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/></symbol>
+</svg>
+
+<div class="max-w-[1360px] mx-auto px-4 sm:px-8 py-8 sm:py-12">
+
+<!-- ================= INTRO ================= -->
+<header class="rounded-[28px] bg-canvas frame overflow-hidden">
+  <div class="grid lg:grid-cols-[1.1fr_1fr]">
+    <div class="p-6 sm:p-12">
+      <div id="intro-lockup"></div>
+      <div class="mt-10 sm:mt-14 text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">Direction B · final</div>
+      <h1 class="doc-h text-brand text-[56px] sm:text-[84px] leading-[0.95] mt-2">Canopy</h1>
+      <p class="font-display font-light text-[19px] sm:text-[22px] leading-[1.45] text-ink mt-5 max-w-[34ch]">The same warm, card-based workspace, under a lighter canopy: cream everywhere, forest green kept for the one thing that matters on each screen.</p>
+      <p class="text-body text-ink-muted mt-5 max-w-[56ch]">This is the reviewed and finished version of Canopy. It is the build reference for the Next.js 16 + Tailwind v4 rebuild. The rules behind every choice are in <b class="font-semibold text-ink">DESIGN_SYSTEM.md</b>, and the reasoning is in <b class="font-semibold text-ink">CANOPY_REVIEW.md</b>.</p>
+    </div>
+    <div class="bg-surface border-t lg:border-t-0 lg:border-l border-line p-6 sm:p-12">
+      <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">What changed from the first Canopy</div>
+      <ul class="mt-5 space-y-3.5 text-body">
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">Cream sidebar.</b> The page reads as light, and green marks only what you can act on.</span></li>
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">One solid green per screen.</b> It is the focal action or figure; everything else stays quiet.</span></li>
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">Five status tones, each with its own shape,</b> so no status relies on colour alone. Honey is retired.</span></li>
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">Cards hold sections; rows are ruled lines.</b> Data screens get a compact density.</span></li>
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">Daily close follows the paper sheet:</b> one column in sheet order, with a sticky total and Complete on the phone.</span></li>
+        <li class="flex gap-3"><span class="text-accent mt-0.5">›</span><span><b class="font-semibold">Every text colour passes WCAG AA,</b> figures are tabular everywhere, and touch targets are 44 px.</span></li>
+      </ul>
+      <nav class="mt-8 flex flex-wrap gap-2 text-small font-medium" aria-label="Contents">
+        <a href="#system" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">System</a>
+        <a href="#components" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">Components</a>
+        <a href="#shell" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">App shell</a>
+        <a href="#desktop" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">Desktop screens</a>
+        <a href="#phone" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">Phone screens</a>
+        <a href="#others" class="h-9 px-4 rounded-full border border-line-strong bg-surface flex items-center hover:bg-sunken">Other screens</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<!-- ================= SYSTEM SHEET ================= -->
+<section id="system" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">1 · System sheet</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">Tokens</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[70ch]">Each colour has one job. Contrast ratios are computed live in this page from the hex values against the background named in the row: AA needs 4.5 for text, and 3.0 for large text and UI boundaries. Rows marked "decorative" are never used for text.</p>
+
+  <div class="mt-8 rounded-xl bg-surface border border-line shadow-card overflow-hidden">
+    <div class="scroll-x"><table class="w-full min-w-[760px] text-table" id="sys-colors"></table></div>
+  </div>
+
+  <div class="grid lg:grid-cols-[1.25fr_1fr] gap-6 mt-6">
+    <div class="rounded-xl bg-surface border border-line shadow-card p-6 sm:p-7">
+      <h3 class="font-display text-title-2 text-brand">Type scale</h3>
+      <p class="text-small text-ink-muted mt-1">Outfit for titles and big figures (its geometry echoes the wordmark). Figtree for everything you read and type. Tabular figures are on globally, so digits never shift as values change.</p>
+      <div class="mt-5 divide-y divide-line" id="sys-type"></div>
+    </div>
+    <div class="space-y-6">
+      <div class="rounded-xl bg-surface border border-line shadow-card p-6 sm:p-7">
+        <h3 class="font-display text-title-2 text-brand">Spacing</h3>
+        <p class="text-small text-ink-muted mt-1">A 4 px base. Gutters: 40 desktop · 24 tablet · 16 phone. Card padding: 24 (16 on phone). Gap between cards: 20 (12 on phone).</p>
+        <div class="mt-4 space-y-2" id="sys-space"></div>
+      </div>
+      <div class="rounded-xl bg-surface border border-line shadow-card p-6 sm:p-7">
+        <h3 class="font-display text-title-2 text-brand">Radius and elevation</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 text-micro text-ink-muted" id="sys-radius"></div>
+        <div class="grid sm:grid-cols-3 gap-4 mt-6 text-micro text-ink-muted" id="sys-shadow"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-6 mt-6">
+    <div class="rounded-xl bg-surface border border-line shadow-card p-6 sm:p-7">
+      <h3 class="font-display text-title-2 text-brand">Icons</h3>
+      <p class="text-small text-ink-muted mt-1">Outline only, at a 1.5 stroke, which is the closest match to the logo's line. lucide-react with <code class="text-[12.5px]">strokeWidth={1.5}</code>: 20 px in controls, 16 px inside chips and small buttons, 24 px in the phone tab bar. Never filled, never inside a decorative circle.</p>
+      <div class="grid grid-cols-3 sm:grid-cols-5 gap-x-3 gap-y-5 mt-6" id="sys-icons"></div>
+    </div>
+    <div class="rounded-xl bg-surface border border-line shadow-card p-6 sm:p-7">
+      <h3 class="font-display text-title-2 text-brand">Motion</h3>
+      <p class="text-small text-ink-muted mt-1">Motion only confirms something happened, so keep it short. With <code class="text-[12.5px]">prefers-reduced-motion</code>, everything becomes an instant fade except the Undo countdown bar, which turns into a number.</p>
+      <div class="mt-5 divide-y divide-line text-table" id="sys-motion"></div>
+      <h3 class="font-display text-title-2 text-brand mt-8">Line illustration</h3>
+      <p class="text-small text-ink-muted mt-1">One small drawing, used only in empty states. It is a 1.25 stroke bowl and spoon, taken from the logo's line.</p>
+      <div class="mt-4 flex items-center gap-6"><div id="sys-illo"></div><div class="text-small text-ink-muted">96 × 72 px · stroke <span class="text-ink">ink-muted</span> · fill on the bowl only, at <span class="text-ink">brand-soft</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= COMPONENTS ================= -->
+<section id="components" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">2 · Component sheet</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">Parts, in every state</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[70ch]">Each part is our own component built on a shadcn/Radix primitive, named in the corner of its card. States shown are the real ones from the content inventory.</p>
+  <div id="comp" class="mt-8 space-y-6"></div>
+</section>
+
+<!-- ================= SHELL ================= -->
+<section id="shell" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">3 · App shell</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">One structure, three widths</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[72ch]">There are five sections. Sub-sections are always tabs at the top of the page, at every width, so the pattern never changes between devices. The sidebar shrinks to a labelled rail on the counter tablet, then becomes a docked tab bar on the phone. On every device, Daily close sits in the middle and is the easiest to reach.</p>
+  <div id="shells" class="mt-8"></div>
+</section>
+
+<!-- ================= DESKTOP ================= -->
+<section id="desktop" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">4 · Screens · desktop 1280 px</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">Under a lighter canopy</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[72ch]">The date is Tuesday, 13 October 2026, 21:52. Tonight's close is in progress. The figures are the same on every screen.</p>
+  <div id="screens" class="mt-8 space-y-14"></div>
+</section>
+
+<!-- ================= TABLET ================= -->
+<section id="tablet" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">5 · Counter tablet · 1024 px</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">The close at the counter</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[72ch]">The tablet is first-class because it is touch-only and is where the nightly close is often typed. It uses the labelled rail, comfortable density throughout, 44 px targets, and the desktop two-column close.</p>
+  <div id="tablet-screens" class="mt-8 space-y-14"></div>
+</section>
+
+<!-- ================= PHONE ================= -->
+<section id="phone" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">6 · Screens · phone 390 px</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">One thumb from closing</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[72ch]">The tab bar is docked to the bottom, not floating, so it never covers a row or a toast. On Daily close, a sticky totals bar sits above it with the running total and the Complete button.</p>
+  <div id="phones" class="mt-8 grid gap-x-8 gap-y-12 justify-center" style="grid-template-columns: repeat(auto-fill, minmax(min(100%, 390px), 390px));"></div>
+</section>
+
+<!-- ================= OTHERS ================= -->
+<section id="others" class="mt-16 sm:mt-24">
+  <div class="text-micro uppercase tracking-[0.18em] text-ink-muted font-semibold">7 · The other screens</div>
+  <h2 class="doc-h text-brand text-[36px] sm:text-[44px] mt-1">Where everything else lives</h2>
+  <p class="text-body text-ink-muted mt-2 max-w-[72ch]">These screens aren't drawn in full here, but each is built only from the patterns above. This is the assembly list.</p>
+  <div id="other-list" class="mt-8"></div>
+</section>
+
+<footer class="text-center text-micro text-ink-muted mt-16">Canopy · final — Charred by Porcafe back office · October 2026</footer>
+</div>
+<script>
+/* ============================================================
+   Helpers. Every screen below is assembled from these, the same
+   way the React components will be.
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const rp = n => (n < 0 ? '− ' : '') + 'Rp ' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+const nf = (n, d = 2) => (n < 0 ? '−' : '') + Math.abs(n).toLocaleString('id-ID', { maximumFractionDigits: d });
+const sg = n => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+const I = (n, c = '') => `<svg class="ico ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const spin = (c = 'w-4 h-4') => `<svg class="${c} animate-spin flex-none" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2.5"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+
+/* ---------- colour maths for the token table ---------- */
+const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+
+/* ---------- status: five tones, five shapes ---------- */
+const SHAPE = {
+  ok: '<path d="M2.6 6.3 5 8.6l4.4-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+  warn: '<path d="M6 1.6 10.9 10.2H1.1z" fill="currentColor"/>',
+  danger: '<path d="M6 1.2 10.8 6 6 10.8 1.2 6z" fill="currentColor"/>',
+  info: '<circle cx="6" cy="6" r="4.1" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 1.9a4.1 4.1 0 0 1 0 8.2z" fill="currentColor"/>',
+  neutral: '<circle cx="6" cy="6" r="3.7" fill="none" stroke="currentColor" stroke-width="1.5"/>'
+};
+const shape = (t, c = 'w-3 h-3') => `<svg viewBox="0 0 12 12" class="${c} flex-none" aria-hidden="true">${SHAPE[t === 'solid' ? 'danger' : t]}</svg>`;
+const TONE = { ok: 'bg-ok-tint text-ok', warn: 'bg-warn-tint text-warn', danger: 'bg-danger-tint text-danger', solid: 'bg-danger-solid text-white', info: 'bg-info-tint text-info', neutral: 'bg-neutral-tint text-ink-muted' };
+const STATUS = {
+  // Day close
+  'Not started': 'neutral', 'Draft': 'info', 'Complete': 'ok', 'No sales': 'neutral', 'Unsaved changes': 'warn',
+  // Item day
+  'Sold': 'ok', '0 sold': 'neutral', 'Not logged': 'warn',
+  // Stock
+  'Negative': 'solid', 'Out': 'danger', 'To order': 'warn', 'On order': 'info', 'OK': 'ok', 'No alert level': 'neutral', 'Alerts off': 'neutral', 'Not set up': 'neutral',
+  // Supplier order
+  'Ordered / On the Way': 'info', 'Partially Received': 'info', 'Received': 'ok', 'Cancelled': 'neutral', 'Waiting to be confirmed': 'warn',
+  // Recipe and review
+  'Needs review': 'warn', 'Active': 'ok', 'Retired': 'neutral', 'Approved': 'ok',
+  // Usage day
+  'Calculated': 'ok', 'Calculated with exclusions': 'info', 'Waiting for close': 'info',
+  // Import
+  'Excluded': 'neutral', 'Map first': 'warn',
+  // Catalog
+  'Archived': 'neutral', 'Paused': 'neutral', 'Preferred': 'ok', 'Alternate': 'neutral',
+  // Push
+  'On': 'ok', 'Off': 'neutral', 'Blocked': 'danger', 'Checking': 'info', 'Unavailable': 'neutral',
+  // Severity
+  'Info': 'info', 'Warning': 'warn', 'Danger': 'danger'
+};
+const chip = (s, o = {}) => { const t = o.tone || STATUS[s] || 'neutral'; const sz = o.lg ? 'h-7 px-3 text-small' : 'h-6 px-2.5 text-micro'; return `<span class="inline-flex items-center gap-1.5 ${sz} rounded-full font-semibold whitespace-nowrap ${TONE[t]}">${shape(t)}${o.label || s}</span>`; };
+
+/* ---------- buttons ---------- */
+const BV = {
+  primary: 'bg-brand text-brand-on hover:bg-brand-hover',
+  secondary: 'bg-surface text-ink border border-line-input hover:bg-sunken',
+  ghost: 'text-brand hover:bg-sunken',
+  destructive: 'bg-danger-solid text-white hover:bg-danger',
+  dghost: 'text-danger hover:bg-danger-tint',
+  inverse: 'bg-brand-on text-brand hover:bg-white'
+};
+const BVH = { primary: 'bg-brand-hover text-brand-on', secondary: 'bg-sunken text-ink border border-line-input', ghost: 'bg-sunken text-brand', destructive: 'bg-danger text-white', dghost: 'bg-danger-tint text-danger', inverse: 'bg-white text-brand' };
+const BS = { sm: 'h-9 px-4 text-[13.5px] gap-1.5', md: 'h-11 px-5 text-[14.5px] gap-2', lg: 'h-12 px-6 text-[15px] gap-2' };
+function btn(label, v = 'secondary', o = {}) {
+  let look = BV[v];
+  if (o.hover) look = BVH[v];
+  if (o.disabled) look = v === 'ghost' || v === 'dghost' ? 'text-ink-faint' : 'bg-sunken text-ink-faint border border-transparent';
+  const lead = o.loading ? spin() : o.icon ? I(o.icon, 'ico-sm') : '';
+  return `<button type="button" class="inline-flex items-center justify-center rounded-full font-semibold whitespace-nowrap ${BS[o.size || 'md']} ${look} ${o.focus ? 'focus-ring' : ''} ${o.cls || ''}" ${o.disabled || o.loading ? 'disabled' : ''}>${lead}${label}${o.trail ? I(o.trail, 'ico-sm') : ''}</button>`;
+}
+const ibtn = (icon, label, o = {}) => `<button type="button" aria-label="${label}" title="${label}" class="inline-flex items-center justify-center rounded-full flex-none ${o.size === 'sm' ? 'w-9 h-9' : 'w-11 h-11'} ${o.v ? BV[o.v] : 'text-ink-muted hover:bg-sunken hover:text-ink'} ${o.cls || ''}" ${o.disabled ? 'disabled' : ''}>${I(icon, o.size === 'sm' ? 'ico-sm' : '')}</button>`;
+const link = (t, o = {}) => `<a class="inline-flex items-center gap-1 text-small font-semibold text-accent hover:underline underline-offset-2 whitespace-nowrap ${o.cls || ''}">${t}${o.arrow === false ? '' : I('arrow', 'ico-sm')}</a>`;
+
+/* ---------- containers ---------- */
+const card = (inner, cls = '') => `<div class="rounded-xl bg-surface border border-line shadow-card ${cls}">${inner}</div>`;
+const cardHead = (title, right = '', sub = '') => `<div class="flex items-start justify-between gap-4"><div class="min-w-0"><h3 class="font-display text-title-2 text-ink">${title}</h3>${sub ? `<p class="text-small text-ink-muted mt-0.5">${sub}</p>` : ''}</div>${right ? `<div class="flex items-center gap-2 flex-none">${right}</div>` : ''}</div>`;
+const banner = (tone, text, action = '', o = {}) => `<div class="flex items-start gap-3 rounded-lg ${TONE[tone]} px-4 py-3 text-table ${o.cls || ''}" role="${tone === 'danger' ? 'alert' : 'status'}"><span class="mt-px">${I(o.icon || (tone === 'info' ? 'info' : tone === 'ok' ? 'check' : 'alert'), 'ico-sm')}</span><div class="flex-1 min-w-0 text-ink">${text}</div>${action ? `<button type="button" class="font-semibold underline underline-offset-2 whitespace-nowrap">${action}</button>` : ''}</div>`;
+const sub = t => `<span class="text-ink-muted">${t}</span>`;
+const kbdHint = (t) => `<span class="text-micro text-ink-muted">${t}</span>`;
+
+/* ---------- inputs ---------- */
+function input(o = {}) {
+  const st = o.state || 'default';
+  const s = st === 'focus' ? 'border-accent focus-ring' : st === 'error' ? 'border-danger' : st === 'disabled' ? 'border-line bg-sunken' : 'border-line-input';
+  const caret = st === 'focus' && !o.noCaret ? '<span class="inline-block w-px h-[18px] bg-ink align-middle ml-px"></span>' : '';
+  const align = o.align === 'right' ? 'text-right' : '';
+  const v = o.value != null && o.value !== ''
+    ? `<span class="flex-1 min-w-0 truncate ${align} ${st === 'disabled' ? 'text-ink-faint' : 'text-ink'}">${o.value}${caret}</span>`
+    : `<span class="flex-1 min-w-0 truncate ${align} ${st === 'disabled' ? 'text-ink-faint' : 'text-ink-muted'}">${caret}${o.ph || ''}</span>`;
+  return `<div class="${o.h || 'h-11'} rounded-md bg-surface border ${s} flex items-center gap-2 px-3.5 ${o.text || 'text-body'} ${o.cls || ''}">${o.icon ? I(o.icon, 'ico-sm text-ink-muted') : ''}${o.prefix ? `<span class="text-ink-muted">${o.prefix}</span>` : ''}${v}${o.suffix ? `<span class="text-ink-muted text-small">${o.suffix}</span>` : ''}${o.chev ? I('cd', 'ico-sm text-ink-muted') : ''}</div>`;
+}
+const field = (label, inner, o = {}) => `<div class="${o.cls || ''}"><div class="text-small font-medium text-ink mb-1.5">${label}${o.opt ? ' <span class="text-ink-muted font-normal">(optional)</span>' : ''}</div>${inner}${o.hint ? `<div class="text-micro text-ink-muted mt-1.5">${o.hint}</div>` : ''}${o.err ? `<div class="flex items-center gap-1.5 text-micro text-danger mt-1.5 font-semibold">${shape('danger', 'w-2.5 h-2.5')}${o.err}</div>` : ''}</div>`;
+const select = (value, o = {}) => input({ ...o, value, chev: true });
+const search = (ph, o = {}) => input({ ph, icon: 'search', h: o.h || 'h-10', text: 'text-table', cls: o.cls || '', value: o.value, state: o.state });
+const sw = (on, label) => `<label class="inline-flex items-center gap-2.5 text-table text-ink whitespace-nowrap cursor-pointer"><span class="w-10 h-6 rounded-full p-0.5 flex ${on ? 'bg-accent justify-end' : 'bg-line-strong justify-start'}"><span class="w-5 h-5 rounded-full bg-surface shadow-card"></span></span>${label}</label>`;
+
+/* Money row: label on the left, digits right-aligned so they line up with the Total. */
+const moneyRow = (label, value, o = {}) => `<div class="grid grid-cols-[88px_1fr] items-center gap-3"><span class="text-table text-ink">${label}</span>${input({ prefix: 'Rp', value, ph: '0', align: 'right', state: o.state, h: o.h || 'h-11', text: o.text || 'text-body' })}</div>${o.note ? `<div class="grid grid-cols-[88px_1fr] gap-3 -mt-1"><span></span><span class="text-micro ${o.noteTone || 'text-ink-muted'} text-right">${o.note}</span></div>` : ''}`;
+
+/* Quantity stepper: whole portions, −1 / +1 / type. Touch size = 44 px buttons. */
+function stepper(q, o = {}) {
+  const b = o.touch ? 'w-11 h-11' : 'w-9 h-9', on = q > 0;
+  return `<div class="inline-flex items-center rounded-full p-1 gap-0.5 flex-none ${on ? 'bg-brand-soft' : 'bg-sunken'} ${o.focus ? 'focus-ring' : ''}">
+    <button type="button" aria-label="One fewer ${o.name || ''}" class="${b} rounded-full flex items-center justify-center ${on ? 'bg-surface text-brand border border-line-strong' : 'text-ink-faint'}" ${on ? '' : 'disabled'}>${I('minus', 'ico-sm')}</button>
+    <span class="${o.touch ? 'w-12' : 'w-10'} text-center font-display text-fig-m ${on ? 'text-brand' : 'text-ink-muted'}" role="spinbutton" aria-valuenow="${q}" aria-label="${o.name || 'Quantity'}">${o.typing ? `${q}<span class="inline-block w-px h-5 bg-ink ml-0.5 align-middle"></span>` : q}</span>
+    <button type="button" aria-label="One more ${o.name || ''}" class="${b} rounded-full flex items-center justify-center bg-surface text-brand border border-line-strong">${I('plus', 'ico-sm')}</button></div>`;
+}
+
+/* Segmented control and filter pills: one pattern. Selected = white lifted pill, not green. */
+const seg = (items, active, o = {}) => `<div class="inline-flex p-1 rounded-full bg-sunken flex-none ${o.cls || ''}" role="tablist">${items.map(x => { const [l, c] = Array.isArray(x) ? x : [x]; const a = l === active; return `<button type="button" role="tab" aria-selected="${a}" class="${o.size === 'sm' ? 'h-8 px-3 text-small' : 'h-9 px-4 text-[13.5px]'} rounded-full font-medium whitespace-nowrap flex items-center gap-1.5 ${a ? 'bg-surface text-ink shadow-raised' : 'text-ink-muted hover:text-ink'}">${l}${c != null ? `<span class="text-micro text-ink-muted font-normal">${c}</span>` : ''}</button>`; }).join('')}</div>`;
+
+/* Page tabs (sub-sections): underline, the same at every width. */
+const tabs = (items, active, o = {}) => `<div class="${o.scroll ? 'scroll-x' : ''} border-b border-line"><div class="flex ${o.gap || 'gap-7'} ${o.text || 'text-[14.5px]'} ${o.px || ''}" role="tablist">${items.map(t => `<a role="tab" aria-selected="${t === active}" class="pb-3 pt-1 -mb-px border-b-2 whitespace-nowrap ${t === active ? 'border-brand text-ink font-semibold' : 'border-transparent text-ink-muted hover:text-ink'}">${t}</a>`).join('')}</div></div>`;
+
+/* Date stepper */
+const dateStepper = (label, o = {}) => `<div class="inline-flex items-center gap-1 flex-none">
+  ${ibtn('cl', 'Previous day', { cls: 'border border-line-input bg-surface', size: o.size })}
+  <button type="button" class="${o.size === 'sm' ? 'h-9' : 'h-11'} px-4 rounded-full flex items-center gap-2.5 hover:bg-sunken"><span class="font-display ${o.big ? 'text-title-2' : 'text-[17px] font-medium'} text-ink whitespace-nowrap">${label}</span>${o.today ? '<span class="h-6 px-2.5 rounded-full bg-brand-soft text-brand text-micro font-semibold flex items-center">Today</span>' : ''}${o.future ? chip('Future date', { tone: 'warn' }) : ''}</button>
+  ${ibtn('cr', 'Next day', { cls: 'border border-line-input bg-surface', size: o.size, disabled: o.nextOff })}
+  ${o.cal === false ? '' : ibtn('cal', 'Pick a date', { size: o.size })}
+</div>`;
+
+/* Period stepping (History, stepped Main portions) */
+const periodStep = (mode, label, o = {}) => `<div class="flex flex-wrap items-center gap-3">${seg(o.modes || ['Day', 'Week', 'Month'], mode, { size: 'sm' })}<div class="inline-flex items-center gap-1">${ibtn('cl', 'Previous period', { size: 'sm', cls: 'border border-line-input bg-surface' })}<span class="px-2 text-table font-medium whitespace-nowrap">${label}</span>${ibtn('cr', 'Next period', { size: 'sm', cls: 'border border-line-input bg-surface' })}</div>${o.today === false ? '' : btn('Today', 'ghost', { size: 'sm' })}</div>`;
+
+/* Data table. cols: {h, a:'r', w, td, sort}. Compact rows (40 px) by default. */
+function table(cols, rows, o = {}) {
+  const pad = o.pad || 'first:pl-6 last:pr-6', px = o.px || 'px-3';
+  return `<table class="w-full text-table ${o.cls || ''}"><thead><tr class="text-small text-ink-muted">${cols.map(c => `<th scope="col" class="font-medium h-10 ${px} ${pad} border-b border-line whitespace-nowrap ${c.a === 'r' ? 'text-right' : 'text-left'}" ${c.w ? `style="width:${c.w}"` : ''}>${c.sort ? `<span class="inline-flex items-center gap-1 ${c.sort === 'on' ? 'text-ink' : ''}">${c.h}${I(c.sort === 'on' ? 'cd' : 'sort', 'ico-sm ' + (c.sort === 'on' ? '' : 'opacity-60'))}</span>` : c.h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => { const R = Array.isArray(r) ? { c: r } : r; if (R.band) return `<tr class="${R.rowCls || 'bg-canvas'} border-b border-line"><td colspan="${cols.length}" class="h-10 ${px} ${pad} ${R.bandCls || ''}">${R.band}</td></tr>`; return `<tr class="${o.comfy ? 'h-14' : 'h-10'} border-b border-line last:border-0 ${R.cls || 'hover:bg-canvas/70'}">${R.c.map((v, i) => `<td class="${px} ${pad} ${cols[i] && cols[i].a === 'r' ? 'text-right whitespace-nowrap' : ''} ${(cols[i] && cols[i].td) || ''}" ${R.span && i === R.span[0] ? `colspan="${R.span[1]}"` : ''}>${v}</td>`).join('')}</tr>`; }).join('')}</tbody>${o.foot ? `<tfoot>${o.foot}</tfoot>` : ''}</table>`;
+}
+const rowMenu = (label = 'More actions') => ibtn('more', label, { size: 'sm' });
+
+/* Stat strip: one card, cells divided by hairlines (no card-per-number). */
+const statCell = (label, value, o = {}) => `<div class="px-6 py-5 min-w-0 ${o.cls || ''}"><div class="flex items-center gap-1.5 text-small text-ink-muted">${o.shape ? shape(o.shape, 'w-3 h-3 ' + (o.shape === 'warn' ? 'text-warn-mark' : o.shape === 'danger' || o.shape === 'solid' ? 'text-danger' : 'text-ok')) : ''}${label}</div><div class="font-display ${o.size || 'text-fig-l'} ${o.tone || 'text-ink'} mt-1 whitespace-nowrap">${value}</div>${o.note ? `<div class="text-small ${o.noteTone || 'text-ink-muted'} mt-1">${o.note}</div>` : ''}</div>`;
+/* No responsive prefixes inside mock frames: frames are fixed-width, the viewport is not. */
+const strip = (cells, cols = 4, cls = '') => card(`<div class="grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${cells.map((c, i) => `<div class="${i % cols ? 'border-l border-line' : ''} ${i >= cols ? 'border-t border-line' : ''} min-w-0">${c}</div>`).join('')}</div>`, 'overflow-hidden ' + cls);
+const delta = (pct, label, good = true) => `<span class="inline-flex items-center gap-1 ${good ? 'text-ok' : 'text-danger'} font-semibold">${good ? '↑' : '↓'} ${pct}</span> <span class="text-ink-muted">${label}</span>`;
+
+/* Brand lockup: the mark plus the ruled wordmark from the logo. */
+const lockup = (o = {}) => `<div class="flex items-center gap-3"><div class="mark ${o.size || 'w-10 h-10'} ring-1 ring-line-strong"><img src="logo.png" alt=""></div>${o.mark ? '' : `<div><div class="font-display text-[13px] tracking-[0.34em] text-brand font-medium leading-none">CHARRED</div><div class="flex items-center gap-1.5 text-[8.5px] tracking-[0.3em] text-ink-muted mt-1.5 leading-none"><span class="w-3 h-px bg-current"></span>BY PORCAFE<span class="w-3 h-px bg-current"></span></div></div>`}</div>`;
+
+/* Empty-state line drawing (bowl and spoon, from the logo's line). */
+const illo = (w = 96) => `<svg viewBox="0 0 96 72" width="${w}" height="${w * .75}" fill="none" stroke="#5E655D" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 36h56c0 13.5-12.5 23-28 23S16 49.5 16 36z" fill="#E3EDE4"/><path d="M23 36c1-4.5 4.5-7.5 8.5-7.5 1.8-3.4 5.6-4.6 9-3 2.6-2.4 7-2.6 9.8-.3 3.6-1.3 7.6.6 9 4 3 .2 5.4 2.6 6.2 6.8"/><path d="M33 59.5h22"/><path d="M62 24.5c7-5.5 15-8.5 24-8.5"/><ellipse cx="59" cy="26.5" rx="5.2" ry="2.6" transform="rotate(-28 59 26.5)"/><path d="M37 31.5h.01M45 29.5h.01M52 31h.01"/></svg>`;
+
+/* ============================================================
+   Shared data — Tuesday 13 Oct 2026, 21:52. Figures agree everywhere.
+   ============================================================ */
+const DAYS = [[1, 'Thu', 3420000], [2, 'Fri', 4185000], [3, 'Sat', 5260000], [4, 'Sun', 4930000], [5, 'Mon', 2870000], [6, 'Tue', 3110000], [7, 'Wed', 3345000], [8, 'Thu', 3590000], [9, 'Fri', 4420000], [10, 'Sat', 5480000], [11, 'Sun', null], [12, 'Mon', 2960000], [13, 'Tue', 3215000]];
+const MONTH = { recorded: 43570000, entries: 11, avg: 3960909, portions: 1042, main: 812, perMain: 53657, best: 5480000, allTime: 612840000 };
+const ITEMS = {
+  'Main': [['Chicken Nanban', 45000, 18], ['Nasi Goreng Charred', 42000, 14], ['Chicken Katsu Curry', 48000, 11], ['Beef Teriyaki Bowl', 52000, 9], ['Iga Bakar Madu', 65000, 4], ['Spaghetti Aglio Olio', 40000, 6], ['Nasi Ayam Sambal Matah', 38000, 0]],
+  'Add On': [['Telur Ceplok', 6000, 9], ['Nasi Putih', 8000, 5], ['Sambal Matah', 5000, 3], ['Extra Saus Mentai', 10000, 0]],
+  'Other': [['Kopi Susu Aren', 25000, 8, 1], ['Es Teh Manis', 12000, 12, 1], ['Croffle Coklat', null, 2, 1]]
+};
+const PAYD = [['Cash', 865000], ['BCA', 1420000], ['Soundbox', 930000], ['Other', 0]];
+// Month payment mix = column totals of the revenue table (1–12 Oct), so Home and Reports agree.
+const PAYM = [['BCA', 19550000, 45], ['Cash', 11755000, 27], ['Soundbox', 10745000, 25], ['Other', 1520000, 3]];
+const TOP = [['Chicken Nanban', 214], ['Nasi Goreng Charred', 168], ['Chicken Katsu Curry', 131], ['Beef Teriyaki Bowl', 109], ['Kopi Susu Aren', 96]];
+const SPLIT = { 12: [1310000, 820000, 740000, 90000], 10: [2480000, 1465000, 1335000, 200000], 9: [1990000, 1180000, 1100000, 150000], 8: [1615000, 980000, 880000, 115000], 7: [1505000, 905000, 835000, 100000], 6: [1400000, 840000, 770000, 100000], 5: [1290000, 775000, 715000, 90000], 4: [2200000, 1330000, 1210000, 190000], 3: [2350000, 1420000, 1290000, 200000], 2: [1880000, 1120000, 1030000, 155000], 1: [1530000, 920000, 840000, 130000] };
+// Stock: [name, unit, on hand, alert, on order, status, order qty, supplier]
+const STOCK = [
+  ['Saus Teriyaki', 'ml', -150, 500, 0, 'Negative', 2000, 'PT Sumber Rasa Distribusi'],
+  ['Kewpie Mayo', 'ml', 0, 1000, 0, 'Out', 3000, 'PT Sumber Rasa Distribusi'],
+  ['Chicken thigh fillet', 'g', 350, 2000, 0, 'To order', 5000, 'CV Unggas Sejahtera'],
+  ['Gula aren', 'g', 800, 1000, 0, 'To order', null, 'Toko Aren Jaya'],
+  ['Telur ayam', 'pcs', 18, 30, 60, 'On order', 60, 'Toko Telur Pak Darmo'],
+  ['Beras pulen', 'g', 9800, 10000, 10000, 'On order', 10000, 'UD Beras Makmur'],
+  ['Daging sapi slice', 'g', 1800, 2000, 1000, 'On order', 4000, 'Pasar Segar Daging'],
+  ['Susu UHT full cream', 'ml', 6000, 5000, 0, 'OK', 12000, 'PT Sumber Rasa Distribusi'],
+  ['Minyak goreng', 'ml', 4500, 3000, 0, 'OK', 5000, 'UD Beras Makmur'],
+  ['Bawang putih', 'g', 900, 500, 0, 'OK', 1000, 'Pasar Segar Daging'],
+  ['Box takeaway kraft', 'pcs', 140, 100, 0, 'OK', 200, null],
+  ['Kopi bubuk house blend', 'g', 1250, null, 0, 'No alert level', 1000, 'Toko Kopi Lereng']
+];
+
+/* Bar chart for daily revenue (inline SVG). Best day = brand, normal = chart-1, today open = dashed. */
+function revChart(o = {}) {
+  const W = o.w || 640, H = o.h || 220, pl = 44, pr = 8, pb = 30, pt = 26, max = 6000000, n = DAYS.length;
+  const step = (W - pl - pr) / n, bw = Math.min(28, step * .58), y = v => pt + (H - pt - pb) * (1 - v / max);
+  let s = '';
+  [0, 2e6, 4e6, 6e6].forEach(v => s += `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="#E6DDCD"/><text x="${pl - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11.5" fill="#5E655D" font-family="Figtree">${v ? v / 1e6 + ' jt' : '0'}</text>`);
+  DAYS.forEach(([d, w, t], i) => {
+    const cx = pl + step * i + step / 2;
+    if (!o.compact || i % 2 === 0 || d === 13) s += `<text x="${cx}" y="${H - 9}" text-anchor="middle" font-size="11.5" fill="${d === 13 ? '#1F2B25' : '#5E655D'}" font-family="Figtree" font-weight="${d === 13 ? 600 : 400}">${o.compact ? d : w + ' ' + d}</text>`;
+    if (t == null) { s += `<line x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${y(0) - 1}" y2="${y(0) - 1}" stroke="#9A8E79" stroke-width="2" stroke-dasharray="2 3"/>`; return; }
+    if (d === 13) { s += `<rect x="${cx - bw / 2 + .75}" y="${y(t)}" width="${bw - 1.5}" height="${y(0) - y(t) - .75}" rx="6" fill="none" stroke="#9A8E79" stroke-width="1.5" stroke-dasharray="4 3"/>`; if (!o.compact) s += `<text x="${cx}" y="${y(t) - 7}" text-anchor="middle" font-size="11" fill="#5E655D" font-family="Figtree">open</text>`; return; }
+    s += `<rect x="${cx - bw / 2}" y="${y(t)}" width="${bw}" height="${y(0) - y(t)}" rx="6" fill="${d === 10 ? '#163D2F' : '#2F6B50'}" ${d === 10 ? '' : 'fill-opacity=".78"'}/>`;
+    if (d === 10 && !o.compact) s += `<text x="${cx}" y="${y(t) - 8}" text-anchor="middle" font-size="11.5" fill="#163D2F" font-family="Figtree" font-weight="600">5,48 jt</text>`;
+  });
+  s += `<line x1="${pl}" x2="${W - pr}" y1="${y(MONTH.avg)}" y2="${y(MONTH.avg)}" stroke="#1F2B25" stroke-width="1" stroke-dasharray="5 4" opacity=".55"/>`;
+  if (!o.compact) s += `<text x="${W - pr}" y="${y(MONTH.avg) - 6}" text-anchor="end" font-size="11" fill="#1F2B25" font-family="Figtree">avg 3,96 jt</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Daily revenue, 1 to 13 October. Highest Saturday 10 October, Rp 5.480.000. Sunday 11 October has no revenue recorded; today is still open.">${s}</svg>`;
+}
+const chartLegend = () => `<div class="flex flex-wrap gap-x-5 gap-y-1 text-micro text-ink-muted"><span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-[3px] bg-accent/80"></span>Closed day</span><span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-[3px] bg-brand"></span>Best day</span><span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-[3px] border-[1.5px] border-dashed border-line-input"></span>Today, open</span><span class="inline-flex items-center gap-1.5"><span class="w-3 border-t-2 border-dotted border-line-input"></span>No revenue</span><span class="inline-flex items-center gap-1.5"><span class="w-4 border-t border-dashed border-ink"></span>Average</span></div>`;
+/* ============================================================
+   1 · SYSTEM SHEET
+   ============================================================ */
+(function system() {
+  // [token, hex, role, on-name, on-hex, kind] kind: text | ui | deco | bg
+  const T = [
+    ['canvas', '#F6F0E6', 'Page background — the logo\'s cream', '', '', 'bg'],
+    ['surface', '#FFFCF7', 'Cards, dialogs, inputs, tables', '', '', 'bg'],
+    ['sunken', '#EFE8DB', 'Tracks (segmented, stepper), totals rows, skeletons', '', '', 'bg'],
+    ['line', '#E6DDCD', 'Hairline dividers and card borders', 'surface', '#FFFCF7', 'deco'],
+    ['line-strong', '#D3C7B3', 'Stepper buttons, doc-only outlines', 'surface', '#FFFCF7', 'deco'],
+    ['line-input', '#9A8E79', 'Input and secondary-button borders', 'surface', '#FFFCF7', 'ui'],
+    ['ink', '#1F2B25', 'Body text and all figures', 'canvas', '#F6F0E6', 'text'],
+    ['ink-muted', '#5E655D', 'Labels, meta lines, placeholders (worst case on sunken)', 'sunken', '#EFE8DB', 'text'],
+    ['ink-faint', '#8B8E85', 'Disabled controls only, never information', 'surface', '#FFFCF7', 'deco'],
+    ['brand', '#163D2F', 'The one solid action per screen; page titles', 'canvas', '#F6F0E6', 'text'],
+    ['brand-on', '#F6F0E6', 'Text and icons on brand', 'brand', '#163D2F', 'text'],
+    ['brand-hover', '#0F2E23', 'Primary hover and pressed', 'canvas', '#F6F0E6', 'text'],
+    ['brand-soft', '#E3EDE4', 'Selected nav item, quantity above zero', '', '', 'bg'],
+    ['accent', '#2F6B50', 'Links, focus ring, chart series', 'surface', '#FFFCF7', 'text'],
+    ['ok', '#2B6047', 'Done: Complete, OK, Received, Approved', 'ok-tint', '#E3EDE4', 'text'],
+    ['warn', '#85540A', 'Needs you: Unsaved, To order, Needs review', 'warn-tint', '#F7EAD1', 'text'],
+    ['warn-mark', '#B07A1C', 'Warn shape on white (icon only)', 'surface', '#FFFCF7', 'ui'],
+    ['danger', '#A23B22', 'Out, errors, Blocked', 'danger-tint', '#F7E2DA', 'text'],
+    ['danger-solid', '#A9432A', 'Negative stock chip; destructive buttons (white text)', 'white text', '#FFFFFF', 'text'],
+    ['info', '#355F73', 'In progress: Draft, On order, Checking', 'info-tint', '#E2ECEF', 'text'],
+    ['neutral', '#5E655D', 'Inactive: Not started, No sales, Archived', 'neutral-tint', '#EDE7DC', 'text'],
+    ['chart-base', '#D9CFBE', 'Chart gridlines and empty tracks', 'surface', '#FFFCF7', 'deco']
+  ];
+  const tint = { ok: '#E3EDE4', warn: '#F7EAD1', danger: '#F7E2DA', info: '#E2ECEF', neutral: '#EDE7DC' };
+  $('sys-colors').innerHTML = `<thead><tr class="text-small text-ink-muted text-left"><th class="font-medium h-10 pl-6 pr-3 border-b border-line">Token</th><th class="font-medium px-3 border-b border-line">Hex</th><th class="font-medium px-3 border-b border-line">Role</th><th class="font-medium px-3 border-b border-line">Measured on</th><th class="font-medium px-3 border-b border-line text-right">Ratio</th><th class="font-medium pl-3 pr-6 border-b border-line">Verdict</th></tr></thead><tbody>` +
+    T.map(([n, h, role, on, onh, k]) => {
+      const r = onh ? ratio(h, onh) : null;
+      const verdict = k === 'bg' ? '<span class="text-ink-muted">Background</span>' : k === 'deco' ? '<span class="text-ink-muted">Decorative, not text</span>' : k === 'ui' ? (r >= 3 ? chip('UI 3:1 pass', { tone: 'ok' }) : chip('Below 3:1', { tone: 'danger' })) : (r >= 4.5 ? chip('AA text', { tone: 'ok' }) : chip('Fails AA', { tone: 'danger' }));
+      const sw = tint[n] ? `<span class="w-9 h-9 rounded-md border border-line flex items-center justify-center text-[13px] font-semibold" style="background:${tint[n]};color:${h}">Aa</span>` : n === 'danger-solid' ? `<span class="w-9 h-9 rounded-md flex items-center justify-center text-[13px] font-semibold text-white" style="background:${h}">Aa</span>` : n === 'brand-on' ? `<span class="w-9 h-9 rounded-md flex items-center justify-center text-[13px] font-semibold" style="background:#163D2F;color:${h}">Aa</span>` : `<span class="w-9 h-9 rounded-md border border-line" style="background:${h}"></span>`;
+      return `<tr class="h-14 border-b border-line last:border-0"><td class="pl-6 pr-3"><div class="flex items-center gap-3">${sw}<code class="text-[13px] font-semibold">--color-${n}</code></div></td><td class="px-3 text-ink-muted"><code class="text-[13px]">${h}</code></td><td class="px-3">${role}</td><td class="px-3 text-ink-muted">${on || '—'}</td><td class="px-3 text-right font-semibold">${r ? r.toFixed(2) : '—'}</td><td class="pl-3 pr-6">${verdict}</td></tr>`;
+    }).join('') + '</tbody>';
+
+  const TY = [
+    ['display', 'Outfit', '40 / 46 · 500 · −2%', 'Home greeting only', '<span class="font-display text-display text-brand">Selamat malam</span>'],
+    ['title-1', 'Outfit', '30 / 36 · 500 · −1.5%', 'Page title (h1); 24 / 30 on phone', '<span class="font-display text-title-1 text-brand">Daily close</span>'],
+    ['title-2', 'Outfit', '19 / 26 · 500', 'Card and dialog titles', '<span class="font-display text-title-2">Payments</span>'],
+    ['title-3', 'Figtree', '15 / 22 · 600', 'Group headers inside a card', '<span class="text-title-3">Main</span> <span class="text-small text-ink-muted">62 portions</span>'],
+    ['body-lg', 'Figtree', '16 / 24 · 400', 'Phone body; every input on touch (stops iOS zoom)', '<span class="text-body-lg">Chicken Nanban</span>'],
+    ['body', 'Figtree', '15 / 22 · 400–500', 'Desktop body, list rows', '<span class="text-body">Today is saved as a draft</span>'],
+    ['table', 'Figtree', '14 / 20 · 400', 'Table cells, compact rows', '<span class="text-table">Beras pulen · 9.800 g</span>'],
+    ['small', 'Figtree', '13 / 18 · 400–500', 'Meta lines, helper text, table headers', '<span class="text-small text-ink-muted">Manual · last saved 12 min ago</span>'],
+    ['micro', 'Figtree', '12 / 16 · 600', 'Chips, tab-bar labels. Nothing smaller.', chip('To order')],
+    ['fig-xl', 'Outfit', '40 / 44 · 500 · tnum', 'The one hero figure on a screen', '<span class="font-display text-fig-xl">Rp 3.215.000</span>'],
+    ['fig-l', 'Outfit', '24 / 30 · 500 · tnum', 'Stat strip cells (fits Rp 612.840.000 in a quarter column)', '<span class="font-display text-fig-l">Rp 43.570.000</span>'],
+    ['fig-m', 'Outfit', '20 / 26 · 500 · tnum', 'Totals bar, stepper value, Total rows', '<span class="font-display text-fig-m">101 portions</span>']
+  ];
+  $('sys-type').innerHTML = TY.map(([n, f, m, u, sp]) => `<div class="py-3.5 grid sm:grid-cols-[150px_1fr] gap-x-6 gap-y-1.5 items-baseline"><div><code class="text-[13px] font-semibold">${n}</code><div class="text-micro text-ink-muted">${f} · ${m}</div></div><div class="min-w-0"><div class="truncate">${sp}</div><div class="text-micro text-ink-muted mt-1">${u}</div></div></div>`).join('');
+
+  $('sys-space').innerHTML = [[4, 'icon to label'], [8, 'chip gaps, tight stacks'], [12, 'row gap, phone card gap'], [16, 'phone gutter and card padding'], [20, 'gap between cards'], [24, 'card padding, tablet gutter'], [32, 'between page header and content'], [40, 'desktop gutter'], [56, 'between page sections']].map(([v, u]) => `<div class="flex items-center gap-3 text-small"><code class="w-8 text-right text-[12.5px] font-semibold">${v}</code><span class="h-3 rounded-sm bg-accent/70" style="width:${v * 2}px"></span><span class="text-ink-muted">${u}</span></div>`).join('');
+
+  $('sys-radius').innerHTML = [['8', 'sm · tooltip, tag'], ['12', 'md · input, menu'], ['20', 'xl · card, dialog'], ['999', 'full · button, chip, track']].map(([r, u]) => `<div><div class="h-14 bg-sunken border border-line-strong" style="border-radius:${r}px"></div><div class="mt-2"><b class="text-ink">${r === '999' ? 'full' : r + ' px'}</b><br>${u}</div></div>`).join('');
+  $('sys-shadow').innerHTML = [['card', 'Resting cards. Mostly the 1 px border does the work.'], ['raised', 'Sticky bars, the selected segment, menus.'], ['overlay', 'Dialogs, sheets, toasts. Only overlays float.']].map(([s, u]) => `<div><div class="h-16 rounded-xl bg-surface border border-line shadow-${s}"></div><div class="mt-2"><b class="text-ink">${s}</b><br>${u}</div></div>`).join('');
+
+  $('sys-icons').innerHTML = [['home', 'House'], ['close', 'ClipboardCheck'], ['reports', 'ChartColumn'], ['stock', 'Package'], ['setup', 'SlidersHorizontal'], ['cam', 'Camera'], ['cal', 'Calendar'], ['search', 'Search'], ['plus', 'Plus'], ['minus', 'Minus'], ['check', 'Check'], ['alert', 'TriangleAlert'], ['info', 'Info'], ['undo', 'Undo2'], ['bell', 'Bell'], ['truck', 'Truck'], ['chat', 'MessageCircle'], ['copy', 'Copy'], ['more', 'Ellipsis'], ['edit', 'Pencil'], ['trash', 'Trash2'], ['down', 'Download'], ['refresh', 'RefreshCw'], ['wifioff', 'WifiOff'], ['sort', 'ArrowUpDown'], ['bowl', 'Soup'], ['book', 'BookOpen'], ['db', 'Database'], ['ban', 'Ban'], ['zoom', 'Maximize2']].map(([i, l]) => `<div class="flex flex-col items-center gap-1.5 text-center"><span class="w-11 h-11 rounded-md border border-line flex items-center justify-center text-brand">${I(i)}</span><span class="text-[11.5px] text-ink-muted leading-tight">${l}</span></div>`).join('');
+
+  $('sys-motion').innerHTML = [['fast', '120 ms', 'ease-out', 'Hover, press, chip and stepper value changes'], ['base', '180 ms', 'cubic-bezier(.2,.8,.2,1)', 'Menus, popovers, select lists: fade + 4 px rise'], ['slow', '240 ms', 'cubic-bezier(.2,.8,.2,1)', 'Dialogs (fade, scale .98 → 1); sheets slide in'], ['undo', '10 s', 'linear', 'The Undo countdown bar after Complete day'], ['toast', '4 s', 'sonner default', 'Success and warning toasts; errors stay until closed']].map(([n, d, e, u]) => `<div class="py-2.5 grid grid-cols-[64px_64px_1fr] gap-3 items-baseline"><code class="text-[13px] font-semibold">${n}</code><span>${d}</span><span><span class="text-ink-muted text-small">${e}</span><br>${u}</span></div>`).join('');
+  $('sys-illo').innerHTML = illo(96);
+  $('intro-lockup').innerHTML = lockup({ size: 'w-12 h-12' });
+})();
+
+/* ============================================================
+   2 · COMPONENT SHEET
+   ============================================================ */
+(function components() {
+  const C = (title, prim, inner, cls = '') => card(`<div class="flex items-baseline justify-between gap-3 flex-wrap"><h3 class="font-display text-title-2 text-brand">${title}</h3><span class="text-micro text-ink-muted">${prim}</span></div><div class="mt-5">${inner}</div>`, 'p-6 sm:p-7 ' + cls);
+  const lab = t => `<div class="text-micro uppercase tracking-[0.12em] text-ink-muted font-semibold mb-2.5">${t}</div>`;
+  const grid = (cols, items, gap = 'gap-6') => `<div class="grid ${cols} ${gap}">${items.join('')}</div>`;
+
+  // Buttons
+  const states = ['Default', 'Hover', 'Focus', 'Disabled', 'Loading'];
+  const vars = [['primary', 'Complete day'], ['secondary', 'Save draft'], ['ghost', 'Back'], ['destructive', 'Cancel order']];
+  const buttons = `<div class="scroll-x"><table class="min-w-[720px] w-full text-small"><thead><tr class="text-ink-muted text-left"><th class="font-medium pb-3 w-[110px]"></th>${states.map(s => `<th class="font-medium pb-3">${s}</th>`).join('')}</tr></thead><tbody>${vars.map(([v, l]) => `<tr><td class="py-2.5 font-semibold capitalize">${v}</td><td class="py-2.5">${btn(l, v)}</td><td>${btn(l, v, { hover: true })}</td><td>${btn(l, v, { focus: true })}</td><td>${btn(l, v, { disabled: true })}</td><td>${btn(v === 'destructive' ? 'Cancelling…' : v === 'primary' ? 'Completing…' : 'Saving…', v, { loading: true })}</td></tr>`).join('')}</tbody></table></div>
+  <div class="mt-5 pt-5 border-t border-line grid sm:grid-cols-3 gap-5 text-small">
+    <div>${lab('Sizes')}<div class="flex flex-wrap items-center gap-2">${btn('Order', 'secondary', { size: 'sm' })}${btn('Save draft', 'secondary')}${btn('Complete day', 'primary', { size: 'lg' })}</div><p class="text-micro text-ink-muted mt-2">sm 36 (desktop tables only; becomes 44 on touch) · md 44 · lg 48</p></div>
+    <div>${lab('With icon · icon-only')}<div class="flex flex-wrap items-center gap-2">${btn('Scan sheet', 'secondary', { icon: 'cam' })}${ibtn('more', 'More actions for 12 Oct', { cls: 'border border-line-input bg-surface' })}${ibtn('trash', 'Delete revenue entry')}</div><p class="text-micro text-ink-muted mt-2">Icon-only buttons always carry <code>aria-label</code> plus a tooltip.</p></div>
+    <div>${lab('Rules')}<p class="text-micro text-ink-muted leading-relaxed">At most one primary per view; it is the screen's focal action. Destructive buttons appear only inside a confirmation. In rows, destructive actions sit in the ⋯ menu as red text.</p></div>
+  </div>`;
+
+  // Text and select
+  const textInputs = grid('sm:grid-cols-2', [
+    field('Supplier name', input({ value: 'Toko Telur Pak Darmo' })),
+    field('Order reference', input({ value: 'PO-1013-0', state: 'focus' }), { opt: true, hint: 'Leave blank to number it automatically.' }),
+    field('Material name', input({ value: 'Telur ayam', state: 'error' }), { err: 'A material with this name already exists.' }),
+    field('Base unit', input({ value: 'g · grams', state: 'disabled', icon: 'lock' }), { hint: 'Locked — Chicken thigh fillet has 41 stock movements.' }),
+    field('Category', select('Main')),
+    `<div>${field('Menu item for this row', select('Choose a menu item', { state: 'focus' }))}<div class="mt-1.5 rounded-md bg-surface border border-line shadow-overlay p-1.5 text-table">${search('Find an item', { h: 'h-9', cls: 'mb-1.5 border-line' })}${['Chicken Nanban', 'Chicken Katsu Curry', 'Nasi Goreng Charred'].map((x, i) => `<div class="h-9 px-3 rounded-sm flex items-center justify-between ${i === 0 ? 'bg-sunken' : ''}">${x}${i === 0 ? I('check', 'ico-sm text-accent') : ''}</div>`).join('')}</div></div>`
+  ]);
+
+  // Money
+  const money = `<div class="grid sm:grid-cols-2 gap-6"><div class="space-y-3">${lab('Payments · label left, digits right')}${moneyRow('Cash', '865.000')}${moneyRow('BCA', '1.500.000', { state: 'focus', note: 'Read “1,5jt” as Rp 1.500.000', noteTone: 'text-accent' })}${moneyRow('Soundbox', 'sejuta lebih', { state: 'error' })}<div class="grid grid-cols-[88px_1fr] gap-3 -mt-1"><span></span><span class="flex items-center justify-end gap-1.5 text-micro text-danger font-semibold">${shape('danger', 'w-2.5 h-2.5')}Use digits, for example 1.500.000 or 1,5jt.</span></div>${moneyRow('Other', '')}<div class="grid grid-cols-[88px_1fr] gap-3 items-baseline pt-3 border-t border-line"><span class="text-table font-semibold">Total</span><span class="font-display text-fig-m text-right pr-3.5">Rp 3.295.000</span></div></div>
+  <div class="space-y-4">${lab('Behaviour')}<ul class="text-small text-ink-muted space-y-2 list-disc pl-4"><li>The <b class="text-ink">Rp</b> prefix is fixed text, never typed.</li><li>Digits group as you type: 1500 → 1.500.</li><li>Accepts 1,5jt · 150rb · 150k and normalises when you leave the field. The hint says what it read.</li><li>Blank means zero; the placeholder shows 0.</li><li>An unreadable value keeps its text, shows the error, and is never saved.</li><li><code>inputMode="decimal"</code> on touch.</li></ul>${field('Selisih for September 2026', input({ prefix: 'Rp', value: '− 185.000', align: 'right' }), { hint: 'Plus = the bank received more. Minus = less.' })}</div></div>`;
+
+  // Quantity
+  const qty = `<div class="grid sm:grid-cols-2 gap-6"><div>${lab('Portion stepper')}<div class="space-y-3 text-small">${[[0, 'Zero (− disabled)'], [18, 'Above zero'], [14, 'Typing — focus ring', { focus: true, typing: true }], [9, 'Touch size, 44 px buttons', { touch: true }]].map(([q, l, o]) => `<div class="flex items-center gap-4">${stepper(q, o || {})}<span class="text-ink-muted">${l}</span></div>`).join('')}</div></div>
+  <div>${lab('Material quantity')}${field('Counted now', input({ value: '1.150', suffix: 'g', align: 'right', state: 'focus' }))}<div class="mt-3 rounded-md bg-sunken px-4 py-3 text-small grid grid-cols-3 gap-2"><div><div class="text-ink-muted">System</div><div class="font-semibold">1.250 g</div></div><div><div class="text-ink-muted">Difference</div><div class="font-semibold">−100 g</div></div><div><div class="text-ink-muted">Change</div><div class="font-semibold">−8%</div></div></div><p class="text-micro text-ink-muted mt-2">Decimals accepted with a comma or a dot. The unit is always shown. A reason is required above 20%.</p></div></div>`;
+
+  // Date & period
+  const dates = `<div class="space-y-6">
+    <div>${lab('Date stepper · Daily close')}<div class="flex flex-wrap gap-6 items-center">${dateStepper('Tuesday, 13 Oct 2026', { today: true, nextOff: true })}${dateStepper('Wednesday, 14 Oct 2026', { future: true })}</div><p class="text-micro text-ink-muted mt-2">Next is disabled on today. With unsaved work, any move opens the unsaved-changes guard first.</p></div>
+    <div>${lab('Period selector · Reports')}<div class="flex flex-wrap items-start gap-3">${seg(['This month', 'Last month', 'Last 30 days', 'Custom range'], 'Custom range')}<div><button class="h-11 px-4 rounded-full border border-accent focus-ring bg-surface flex items-center gap-2 text-[13.5px] font-medium">${I('cal', 'ico-sm text-accent')}14 Oct – 1 Oct 2026</button><div class="mt-2 w-[300px] rounded-xl bg-surface border border-line shadow-overlay p-4"><div class="grid grid-cols-2 gap-3">${field('From', input({ value: '14 Oct 2026', state: 'error', text: 'text-table', h: 'h-10' }))}${field('To', input({ value: '1 Oct 2026', text: 'text-table', h: 'h-10' }))}</div><div class="flex items-start gap-1.5 text-micro text-danger font-semibold mt-2">${shape('danger', 'w-2.5 h-2.5 mt-0.5')}The start date must be on or before the end date.</div><div class="flex justify-end mt-3">${btn('Apply', 'secondary', { size: 'sm', disabled: true })}</div></div></div></div></div>
+    <div>${lab('Period stepping · History, Main portions')}${periodStep('Week', 'Week of Monday, 6 Oct – Sunday, 12 Oct')}</div>
+  </div>`;
+
+  // Chips
+  const sets = [['Day close', ['Not started', 'Draft', 'Unsaved changes', 'Complete', 'No sales']], ['Item day', ['Sold', '0 sold', 'No sales', 'Not logged']], ['Stock', ['Negative', 'Out', 'To order', 'On order', 'OK', 'No alert level', 'Alerts off', 'Not set up']], ['Supplier order', ['Ordered / On the Way', 'Partially Received', 'Received', 'Cancelled', 'Waiting to be confirmed']], ['Recipe · review', ['Draft', 'Needs review', 'Active', 'Retired', 'Approved']], ['Usage day', ['Calculated', 'Calculated with exclusions', 'Needs review', 'No sales', 'Waiting for close']], ['Import row', ['Excluded', 'Needs review', 'Approved', 'Map first']], ['Catalog', ['Archived', 'Paused', 'Preferred', 'Alternate']], ['Push on this device', ['On', 'Off', 'Blocked', 'Checking', 'Unavailable']], ['Attention severity', ['Info', 'Warning', 'Danger']]];
+  const chips = `<div class="grid sm:grid-cols-[1fr_300px] gap-8"><div class="divide-y divide-line">${sets.map(([n, xs]) => `<div class="py-3 grid sm:grid-cols-[150px_1fr] gap-2 items-center"><div class="text-small font-medium">${n}</div><div class="flex flex-wrap gap-1.5">${xs.map(x => chip(x)).join('')}</div></div>`).join('')}</div>
+  <div class="space-y-3 text-small">${lab('The five tones')}${[['ok', 'Done / healthy', 'Check'], ['info', 'In progress, nothing to do yet', 'Half-filled circle'], ['warn', 'Needs a person', 'Triangle'], ['danger', 'Wrong or blocked', 'Diamond (solid chip = Negative only)'], ['neutral', 'Inactive, not applicable', 'Open circle']].map(([t, m, s]) => `<div class="flex items-start gap-3">${chip(t === 'ok' ? 'ok' : t, { tone: t, label: t })}<div><div class="text-ink">${m}</div><div class="text-micro text-ink-muted">${s}</div></div></div>`).join('')}<p class="text-micro text-ink-muted pt-2 border-t border-line">The shape plus the word carries the meaning; colour only reinforces it. Catalog lists mark only the exception: Active rows have no chip, Archived ones do. Where a Status column exists, every row gets its chip.</p></div></div>`;
+
+  // Rows
+  const rows = `<div class="grid sm:grid-cols-2 gap-6"><div>${lab('Comfortable · 56–64 px · lists, phone, touch')}<div class="rounded-lg border border-line divide-y divide-line overflow-hidden">
+      <a class="flex items-center gap-3 px-4 py-3 hover:bg-canvas">${shape('warn', 'w-3.5 h-3.5 text-warn-mark')}<div class="flex-1 min-w-0"><div class="text-body font-medium">Today is saved as a draft</div><div class="text-small text-ink-muted">101 portions · Rp 3.215.000 so far</div></div>${I('cr', 'ico-sm text-ink-muted')}</a>
+      <a class="flex items-center gap-3 px-4 py-3 bg-brand-soft/60"><div class="flex-1 min-w-0"><div class="text-body font-medium">PO-1013-02 · Toko Telur Pak Darmo</div><div class="text-small text-ink-muted">Telur ayam × 60 pcs · expected Wed, 14 Oct</div></div>${chip('Ordered / On the Way')}</a>
+      <div class="flex items-center gap-3 px-4 py-2.5"><div class="flex-1 min-w-0"><div class="text-body font-medium">Chicken Nanban</div><div class="text-small text-ink-muted">Ref. Rp 45.000</div></div>${stepper(18, { touch: true })}</div></div><p class="text-micro text-ink-muted mt-2">Second row: selected (brand-soft). Rows are never cards.</p></div>
+    <div>${lab('Compact · 40 px · desktop data')}<div class="rounded-lg border border-line divide-y divide-line overflow-hidden text-table">${[['Beras pulen', '9.800 g', 'On order'], ['Susu UHT full cream', '6.000 ml', 'OK'], ['Gula aren', '800 g', 'To order']].map(([a, b, c]) => `<div class="h-10 px-4 flex items-center gap-3 hover:bg-canvas"><span class="flex-1 min-w-0 truncate">${a}</span><span class="w-24 text-right">${b}</span><span class="w-[92px] flex justify-end">${chip(c)}</span></div>`).join('')}</div><p class="text-micro text-ink-muted mt-2">One line only. Meta moves into columns. On touch devices, compact rows become comfortable.</p></div></div>`;
+
+  // Table
+  const tbl = `<div class="rounded-lg border border-line overflow-hidden"><div class="scroll-x">${table([{ h: 'Date', sort: 'on' }, { h: 'BCA', a: 'r' }, { h: 'Cash', a: 'r' }, { h: 'Soundbox', a: 'r' }, { h: 'Other', a: 'r' }, { h: 'Total · Rp', a: 'r' }, { h: '', w: '52px' }], [
+    ['Mon, 12 Oct', '1.310.000', '820.000', '740.000', '90.000', '<b class="font-semibold">2.960.000</b>', rowMenu('Actions for Monday, 12 Oct')],
+    { c: ['Sun, 11 Oct', `<span class="inline-flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}No revenue recorded</span>`, rowMenu('Actions for Sunday, 11 Oct')], span: [1, 5], cls: 'hover:bg-canvas/70' },
+    { c: ['Sat, 10 Oct', '2.480.000', '1.465.000', '1.335.000', '200.000', '<b class="font-semibold">5.480.000</b>', `<div class="relative">${ibtn('more', 'Actions for Saturday, 10 Oct', { size: 'sm', cls: 'bg-sunken text-ink' })}<div class="absolute right-0 top-10 z-10 w-48 rounded-md bg-surface border border-line shadow-overlay p-1.5 text-left"><div class="h-9 px-3 rounded-sm flex items-center gap-2 bg-sunken">${I('edit', 'ico-sm')}Edit in Daily close</div><div class="h-9 px-3 rounded-sm flex items-center gap-2 text-danger">${I('trash', 'ico-sm')}Delete entry…</div></div></div>`], cls: 'bg-brand-soft/50' },
+    ['Fri, 9 Oct', '1.990.000', '1.180.000', '1.100.000', '150.000', '<b class="font-semibold">4.420.000</b>', rowMenu()]
+  ], { cls: 'min-w-[640px] [&_td]:whitespace-nowrap', foot: `<tr class="bg-sunken h-11 font-semibold"><td class="pl-6 px-3">3 days</td><td class="px-3 text-right">5.780.000</td><td class="px-3 text-right">3.465.000</td><td class="px-3 text-right">3.175.000</td><td class="px-3 text-right">440.000</td><td class="px-3 text-right">Rp 12.860.000</td><td></td></tr>` })}</div></div>
+  <ul class="mt-4 grid sm:grid-cols-2 gap-x-8 gap-y-1.5 text-small text-ink-muted list-disc pl-4"><li>Numbers right-aligned and tabular; the currency sits in the header ("Total · Rp"), so cells show digits only. Totals rows repeat "Rp".</li><li>The header row is sticky inside long cards. The sorted column shows its arrow; the others show it faintly on hover.</li><li>Hairline rows, no zebra striping. Hover is canvas; selected is brand-soft.</li><li>Row actions: one visible text action at most, everything else in ⋯. On phone, a table becomes a list of two-line rows.</li></ul>`;
+
+  // Stat tiles
+  const stats = `${strip([statCell('Reported month total', 'Rp 43.570.000', { note: delta('6,2%', 'vs same days of Sep') }), statCell('To order', '4', { shape: 'warn', note: 'At or below alert level' }), statCell('Negative', '1', { shape: 'danger', tone: 'text-danger', note: 'Warnings only' }), statCell('Best day', 'Rp 5.480.000', { note: 'Saturday, 10 Oct' })], 4)}
+  <p class="text-small text-ink-muted mt-3">A row of figures is one card with hairline dividers, not four cards. A figure gets colour only when it is itself a status (Negative). Deltas: ↑ green when good, ↓ red when bad, and always with the comparison spelled out.</p>`;
+
+  // Empty / loading / error
+  const states3 = `<div class="grid sm:grid-cols-3 gap-5">
+    <div class="rounded-lg border border-line p-6 text-center">${illo(96)}<div class="font-display text-title-2 mt-3">No sales logged yet</div><p class="text-small text-ink-muted mt-1">Close tonight's sheet and this fills in.</p><div class="mt-4">${btn('Open Daily close', 'secondary', { size: 'sm' })}</div></div>
+    <div class="rounded-lg border border-line p-6" aria-busy="true"><div class="flex items-center gap-2 text-small text-ink-muted">${spin()}Loading this day…</div><div class="mt-4 space-y-3">${[70, 52, 64, 46].map(w => `<div class="flex items-center gap-3"><div class="skel h-3.5" style="width:${w}%"></div><div class="skel h-8 w-24 ml-auto rounded-full"></div></div>`).join('')}</div><p class="text-micro text-ink-muted mt-4">Skeletons match the real layout. After 10 s it fails: "Loading this day timed out."</p></div>
+    <div class="rounded-lg border border-line p-6">${banner('danger', '<b class="font-semibold">Couldn\'t load this day.</b> Your date is still selected.', '', { icon: 'alert' })}<div class="mt-3">${btn('Retry', 'secondary', { size: 'sm', icon: 'refresh' })}</div><p class="text-micro text-ink-muted mt-4">Errors say what failed and what is kept, then offer one way forward. The old view stays visible underneath when there is one.</p></div></div>`;
+
+  // Toasts
+  const toast = (tone, text, action) => `<div class="flex items-center gap-3 rounded-lg bg-surface border border-line shadow-overlay pl-3.5 pr-2 py-2.5 text-table w-full max-w-[420px]"><span class="w-7 h-7 rounded-full ${TONE[tone]} flex items-center justify-center flex-none">${I(tone === 'ok' ? 'check' : tone === 'danger' ? 'x' : 'alert', 'ico-sm')}</span><span class="flex-1 min-w-0">${text}</span>${action ? btn(action, 'ghost', { size: 'sm' }) : ''}</div>`;
+  const toasts = `<div class="grid sm:grid-cols-2 gap-6"><div class="space-y-3">${toast('ok', 'Supplier order created')}${toast('warn', 'Day saved, but inventory usage needs recipe or mapping review.', 'Review')}${toast('danger', 'You\'re offline. Connect to save. Nothing was changed.')}${toast('danger', 'Could not save day: the server did not respond.', 'Retry')}</div><div class="text-small text-ink-muted space-y-2"><p><b class="text-ink">sonner</b>, bottom-right on desktop, top-centre on phone (clear of the tab bar and totals bar).</p><p>White surface, tone shown only in the icon disc. Success and warning close after 4 s; errors stay until dismissed. At most one action.</p><p>The completion recap with Undo is <b class="text-ink">not</b> a toast: it replaces the actions in place (see Daily close).</p></div></div>`;
+
+  // Banners & offline
+  const banners = `<div class="grid sm:grid-cols-2 gap-3">${banner('info', 'Restored unsaved entries from 21:42.', 'Discard them')}${banner('warn', 'This day was changed on another device. Reload to see the latest. Nothing was saved.', 'Load latest')}${banner('danger', '<b class="font-semibold">Saus Teriyaki is below zero.</b> You can keep recording movements while the balance is negative.')}${banner('warn', '2 dates have more than one revenue record. Review them in Setup → Data maintenance.', 'Review')}</div>
+  <div class="mt-6">${lab('Offline notice · across the top of every page')}<div class="rounded-lg overflow-hidden border border-line"><div class="h-10 px-4 bg-warn-tint flex items-center gap-2.5 text-table">${I('wifioff', 'ico-sm text-warn')}<b class="font-semibold">Offline</b><span class="text-ink">— changes need a connection and aren't queued for later.</span></div><div class="p-4 bg-surface flex flex-wrap items-center gap-3 text-small">${btn('Complete day', 'primary', { disabled: true })}<span class="text-ink-muted">Save buttons stay visible but disabled, with the reason beside them. Figures from the last load stay readable.</span></div></div></div>`;
+
+  // Dialogs
+  const dialog = (inner, w = 'max-w-[440px]') => `<div class="rounded-xl bg-surface border border-line shadow-overlay p-6 w-full ${w}">${inner}</div>`;
+  const dialogs = `<div class="grid lg:grid-cols-3 gap-6 items-start">
+    <div>${lab('Normal')}${dialog(`<h4 class="font-display text-title-2">Archive Iga Bakar Madu?</h4><p class="text-table text-ink-muted mt-2">Archived items disappear from Daily close and scanning. Past sales stay in History.</p><div class="flex justify-end gap-2 mt-6">${btn('Cancel', 'ghost')}${btn('Archive item', 'primary', { focus: true })}</div>`)}<p class="text-micro text-ink-muted mt-2">Focus starts on the confirm button.</p></div>
+    <div>${lab('Destructive')}${dialog(`<div class="flex items-start gap-3"><span class="w-9 h-9 rounded-full bg-danger-tint text-danger flex items-center justify-center flex-none">${I('alert', 'ico-sm')}</span><div><h4 class="font-display text-title-2">Cancel PO-1013-02?</h4><p class="text-table text-ink-muted mt-1.5">Any quantities already received will remain in stock.</p></div></div><div class="mt-4 rounded-md bg-sunken px-4 py-3 text-small"><div class="flex justify-between"><span class="text-ink-muted">Telur ayam</span><span>60 pcs ordered · 0 received</span></div></div><div class="flex justify-end gap-2 mt-6">${btn('Keep order', 'secondary', { focus: true })}${btn('Cancel order', 'destructive')}</div>`)}<p class="text-micro text-ink-muted mt-2">Focus starts on the safe choice. Enter does not destroy.</p></div>
+    <div>${lab('Unsaved-changes guard')}${dialog(`<h4 class="font-display text-title-2">Unsaved changes</h4><p class="text-table text-ink-muted mt-2">You have unsaved quantities for Tuesday, 13 Oct.</p><div class="flex flex-col gap-2 mt-6">${btn('Save draft & continue', 'primary', { focus: true, cls: 'w-full' })}<div class="grid grid-cols-2 gap-2">${btn('Stay', 'secondary')}${btn('Discard', 'dghost')}</div></div>`)}<p class="text-micro text-ink-muted mt-2">Shown when changing section, tab or date, and on back/forward. Reload and tab close use the browser's own prompt. If the save fails, the dialog stays with an error line.</p></div></div>`;
+
+  // Diff
+  const diffRows = [['Chicken Nanban', '18', '18'], ['Nasi Goreng Charred', '14', '14'], ['Es Teh Manis', '12', '12'], ['Telur Ceplok', '9', '7'], ['Croffle Coklat', '2', '3'], ['BCA', 'Rp 1.420.000', 'Rp 1.420.000'], ['Soundbox', 'Rp 930.000', 'Rp 980.000'], ['Other', 'Rp 0', 'Rp 0']];
+  const diff = `<div class="grid lg:grid-cols-[1fr_300px] gap-6"><div class="rounded-xl border border-line shadow-overlay bg-surface p-6"><h4 class="font-display text-title-2">Replace Tuesday, 13 Oct?</h4><p class="text-table text-ink-muted mt-1.5">The saved day will be replaced by what you reviewed from the sheet. <b class="text-ink font-semibold">3 values will change.</b></p>${sw(true, 'Only show changes')}<div class="mt-4 rounded-md border border-line overflow-hidden">${table([{ h: '' }, { h: 'Saved', a: 'r' }, { h: '', w: '28px' }, { h: 'Sheet', a: 'r' }], diffRows.filter(r => r[1] !== r[2]).map(([n, a, b]) => ({ c: [`<span class="inline-flex items-center gap-2">${shape('warn', 'w-3 h-3 text-warn-mark')}${n}</span>`, `<span class="text-ink-muted line-through decoration-1">${a}</span>`, `<span class="text-ink-muted">→</span>`, `<b class="font-semibold">${b}</b>`], cls: 'bg-warn-tint/40' })), { pad: 'first:pl-4 last:pr-4' })}</div><div class="flex justify-end gap-2 mt-6">${btn('Keep reviewing', 'secondary', { focus: true })}${btn('Replace day', 'destructive')}</div></div>
+  <div class="text-small text-ink-muted space-y-2"><p>Each change is a row: Saved, then →, then Sheet. Changed rows carry the warn triangle and a light tint, the old value is struck through, and the new one is bold. Three cues, so it never relies on colour.</p><p>"Only show changes" is on by default; turning it off lists every field, with unchanged rows in plain text.</p><p>With no differences: "No values change." and the confirm becomes <b class="text-ink">Save anyway</b>.</p></div></div>`;
+
+  // Totals bar
+  const totals = `<div class="grid lg:grid-cols-[400px_1fr] gap-6 items-start"><div class="rounded-xl bg-canvas border border-line overflow-hidden"><div class="h-24 px-4 pt-3 text-micro text-ink-muted">…item list scrolls underneath…</div><div class="bg-surface border-t border-line shadow-raised px-4 py-3 flex items-center gap-3"><div class="flex-1 min-w-0"><div class="font-display text-fig-m">Rp 3.215.000</div><div class="text-small text-ink-muted flex items-center gap-1.5 whitespace-nowrap">101 portions · ${shape('warn', 'w-2.5 h-2.5 text-warn-mark')}<span class="text-warn font-medium">Unsaved</span></div></div>${btn('Complete day', 'primary', { size: 'lg' })}</div><div class="h-[64px] bg-surface border-t border-line flex items-center justify-center text-micro text-ink-muted">tab bar</div></div>
+  <ol class="text-small text-ink-muted space-y-2 list-decimal pl-4"><li><b class="text-ink">Payment total</b> (fig-m), updated live as items and payments change. Tabular, so it never jitters.</li><li><b class="text-ink">Portions and save state</b> on one line: Unsaved (warn) · Saving… (spinner) · Saved (check) · Ready to close.</li><li><b class="text-ink">Complete day</b>, the only primary on the screen. Save draft and No sales sit at the end of the page.</li><li>Sits directly on top of the tab bar and is part of the layout, not floating, so the last row is never hidden. After completing, the recap with Undo takes its place for 10 s.</li><li>Desktop and tablet have no bar: the same content is the bottom of the summary column.</li></ol></div>`;
+
+  // Tabs & toggles
+  const navParts = `<div class="space-y-6"><div>${lab('Page tabs · sub-sections')}${tabs(['Stock', 'To order', 'Orders', 'Usage recap'], 'To order')}</div><div class="flex flex-wrap gap-8"><div>${lab('Segmented · filter pills with counts')}${seg([['All', 12], ['Needs attention', 4], ['On order', 3], ['OK', 4]], 'Needs attention')}</div><div>${lab('Switch')}<div class="flex gap-6">${sw(true, 'Only items with a quantity')}${sw(false, 'Alert on')}</div></div></div></div>`;
+
+  $('comp').innerHTML = [
+    C('Buttons', 'Button · shadcn', buttons),
+    `<div class="grid lg:grid-cols-2 gap-6">${C('Text input and select', 'Input · Select · Command (combobox)', textInputs)}${C('Navigation parts', 'Tabs · ToggleGroup · Switch', navParts)}</div>`,
+    `<div class="grid lg:grid-cols-2 gap-6">${C('Money input', 'Input + our parseRupiah()', money)}${C('Quantity input', 'Input + our Stepper', qty)}</div>`,
+    C('Dates and periods', 'Button group · Popover · Calendar', dates),
+    C('Status chips', 'Badge — tone + shape + word', chips),
+    C('List rows', 'Our ListRow', rows),
+    C('Data table', 'Table · DropdownMenu', tbl),
+    C('Stat strip', 'Our StatStrip', stats),
+    C('Toasts', 'sonner', toasts),
+    C('Empty, loading and error', 'Our EmptyState · Skeleton · Alert', states3),
+    C('Inline notices and offline', 'Alert', banners),
+    C('Confirmations', 'AlertDialog · Dialog', dialogs),
+    C('Before / after diff', 'AlertDialog + our DiffTable', diff),
+    C('Daily close totals bar (phone)', 'Our CloseBar', totals)
+  ].join('');
+})();
+/* ============================================================
+   3 · APP SHELL + 4 · DESKTOP SCREENS
+   ============================================================ */
+const NAV = [['Home', 'home'], ['Daily close', 'close'], ['Reports', 'reports'], ['Stock', 'stock'], ['Setup', 'setup']];
+const SUBS = { 'Daily close': ['Daily close', 'History'], 'Reports': ['Revenue', 'Items', 'Weekday patterns'], 'Stock': ['Stock', 'To order', 'Orders', 'Usage recap'], 'Setup': ['Menu', 'Materials', 'Recipes', 'Suppliers', 'Import', 'Notifications', 'Data maintenance'] };
+const navBadge = n => n === 'Daily close' ? `<span class="ml-auto inline-flex text-info" title="Today is a draft">${shape('info', 'w-3 h-3')}<span class="sr-only">Today is a draft</span></span>` : n === 'Stock' ? `<span class="ml-auto h-6 min-w-[24px] px-2 rounded-full bg-warn-tint text-warn text-micro font-semibold flex items-center justify-center" aria-label="4 to order">4</span>` : '';
+
+const chrome = url => `<div class="h-9 bg-studio flex items-center px-4 gap-2 border-b border-line-strong"><span class="w-3 h-3 rounded-full bg-[#E9776B]"></span><span class="w-3 h-3 rounded-full bg-[#E9C46A]"></span><span class="w-3 h-3 rounded-full bg-[#8CC084]"></span><div class="mx-auto w-[440px] h-6 rounded-full bg-surface/80 text-[11.5px] text-ink-muted flex items-center justify-center">${url}</div><span class="w-[52px]"></span></div>`;
+const sidebar = active => `<aside class="w-[232px] flex-none border-r border-line bg-canvas px-4 pt-6 pb-5 flex flex-col" aria-label="Sections">
+  <div class="px-2">${lockup()}</div>
+  <nav class="mt-9 space-y-1">${NAV.map(([n, i]) => { const a = n === active; return `<a class="h-11 px-3.5 rounded-full flex items-center gap-3 text-[14.5px] ${a ? 'bg-brand-soft text-brand font-semibold' : 'text-ink hover:bg-sunken'}" ${a ? 'aria-current="page"' : ''}>${I(i, a ? '' : 'text-ink-muted')}${n}${navBadge(n)}</a>`; }).join('')}</nav>
+  <div class="mt-auto px-3 text-small text-ink-muted flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-ok"></span>Online</div>
+</aside>`;
+const rail = active => `<aside class="w-[88px] flex-none border-r border-line bg-canvas pt-5 pb-4 flex flex-col items-center" aria-label="Sections">${lockup({ mark: true, size: 'w-11 h-11' })}<nav class="mt-7 space-y-2 w-full px-2">${NAV.map(([n, i]) => { const a = n === active; return `<a class="flex flex-col items-center gap-1 py-1.5 relative" ${a ? 'aria-current="page"' : ''}><span class="w-14 h-9 rounded-full flex items-center justify-center ${a ? 'bg-brand-soft text-brand' : 'text-ink-muted'}">${I(i)}</span><span class="text-micro ${a ? 'text-brand font-semibold' : 'text-ink-muted font-medium'} leading-tight text-center">${n}</span>${n === 'Stock' ? '<span class="absolute top-0 right-3 h-5 min-w-[20px] px-1.5 rounded-full bg-warn-tint text-warn text-[11px] font-semibold flex items-center justify-center">4</span>' : ''}</a>`; }).join('')}</nav><div class="mt-auto flex flex-col items-center gap-1 text-[11px] text-ink-muted"><span class="w-2 h-2 rounded-full bg-ok"></span>Online</div></aside>`;
+
+const scrim = (inner, o = {}) => `<div class="absolute inset-0 ${o.top || 'top-9'} bg-ink/30 ${o.side ? '' : 'flex items-center justify-center p-10'}">${inner}</div>`;
+
+function desk(o) {
+  const W = o.w || 1280;
+  return `<figure><div class="fit" data-w="${W}"><div class="frame rounded-[14px] overflow-hidden bg-canvas relative" style="width:${W}px;${o.h ? `height:${o.h}px` : ''}">
+    ${chrome(o.url)}
+    <div class="flex" style="min-height:${o.minh || 820}px">${o.tablet ? rail(o.active) : sidebar(o.active)}
+      <main class="flex-1 min-w-0 ${o.tablet ? 'px-6 pt-6' : 'px-10 pt-8'} pb-12">
+        ${o.offline ? `<div class="-mx-10 -mt-8 mb-6 h-10 px-10 bg-warn-tint flex items-center gap-2.5 text-table">${I('wifioff', 'ico-sm text-warn')}<b class="font-semibold">Offline</b> — changes need a connection and aren't queued for later.</div>` : ''}
+        <div class="flex items-end justify-between gap-6"><div class="min-w-0">${o.eyebrow ? `<div class="text-small text-ink-muted mb-1">${o.eyebrow}</div>` : ''}<h1 class="font-display ${o.display ? 'text-display' : 'text-title-1'} text-brand">${o.title}</h1></div><div class="flex items-center gap-2 flex-none">${o.actions || ''}</div></div>
+        ${SUBS[o.active] ? `<div class="mt-5">${tabs(SUBS[o.active], o.tab || o.title, o.tablet ? {} : {})}</div>` : ''}
+        <div class="${SUBS[o.active] ? 'mt-7' : 'mt-8'}">${o.body}</div>
+      </main></div>
+    ${o.overlay || ''}
+  </div></div><figcaption class="text-center text-small text-ink-muted mt-3 max-w-[86ch] mx-auto px-2"><b class="text-ink font-semibold">${o.name}</b> — ${o.cap}</figcaption></figure>`;
+}
+const gridCells = (cells, cols) => `<div class="grid" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${cells.map((c, i) => `<div class="${i % cols ? 'border-l border-line' : ''} ${i >= cols ? 'border-t border-line' : ''} min-w-0">${c}</div>`).join('')}</div>`;
+const periodActions = (preset = 'This month') => `${seg(['This month', 'Last month', 'Last 30 days'], preset)}<button type="button" class="h-11 px-4 rounded-full border border-line-input bg-surface flex items-center gap-2 text-[13.5px] font-medium whitespace-nowrap">${I('cal', 'ico-sm text-accent')}1 Oct – 13 Oct 2026</button>`;
+
+/* ---------------- HOME ---------------- */
+function homeBody() {
+  const att = [['Today is saved as a draft', '101 portions · Rp 3.215.000 so far', 'Continue'], ['Sunday, 11 Oct: items entered, no revenue recorded', '148 portions, payments blank'], ['Monday, 5 Oct: revenue recorded, no items closed', 'Rp 2.870.000 in payments, no portions']];
+  const attention = card(`<div class="px-6 pt-5 pb-3">${cardHead(`Needs attention <span class="ml-1.5 align-[3px] inline-flex h-6 px-2.5 rounded-full bg-warn-tint text-warn text-micro font-semibold items-center">3</span>`, '', 'Each one opens the place to fix it.')}</div><div class="divide-y divide-line border-t border-line">${att.map(([t, m, a]) => `<a class="flex items-center gap-3.5 px-6 py-3.5 hover:bg-canvas">${shape('warn', 'w-3.5 h-3.5 text-warn-mark')}<div class="flex-1 min-w-0"><div class="text-body font-medium">${t}</div><div class="text-small text-ink-muted">${m}</div></div>${a ? `<span class="text-small font-semibold text-accent">${a}</span>` : ''}${I('cr', 'ico-sm text-ink-muted')}</a>`).join('')}</div>`);
+  const today = `<div class="rounded-xl bg-brand text-brand-on p-6 flex flex-col">
+    <div class="flex items-center justify-between"><span class="text-small text-brand-on/80">Today · Tue, 13 Oct</span><span class="h-6 px-2.5 rounded-full bg-brand-on/15 text-micro font-semibold flex items-center gap-1.5">${shape('info')}Draft</span></div>
+    <div class="font-display text-fig-xl mt-5">Rp 3.215.000</div>
+    <div class="text-small mt-2"><span class="text-[#A9D8B6] font-semibold">↑ 8,6%</span> <span class="text-brand-on/80">vs yesterday</span></div>
+    <div class="text-small text-brand-on/80 mt-0.5">101 portions · saved 12 min ago</div>
+    <div class="mt-auto pt-6">${btn('Continue tonight\'s close', 'inverse', { size: 'lg', trail: 'arrow', cls: 'w-full' })}</div></div>`;
+  const glance = card(`<div class="px-6 pt-5 pb-4 flex items-baseline justify-between">${cardHead('October at a glance')}<span class="text-small text-ink-muted">1–13 Oct · reported total includes selisih once the month ends</span></div><div class="border-t border-line">${gridCells([
+    statCell('This week · Mon 12 – Sun 18', 'Rp 6.175.000', { note: delta('3,3%', 'vs last week') }),
+    statCell('Reported month total', 'Rp 43.570.000', { note: delta('6,2%', 'vs same days of Sep') }),
+    statCell('Average per day', 'Rp 3.960.909', { note: '11 closed days' }),
+    statCell('Portions sold', '1.042', { note: 'Rp 53.657 per Main portion' }),
+    statCell('Best day', 'Rp 5.480.000', { note: 'Saturday, 10 Oct' }),
+    statCell('Best seller', 'Chicken Nanban', { note: '214 sold' }),
+    statCell('Days logged', '11 <span class="text-ink-muted text-[18px]">/ 13</span>', { note: 'of the days so far' }),
+    statCell('All-time reported total', 'Rp 612.840.000', { note: 'Includes selisih' })
+  ], 4)}</div>`, 'overflow-hidden');
+  const trend = card(`${cardHead('Sales trend', link('View recap'))}<div class="mt-4">${revChart({ w: 600, h: 210 })}</div><div class="mt-2">${chartLegend()}</div><p class="mt-4 pt-4 border-t border-line text-table flex items-center gap-2.5">${I('trend', 'ico-sm text-accent')}<span>Averaging <b class="font-semibold">Rp 3.960.909</b> a day, up 6,2% on the same days of September.</span></p>`, 'p-6');
+  const mix = card(`${cardHead('Payment mix', '', 'October so far, largest first')}<div class="mt-5 space-y-4">${PAYM.map(([m, v, p]) => `<div><div class="flex items-baseline justify-between text-table"><span>${m}</span><span><span class="text-ink-muted">${rp(v)}</span><b class="font-semibold inline-block w-12 text-right">${p}%</b></span></div><div class="h-1.5 rounded-full bg-sunken mt-1.5"><div class="h-full rounded-full bg-accent" style="width:${p / 45 * 100}%"></div></div></div>`).join('')}</div><div class="mt-5 pt-4 border-t border-line flex justify-between text-table font-semibold"><span>Total</span><span>${rp(MONTH.recorded)}</span></div>`, 'p-6');
+  const top = card(`${cardHead('Top items', link('View recap'), '1.042 portions sold this month')}<ol class="mt-4 divide-y divide-line">${TOP.map(([n, q], i) => `<li class="grid grid-cols-[28px_1fr_1fr_80px] items-center gap-4 h-11"><span class="font-display text-[17px] text-ink-muted">${i + 1}</span><span class="text-body font-medium truncate">${n}</span><span class="h-1.5 rounded-full bg-sunken"><span class="block h-full rounded-full ${i ? 'bg-chart-2' : 'bg-brand'}" style="width:${q / 214 * 100}%"></span></span><span class="text-right text-table"><b class="font-semibold">${q}</b> <span class="text-ink-muted">sold</span></span></li>`).join('')}</ol>`, 'p-6');
+  const cats = card(`${cardHead('Category mix')}<div class="mt-4 space-y-3.5">${[['Main', 812, 78], ['Add On', 142, 14], ['Other', 88, 8]].map(([c, n, p]) => `<div><div class="flex justify-between text-table"><span>${c}</span><span><span class="text-ink-muted">${n} sold ·</span> <b class="font-semibold">${p}%</b></span></div><div class="h-1.5 rounded-full bg-sunken mt-1.5"><div class="h-full rounded-full bg-accent" style="width:${p}%"></div></div></div>`).join('')}</div>`, 'p-6');
+  const comp = card(`${cardHead('Revenue composition')}<dl class="mt-4 text-table space-y-2"><div class="flex justify-between"><dt class="text-ink-muted">Recorded sales</dt><dd>Rp 43.570.000</dd></div><div class="flex justify-between"><dt class="text-ink-muted">Reconciliation adjustment</dt><dd>${chip('Pending', { tone: 'info' })}</dd></div><div class="flex justify-between pt-2.5 mt-1 border-t border-line font-semibold"><dt>Reported total</dt><dd>Rp 43.570.000</dd></div></dl><p class="text-small text-ink-muted mt-3">October is still open. Its selisih is added once the month ends.</p>`, 'p-6');
+  return `<div class="space-y-5"><div class="grid grid-cols-[1fr_340px] gap-5">${attention}${today}</div>${glance}<div class="grid grid-cols-[1fr_340px] gap-5">${trend}${mix}</div><div class="grid grid-cols-[1fr_340px] gap-5">${top}<div class="space-y-5">${cats}${comp}</div></div></div>`;
+}
+
+/* ---------------- DAILY CLOSE ---------------- */
+function itemList(o = {}) {
+  return Object.entries(ITEMS).map(([cat, rows]) => {
+    const sum = rows.reduce((a, r) => a + r[2], 0);
+    return `<section><div class="flex items-baseline justify-between px-6 pt-5 pb-2.5 border-b border-line"><h3 class="text-title-3">${cat}</h3><span class="text-small text-ink-muted">${sum} portions</span></div><div class="divide-y divide-line">${rows.map(([n, p, q, e]) => `<div class="flex items-center gap-4 px-6 ${o.touch ? 'py-2' : 'py-1.5'}"><span class="w-1.5 flex-none">${e && o.state === 'unsaved' ? '<span class="block w-1.5 h-1.5 rounded-full bg-warn-mark" title="Edited since last save"></span>' : ''}</span><div class="flex-1 min-w-0"><div class="text-body font-medium truncate">${n}</div>${p ? `<div class="text-small text-ink-muted">Ref. ${rp(p)}</div>` : `<div class="text-small text-warn font-medium flex items-center gap-1.5">${shape('warn', 'w-2.5 h-2.5 text-warn-mark')}Missing price reference</div>`}</div>${o.noAmount ? '' : `<div class="w-28 text-right text-table ${q && p ? 'text-ink-muted' : 'text-ink-faint'}">${q && p ? rp(q * p) : '—'}</div>`}${stepper(q, { touch: o.touch, name: n, focus: o.focus === n, typing: o.focus === n })}</div>`).join('')}</div></section>`;
+  }).join('');
+}
+function summaryCard(state, o = {}) {
+  const done = state === 'done';
+  const portions = `<div class="grid grid-cols-3 text-center rounded-lg border border-line overflow-hidden">${[['62', 'Main'], ['17', 'Add On'], ['22', 'Other']].map(([n, l], i) => `<div class="py-3 ${i ? 'border-l border-line' : ''}"><div class="font-display text-fig-m">${n}</div><div class="text-small text-ink-muted">${l}</div></div>`).join('')}</div><div class="text-small text-ink-muted text-center mt-2">All items: <b class="text-ink font-semibold">101 portions</b></div>`;
+  const pays = PAYD.map(([m, v]) => moneyRow(m, v ? nf(v) : '', { state: !done && m === 'BCA' && !o.noFocus ? 'focus' : '', text: o.touch ? 'text-body-lg' : 'text-body' })).join('');
+  const actions = done
+    ? `<div class="rounded-lg bg-brand text-brand-on p-4 relative overflow-hidden" role="status"><div class="flex items-start gap-3"><span class="w-8 h-8 rounded-full bg-brand-on/15 flex items-center justify-center flex-none">${I('check', 'ico-sm')}</span><div class="min-w-0"><div class="font-display text-[17px] font-medium">13 Oct closed</div><div class="text-small text-brand-on/80">101 portions · Rp 3.215.000 · stock updated</div></div></div><div class="mt-3">${btn('Undo · 7 s', 'inverse', { icon: 'undo', cls: 'w-full' })}</div><div class="absolute left-0 bottom-0 h-1 bg-brand-on/50" style="width:70%"></div></div><p class="text-small text-ink-muted mt-3 text-center">Reports and stock usage are updated.</p>`
+    : `<div class="space-y-2.5">${btn('Complete day', 'primary', { size: 'lg', cls: 'w-full' })}<div class="grid grid-cols-2 gap-2.5">${btn('Save draft', 'secondary')}${btn('No sales', 'ghost', { icon: 'ban' })}</div></div><div class="mt-4 pt-3 border-t border-line text-small"><div class="flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}Unsaved changes · 3 items edited</div><div class="text-ink-muted mt-0.5">Blank or 0 means this item did not sell.</div></div>`;
+  return card(`<div class="p-6 pb-5"><h2 class="font-display text-title-2">Tuesday, 13 Oct</h2><div class="mt-4">${portions}</div></div>
+    <div class="px-6 py-5 border-t border-line"><div class="flex flex-wrap items-baseline justify-between gap-x-3"><h3 class="text-title-3">Payments</h3><span class="text-small text-ink-muted">≈ Rp 3.347.000 at menu prices</span></div><div class="mt-3 space-y-2.5">${pays}</div><div class="grid grid-cols-[88px_1fr] gap-3 items-baseline mt-4 pt-3 border-t border-line"><span class="text-table font-semibold">Total</span><span class="font-display text-fig-m text-right pr-3.5">Rp 3.215.000</span></div><p class="text-micro text-ink-muted mt-2">Leave a method blank for zero. Saved together with the items.</p></div>
+    <div class="px-6 pt-5 pb-6 border-t border-line">${actions}</div>`, o.cls || '');
+}
+function closeBody(state, o = {}) {
+  const done = state === 'done';
+  return `<div class="flex items-center justify-between gap-4">${dateStepper('Tuesday, 13 Oct 2026', { today: true, nextOff: true, big: true })}<div class="flex items-center gap-3 text-small text-ink-muted">${chip(done ? 'Complete' : 'Unsaved changes', { lg: true })}<span>${done ? 'Manual · saved just now' : 'Manual · last saved 12 min ago'}</span></div></div>
+  ${done ? '' : `<div class="mt-4">${banner('info', 'Restored unsaved entries from 21:42.', 'Discard them')}</div>`}
+  <div class="grid ${o.tablet ? 'grid-cols-[1fr_300px]' : 'grid-cols-[1fr_340px]'} gap-6 mt-5 items-start">
+    ${card(`<div class="px-6 pt-5 pb-1 flex items-center gap-4">${search('Find an item', { cls: 'flex-1' })}${sw(false, 'Only items with a quantity')}</div>${itemList({ state, touch: o.tablet, noAmount: o.tablet })}<div class="h-3"></div>`, 'overflow-hidden')}
+    ${summaryCard(state, { touch: o.tablet })}
+  </div>`;
+}
+const closeActions = btn('Scan sheet', 'secondary', { icon: 'cam' });
+
+const reviewDialog = `<div role="dialog" aria-modal="true" class="w-[500px] rounded-xl bg-surface border border-line shadow-overlay p-7">
+  <h2 class="font-display text-title-2">Complete Tuesday, 13 Oct?</h2>
+  <p class="text-table text-ink-muted mt-1">101 portions · Rp 3.215.000 in payments</p>
+  <div class="mt-5 text-small font-semibold">1 thing to look at</div>
+  <ul class="mt-2 divide-y divide-line border-y border-line text-table">
+    <li class="py-3 flex gap-3">${shape('warn', 'w-3.5 h-3.5 text-warn-mark mt-0.5')}<div><b class="font-semibold">1 sold item has no price</b> (Croffle Coklat), so the estimate is partial.</div></li>
+    <li class="py-3 flex gap-3">${shape('ok', 'w-3.5 h-3.5 text-ok mt-0.5')}<div>Payments are within 4% of the items at menu prices (≈ Rp 3.347.000).</div></li>
+  </ul>
+  <p class="text-small text-ink-muted mt-4">Completing updates the daily close, the reports and stock usage. You can undo for 10 seconds.</p>
+  <div class="flex justify-end gap-2 mt-6">${btn('Back', 'secondary')}${btn('Complete anyway', 'primary', { focus: true })}</div></div>`;
+
+/* ---------------- SCAN SHEET ---------------- */
+function sheetPhoto(w = 150) {
+  const R = [['Nanban', 18], ['Nasgor', 14], ['Katsu', 11], ['Teriyaki', 9], ['Iga', 4], ['Aglio', 6], ['Telor cplk', 7], ['Ns putih', 5], ['Smbl matah', 3], ['Kopsus', 8], ['Es teh', 12]];
+  let s = `<rect width="150" height="200" fill="#3E3B35"/><g transform="rotate(-2.5 75 100)"><rect x="12" y="10" width="126" height="182" fill="#FBF7EE"/><text x="20" y="24" font-size="7" fill="#2A2A2A" class="hand">13/10  Charred</text>`;
+  R.forEach(([n, q], i) => { const y = 36 + i * 14.4; s += `<line x1="16" x2="134" y1="${y + 4}" y2="${y + 4}" stroke="#D8CFBD" stroke-width=".5"/><text x="18" y="${y + 1}" font-size="6.6" fill="#2A2A2A" class="hand">${n}</text>`; let x = 66; for (let g = 0; g < Math.floor(q / 5); g++) { for (let k = 0; k < 4; k++) s += `<line x1="${x + k * 2}" x2="${x + k * 2 + .3}" y1="${y - 5}" y2="${y + 2}" stroke="#1D3B8C" stroke-width=".7"/>`; s += `<line x1="${x - 1}" x2="${x + 7.5}" y1="${y + 1}" y2="${y - 4}" stroke="#1D3B8C" stroke-width=".7"/>`; x += 12; } for (let k = 0; k < q % 5; k++) s += `<line x1="${x + k * 2}" x2="${x + k * 2 + .3}" y1="${y - 5}" y2="${y + 2}" stroke="#1D3B8C" stroke-width=".7"/>`; });
+  s += `<text x="18" y="${36 + 11 * 14.4 + 4}" font-size="6.4" fill="#2A2A2A" class="hand">Cash 865  BCA 1420  Nobu 980</text></g>`;
+  return `<svg viewBox="0 0 150 200" width="${w}" height="${w * 4 / 3}" class="rounded-md block" role="img" aria-label="Photo of the handwritten tally sheet for 13 October">${s}</svg>`;
+}
+const readingDialog = `<div role="dialog" aria-modal="true" class="w-[600px] rounded-xl bg-surface border border-line shadow-overlay overflow-hidden">
+  <div class="flex items-center justify-between px-6 h-16 border-b border-line"><h2 class="font-display text-title-2">Scan sheet</h2>${ibtn('x', 'Close (unavailable while reading)', { disabled: true, cls: 'text-ink-faint' })}</div>
+  <div class="p-6 flex gap-6"><div class="flex-none">${sheetPhoto(150)}<button type="button" class="mt-2 text-small font-semibold text-accent inline-flex items-center gap-1">${I('zoom', 'ico-sm')}View full photo</button></div>
+    <div class="flex-1 min-w-0 pt-1"><div class="flex items-center gap-2.5 text-title-3">${spin('w-5 h-5 text-accent')}Reading sheet… <span class="text-ink-muted font-normal">0:24</span></div><p class="text-table text-ink-muted mt-2">Counting tally marks usually takes 30–60 seconds. If you cancel, the photo is kept.</p>
+      <div class="mt-5 h-1.5 rounded-full bg-sunken overflow-hidden"><div class="h-full w-2/5 rounded-full bg-accent"></div></div>
+      <ol class="mt-5 space-y-2.5 text-table"><li class="flex items-center gap-2.5">${shape('ok', 'w-3.5 h-3.5 text-ok')}Photo prepared</li><li class="flex items-center gap-2.5 font-medium">${shape('info', 'w-3.5 h-3.5 text-info')}Reading items and payments</li><li class="flex items-center gap-2.5 text-ink-muted">${shape('neutral', 'w-3.5 h-3.5')}Review before saving</li></ol></div></div>
+  <div class="px-6 py-4 border-t border-line flex justify-end">${btn('Cancel scan', 'secondary')}</div></div>`;
+const SCAN = [['Nanban', 'Chicken Nanban', 18], ['Nasgor', 'Nasi Goreng Charred', 14], ['Katsu', 'Chicken Katsu Curry', 11], ['Teriyaki', 'Beef Teriyaki Bowl', 9], ['Iga', 'Iga Bakar Madu', 4], ['Aglio', 'Spaghetti Aglio Olio', 6], ['Telor cplk', null, 7], ['Ns putih', 'Nasi Putih', 5], ['Smbl matah', 'Sambal Matah', 3], ['Kopsus', 'Kopi Susu Aren', 8], ['Es teh', 'Es Teh Manis', 7], ['Es teh', 'Es Teh Manis', 5], ['Croffle', 'Croffle Coklat', 3]];
+const SCANPAY = [['Cash', '865.000', 'Sheet reads Rp 865.000'], ['BCA', '1.420.000', 'Sheet reads Rp 1.420.000'], ['Soundbox', '980.000', 'Nobu on the sheet: Rp 980.000'], ['Other', '', 'Not on the sheet']];
+function reviewSheet(o = {}) {
+  const rows = SCAN.map(([t, m, q], i) => `<div class="grid grid-cols-[128px_1fr_80px_36px] gap-3 items-center px-6 py-2 ${m ? '' : 'bg-danger-tint/40'}"><span class="text-small text-ink-muted truncate">Sheet: <span class="text-ink">${t}</span></span>${m ? select(m, { h: 'h-10', text: 'text-table' }) : select('', { h: 'h-10', text: 'text-table', ph: 'Choose a menu item', state: 'error' })}${input({ value: q, align: 'right', h: 'h-10', text: 'text-table' })}${ibtn('x', `Remove row ${t}`, { size: 'sm' })}</div>${m ? '' : `<div class="px-6 pb-2 -mt-1 bg-danger-tint/40 text-micro text-danger font-semibold flex items-center gap-1.5 pl-[164px]">${shape('danger', 'w-2.5 h-2.5')}Choose the menu item for this row.</div>`}${i === 11 ? `<div class="px-6 py-2 text-small text-info flex items-center gap-2 pl-[164px]">${shape('info', 'w-3 h-3')}Rows for Es Teh Manis were added together.</div>` : ''}`).join('');
+  return `<div role="dialog" aria-modal="true" class="absolute right-0 ${o.top || 'top-9'} bottom-0 w-[680px] bg-surface shadow-overlay border-l border-line flex flex-col">
+    <div class="flex items-center justify-between px-6 h-[68px] border-b border-line flex-none"><div><h2 class="font-display text-title-2">Review scan</h2><p class="text-small text-ink-muted">Sheet read. Review before saving.</p></div>${ibtn('x', 'Close')}</div>
+    <div class="flex-1 overflow-hidden">
+      <div class="px-6 pt-5 flex gap-4 items-end"><div class="flex-1">${field('Date on the sheet', `<button type="button" class="h-11 w-full rounded-md border border-line-input bg-surface px-3.5 flex items-center gap-2 text-body">${I('cal', 'ico-sm text-ink-muted')}Tuesday, 13 Oct 2026</button>`)}</div><div class="flex items-center gap-3">${sheetPhoto(44)}<button type="button" class="text-small font-semibold text-accent">View photo</button></div></div>
+      <div class="px-6 mt-4">${banner('warn', '13 Oct already has a saved day. Saving replaces its items and payments, and you will see what changes first.')}</div>
+      <div class="mt-5 flex items-baseline justify-between px-6 pb-2.5 border-b border-line"><h3 class="text-title-3">Items</h3><span class="text-small text-ink-muted">11 items · 100 portions · <span class="text-danger font-semibold">1 row needs a match</span></span></div>
+      <div class="divide-y divide-line">${rows}</div>
+      <div class="px-6 py-3">${btn('Add a row by hand', 'ghost', { size: 'sm', icon: 'plus' })}</div>
+      <div class="mt-2 flex items-baseline justify-between px-6 pb-2.5 border-b border-line"><h3 class="text-title-3">Payments</h3><span class="text-small text-ink-muted">Total Rp 3.265.000</span></div>
+      <div class="px-6 py-4 space-y-3">${SCANPAY.map(([m, v, n]) => moneyRow(m, v, { note: n })).join('')}</div>
+    </div>
+    <div class="flex-none px-6 py-4 border-t border-line shadow-raised bg-surface flex items-center gap-3"><span class="flex-1 text-small text-danger font-semibold flex items-center gap-1.5">${shape('danger', 'w-3 h-3')}Match 1 row before saving.</span>${btn('Close', 'secondary')}${btn('Replace day…', 'primary', { disabled: true })}</div></div>`;
+}
+
+/* ---------------- HISTORY ---------------- */
+function historyBody() {
+  const d12 = [['Chicken Nanban', 'Main', 14], ['Nasi Goreng Charred', 'Main', 12], ['Chicken Katsu Curry', 'Main', 10], ['Beef Teriyaki Bowl', 'Main', 7], ['Iga Bakar Madu', 'Main', 3], ['Spaghetti Aglio Olio', 'Main', 5], ['Nasi Ayam Sambal Matah', 'Main', 2], ['Telur Ceplok', 'Add On', 6], ['Nasi Putih', 'Add On', 4], ['Sambal Matah', 'Add On', 2], ['Kopi Susu Aren', 'Other', 9], ['Es Teh Manis', 'Other', 7], ['Croffle Coklat', 'Other', 3]];
+  const d11 = [['Chicken Nanban', 'Main', 13], ['Nasi Goreng Charred', 'Main', 19], ['Chicken Katsu Curry', 'Main', 16]];
+  const band = (d, n) => `<div class="flex items-center justify-between"><b class="font-semibold">${d}</b><span class="flex items-center gap-4 text-small"><span class="text-ink-muted">${n} portions</span>${link('Open day', { arrow: true })}</span></div>`;
+  const r = ([i, c, q]) => [i, `<span class="text-ink-muted">${c}</span>`, `<b class="font-semibold">${q}</b>`, '<span class="text-ink-muted">Daily close</span>'];
+  return `<p class="text-small text-ink-muted -mt-2 mb-5">Read-only. To change a day, open it in Daily close.</p>
+  <div class="flex items-center justify-between gap-4 flex-wrap">${periodStep('Week', 'Week of Monday, 6 Oct – Sunday, 12 Oct')}<div class="flex items-center gap-2">${search('Item or category', { cls: 'w-56' })}${select('All categories', { h: 'h-10', text: 'text-table', cls: 'w-44' })}${btn('Dates', 'secondary', { size: 'sm', icon: 'cal' })}</div></div>
+  ${card(`<div class="px-6 py-4 flex items-center justify-between border-b border-line"><span class="text-table"><b class="font-semibold">78 entries</b> <span class="text-ink-muted">in this week · 728 portions</span></span>${btn('Export CSV', 'ghost', { size: 'sm', icon: 'down' })}</div>${table([{ h: 'Item', sort: 1 }, { h: 'Category', sort: 1, w: '180px' }, { h: 'Qty', a: 'r', sort: 1, w: '100px' }, { h: 'Source', w: '180px' }], [{ band: band('Monday, 12 Oct', 84) }, ...d12.map(r), { band: band('Sunday, 11 Oct', 148) }, ...d11.map(r)])}<div class="px-6 py-3 border-t border-line text-small text-ink-muted">Sorted by date, newest first. Showing 16 of 78.</div>`, 'mt-5 overflow-hidden')}`;
+}
+
+/* ---------------- REPORTS ---------------- */
+function revenueBody() {
+  const eq = card(`<div class="grid grid-cols-[1fr_48px_1fr_48px_1fr] items-stretch">
+    <div class="px-6 py-5"><div class="text-small text-ink-muted">Recorded sales</div><div class="font-display text-fig-l mt-1">Rp 43.570.000</div><div class="text-small text-ink-muted mt-1">11 entries</div></div>
+    <div class="flex items-center justify-center font-display text-[22px] text-ink-muted">+</div>
+    <div class="px-6 py-5"><div class="text-small text-ink-muted">Selisih</div><div class="font-display text-fig-l mt-1 text-ink-muted">Rp 0</div><div class="text-small text-info mt-1 flex items-center gap-1.5">${shape('info', 'w-3 h-3')}Counts after October 2026 ends</div></div>
+    <div class="flex items-center justify-center font-display text-[22px] text-ink-muted">=</div>
+    <div class="px-6 py-5 bg-brand-soft"><div class="text-small text-brand">Reported total</div><div class="font-display text-fig-l mt-1 text-brand">Rp 43.570.000</div><div class="text-small text-ink-muted mt-1">Recorded sales plus selisih</div></div></div>`, 'overflow-hidden');
+  const daily = card(`${cardHead('Daily revenue', '', 'Closed days only — today is in progress')}<div class="grid grid-cols-3 gap-4 mt-4 text-small">${[['Average', 'Rp 3.960.909', ''], ['Lowest', 'Rp 2.870.000', 'Mon, 5 Oct'], ['Highest', 'Rp 5.480.000', 'Sat, 10 Oct']].map(([l, v, d]) => `<div><div class="text-ink-muted">${l}</div><div class="text-table font-semibold mt-0.5">${v}</div>${d ? `<div class="text-ink-muted">${d}</div>` : ''}</div>`).join('')}</div><div class="mt-5">${revChart({ w: 600, h: 220 })}</div><div class="mt-2">${chartLegend()}</div><p class="mt-4 pt-4 border-t border-line text-table flex items-start gap-2.5">${I('trend', 'ico-sm text-accent mt-0.5')}<span>Monday, 12 Oct recorded <b class="font-semibold">Rp 2.960.000</b>, down 46% on Saturday, 10 Oct.</span></p>`, 'p-6');
+  const recon = card(`${cardHead('Monthly reconciliation', '', 'The bank difference for one month. It counts only once that month is over.')}<div class="mt-5 space-y-3.5">${field('Month', select('October 2026'))}${field('Amount', input({ prefix: 'Rp', ph: '0', align: 'right' }), { hint: 'Plus = the bank received more. Minus = less.' })}${field('Note', input({ ph: 'e.g. bank fee, transfer delay' }), { opt: true })}${btn('Save selisih', 'secondary', { cls: 'w-full' })}<p class="text-small text-ink-muted text-center">Nothing saved for this month yet.</p></div><div class="mt-5 pt-4 border-t border-line"><div class="text-small font-semibold mb-1">Earlier months</div><dl class="text-table divide-y divide-line">${[['September 2026', '− Rp 185.000'], ['August 2026', '+ Rp 42.500'], ['July 2026', '− Rp 96.000']].map(([m, v]) => `<div class="flex justify-between py-2"><dt class="text-ink-muted">${m}</dt><dd>${v}</dd></div>`).join('')}</dl></div>`, 'p-6');
+  const rows = [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map(d => { const w = DAYS[d - 1][1], lbl = `${w}, ${d} Oct`; if (!SPLIT[d]) return { c: [lbl, `<span class="inline-flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}No revenue recorded</span>`, '<span class="text-ink-muted">Items closed, payments blank</span>', rowMenu(`Actions for ${lbl}`)], span: [1, 5] }; const s = SPLIT[d]; return [lbl, ...s.map(nf), `<b class="font-semibold">${nf(s.reduce((a, b) => a + b, 0))}</b>`, d === 10 ? '<span class="text-ink-muted">Arisan group, 2 tables</span>' : '', rowMenu(`Actions for ${lbl}`)]; });
+  const days = card(`<div class="px-6 pt-5 pb-4">${cardHead('Days in this period', `${btn('Daily rows CSV', 'ghost', { size: 'sm', icon: 'down' })}${btn('Monthly totals CSV', 'ghost', { size: 'sm', icon: 'down' })}`)}</div>${table([{ h: 'Date', sort: 'on' }, { h: 'BCA', a: 'r' }, { h: 'Cash', a: 'r' }, { h: 'Soundbox', a: 'r' }, { h: 'Other', a: 'r' }, { h: 'Total · Rp', a: 'r' }, { h: 'Note', w: '220px' }, { h: '<span class="sr-only">Actions</span>', w: '56px' }], rows, { foot: `<tr class="bg-sunken h-11 font-semibold border-t border-line"><td class="pl-6 px-3 whitespace-nowrap">Recorded sales in this period</td><td class="px-3 text-right">19.550.000</td><td class="px-3 text-right">11.755.000</td><td class="px-3 text-right">10.745.000</td><td class="px-3 text-right">1.520.000</td><td class="px-3 text-right whitespace-nowrap">Rp 43.570.000</td><td colspan="2"></td></tr>` })}`, 'overflow-hidden');
+  return `<h2 class="font-display text-title-2 mb-4">Revenue for 1 Oct – 13 Oct 2026</h2><div class="space-y-5">${eq}<div class="grid grid-cols-[1fr_320px] gap-5 items-start">${daily}${recon}</div>${days}</div>`;
+}
+function itemsBody() {
+  const per = [17, 21, 26, 24, null, 16, 15, 18, 22, 28, 13, 14, null];
+  const W = 460, H = 170, pl = 26, pb = 24, pt = 10, step = (W - pl) / 13, y = v => pt + (H - pt - pb) * (1 - v / 30);
+  let s = [0, 10, 20, 30].map(v => `<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="#E6DDCD"/><text x="${pl - 6}" y="${y(v) + 4}" font-size="11" text-anchor="end" fill="#5E655D" font-family="Figtree">${v}</text>`).join('');
+  per.forEach((q, i) => { const cx = pl + step * i + step / 2; s += `<text x="${cx}" y="${H - 6}" font-size="11" text-anchor="middle" fill="#5E655D" font-family="Figtree">${i + 1}</text>`; s += q == null ? `<line x1="${cx - 8}" x2="${cx + 8}" y1="${y(0) - 1}" y2="${y(0) - 1}" stroke="#9A8E79" stroke-width="2" stroke-dasharray="2 3"/>` : `<rect x="${cx - 9}" y="${y(q)}" width="18" height="${y(0) - y(q)}" rx="4" fill="#2F6B50" fill-opacity=".78"/>`; });
+  const chart = `<svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Chicken Nanban portions per day, 1 to 13 October">${s}</svg>`;
+  const detailRows = per.map((q, i) => { const d = i + 1, w = DAYS[i][1]; return [`${w}, ${d} Oct`, q == null ? '<span class="text-ink-muted">—</span>' : `<b class="font-semibold">${q}</b>`, chip(q == null ? 'Not logged' : 'Sold')]; }).reverse();
+  const detail = card(`<div class="px-6 pt-5 pb-4 flex items-start justify-between gap-4"><div>${cardHead('Item detail')}</div><div class="flex items-center gap-2">${select('Chicken Nanban', { h: 'h-10', text: 'text-table', cls: 'w-60' })}${btn('Export CSV', 'ghost', { size: 'sm', icon: 'down' })}</div></div>
+    <div class="border-y border-line">${gridCells([statCell('Total sold', '214', { size: 'text-fig-m' }), statCell('Average / logged day', '19,5', { size: 'text-fig-m' }), statCell('Sales days', '11', { size: 'text-fig-m' }), statCell('No-sales days', '0', { size: 'text-fig-m' }), statCell('Unlogged days', '2', { size: 'text-fig-m', note: '5 Oct, 13 Oct' })], 5)}</div>
+    <div class="grid grid-cols-[1fr_340px]"><div class="p-6">${chart}<p class="mt-3 text-table flex items-start gap-2.5">${I('trend', 'ico-sm text-accent mt-0.5')}<span>214 portions across 11 logged days, including 0 no-sales days.</span></p></div><div class="border-l border-line">${table([{ h: 'Date' }, { h: 'Qty', a: 'r' }, { h: 'Day status' }], detailRows, { pad: 'first:pl-5 last:pr-5' })}</div></div>`, 'overflow-hidden');
+  const topS = card(`${cardHead('Top sellers')}<ol class="mt-3 divide-y divide-line">${TOP.map(([n, q], i) => `<li class="flex items-center gap-3 h-10 text-table"><span class="w-5 font-display text-ink-muted">${i + 1}</span><span class="flex-1 truncate">${n}</span><b class="font-semibold">${q}</b></li>`).join('')}</ol><p class="text-small text-ink-muted mt-3 pt-3 border-t border-line">Chicken Nanban leads with 214 portions.</p>`, 'p-6');
+  const mainS = card(`${cardHead('Main portions, stepped', '', 'Uses its own steps, not the report period.')}<div class="mt-4">${seg(['Day', 'Week', 'Month'], 'Week', { size: 'sm' })}</div><div class="mt-3 flex items-center gap-1">${ibtn('cl', 'Previous week', { size: 'sm', cls: 'border border-line-input' })}<span class="flex-1 text-center text-table font-medium">6 Oct – 12 Oct</span>${ibtn('cr', 'Next week', { size: 'sm', cls: 'border border-line-input' })}</div><div class="mt-5 text-center"><div class="font-display text-fig-xl">436</div><div class="text-small text-ink-muted">Main portions</div></div><div class="mt-4 text-center">${btn('Back to today', 'ghost', { size: 'sm' })}</div>`, 'p-6');
+  const recap = card(`${cardHead('Recap', btn('CSV', 'ghost', { size: 'sm', icon: 'down' }))}<div class="mt-4 flex items-center gap-2">${seg(['By day', 'By week', 'By month'], 'By week', { size: 'sm' })}</div><div class="mt-2">${select('All items', { h: 'h-10', text: 'text-table' })}</div><div class="mt-3 divide-y divide-line text-table">${[['Week of 29 Sep', '381', ''], ['Week of 6 Oct', '560', ''], ['Week of 13 Oct', '101', 'Draft']].map(([p, q, n]) => `<div class="flex items-center justify-between h-10"><span>${p}</span><span class="flex items-center gap-2">${n ? chip(n) : ''}<b class="font-semibold">${q}</b></span></div>`).join('')}</div><p class="text-small text-ink-muted mt-3 pt-3 border-t border-line">560 portions in the week of 6 Oct, up 47% on the week before.</p>`, 'p-6');
+  return `<div class="space-y-5">${strip([statCell('Total portions', '1.042', { note: '1 Oct – 13 Oct' }), statCell('Logged days', '11', { note: 'Includes explicit no-sales days' }), statCell('Main per selling day', '73,8', { note: 'Best: Sat, 10 Oct · 104' }), statCell('Top item', 'Chicken Nanban', { note: '214 portions' })], 4)}${detail}<div class="grid grid-cols-3 gap-5 items-start">${topS}${mainS}${recap}</div></div>`;
+}
+
+/* ---------------- STOCK ---------------- */
+const pushPill = `<span class="h-11 pl-4 pr-1 rounded-full border border-line bg-surface flex items-center gap-2 text-small whitespace-nowrap">${I('bell', 'ico-sm text-ink-muted')}Alerts on this device: <b class="font-semibold">Off</b>${btn('Turn on', 'ghost', { size: 'sm' })}</span>`;
+function stockBody() {
+  const needs = s => ['Negative', 'Out', 'To order'].includes(s);
+  const rows = STOCK.map(([n, u, q, al, oo, s]) => [`<span class="font-medium">${n}</span>`, `<span class="${q < 0 ? 'text-danger font-semibold' : ''}">${nf(q)} ${u}</span>`, al ? `<span class="text-ink-muted">${nf(al)} ${u}</span>` : '<span class="text-ink-muted">—</span>', oo ? `${nf(oo)} ${u}` : '<span class="text-ink-muted">—</span>', chip(s), `<div class="flex justify-end gap-1">${needs(s) ? btn('Order', 'secondary', { size: 'sm' }) : ''}${btn('Count', 'ghost', { size: 'sm' })}</div>`]);
+  const mv = [['12 Oct', 'Chicken thigh fillet', 'Recipe consumption', '−2.100 g', 'Daily close', 'Recipe use from daily close 12 Oct'], ['12 Oct', 'Saus Teriyaki', 'Recipe consumption', '−210 ml', 'Daily close', 'Recipe use from daily close 12 Oct'], ['12 Oct', 'Beras pulen', 'Stock count', '−200 g', 'Weekly count', 'Stock count 12 Oct'], ['12 Oct', 'Telur ayam', 'Waste / spoilage', '−6 pcs', 'Cracked in delivery', 'Manual entry'], ['12 Oct', 'Daging sapi slice', 'Receiving', '+3.000 g', 'Stock In', 'Delivery against a supplier order'], ['9 Oct', 'Kewpie Mayo', 'Receiving', '+3.000 ml', 'Stock In', 'Delivery against a supplier order']];
+  return `<div class="space-y-5">${strip([statCell('To order', '4', { shape: 'warn', note: 'At or below alert level' }), statCell('Materials on order', '3', { note: '3 open supplier orders' }), statCell('Negative', '1', { shape: 'danger', tone: 'text-danger', note: 'Warnings only' }), statCell('Last count', 'Mon, 12 Oct', { note: '24 materials counted' })], 4)}
+  ${banner('danger', '<b class="font-semibold">Saus Teriyaki is below zero.</b> You can keep recording movements while the balance is negative.')}
+  ${card(`<div class="px-6 pt-5 pb-4 space-y-4">${cardHead('Current stock', search('Search materials', { cls: 'w-60' }))}${seg([['All', 12], ['Needs attention', 4], ['To order', 2], ['On order', 3], ['OK', 4], ['No alert', 1]], 'All', { size: 'sm' })}</div>${table([{ h: 'Material', sort: 1 }, { h: 'On hand', a: 'r' }, { h: 'Alert level', a: 'r' }, { h: 'On order', a: 'r' }, { h: 'Status', sort: 'on', w: '150px' }, { h: '<span class="sr-only">Actions</span>', a: 'r', w: '170px' }], rows)}`, 'overflow-hidden')}
+  ${card(`<div class="px-6 pt-5 pb-4 flex items-center justify-between gap-4">${cardHead('Movement audit trail')}<div class="flex items-center gap-2">${select('All types', { h: 'h-10', text: 'text-table', cls: 'w-40' })}${select('All materials', { h: 'h-10', text: 'text-table', cls: 'w-44' })}${btn('Dates', 'secondary', { size: 'sm', icon: 'cal' })}${ibtn('refresh', 'Refresh', { size: 'sm', cls: 'border border-line-input' })}</div></div>${table([{ h: 'Date', w: '90px' }, { h: 'Material' }, { h: 'Type' }, { h: 'Quantity', a: 'r' }, { h: 'Reason' }, { h: 'Source' }], mv.map(([d, m, t, q, r, s]) => [d, m, `<span class="text-ink-muted">${t}</span>`, `<b class="font-semibold">${q}</b>`, r, `<span class="text-ink-muted">${s}</span>`]))}<div class="px-6 py-3 border-t border-line flex items-center justify-between text-small text-ink-muted"><span>Showing 6 of 212 movements</span>${btn('Show 50 more', 'ghost', { size: 'sm' })}</div>`, 'overflow-hidden')}</div>`;
+}
+function toOrderBody() {
+  const gap = (q, al, u) => al == null ? '<span class="text-ink-muted whitespace-nowrap">No alert level</span>' : q < al ? `${nf(al - q)} ${u} below` : q === al ? 'At alert level' : `<span class="text-ink-muted">${nf(q - al)} ${u} above</span>`;
+  const st = s => ['Negative', 'Out'].includes(s) ? 'To order' : s;
+  const order = ['To order', 'On order', 'OK', 'No alert level'];
+  const rows = [...STOCK].sort((a, b) => order.indexOf(st(a[5])) - order.indexOf(st(b[5]))).flatMap(([n, u, q, al, oo, s, oq, sup]) => [[`<span class="font-medium whitespace-nowrap">${n}</span>`, `<span class="${q < 0 ? 'text-danger font-semibold' : ''}">${nf(q)} ${u}</span>`, al ? `<span class="text-ink-muted">${nf(al)} ${u}</span>` : '<span class="text-ink-muted">—</span>', gap(q, al, u), oq ? `${nf(oq)} ${u}` : `<span class="inline-flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-2.5 h-2.5 text-warn-mark')}Not set</span>`, sup ? `<span class="block max-w-[150px] truncate" title="${sup}">${sup}</span>` : '<span class="text-ink-muted whitespace-nowrap">No preferred supplier</span>', chip(st(s)), st(s) === 'To order' ? btn('Create order', 'secondary', { size: 'sm' }) : ''], ...(oq == null ? [{ band: `<span class="inline-flex items-center gap-2 text-small text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}${n}: set a valid order quantity to enable push alerts.</span>`, rowCls: 'bg-warn-tint/40' }] : [])]);
+  return `<div class="space-y-5">${strip([statCell('Items to order', '4', { shape: 'warn' }), statCell('Orders on the way', '3'), statCell('Scheduled stock-ins', '2', { note: 'Active schedules' }), statCell('Orders in the last 7 days', '3')], 4)}
+  ${card(`<div class="px-6 pt-5 pb-4 flex items-center justify-between gap-4">${cardHead('Reorder overview')}${seg([['All', 12], ['To order', 4], ['On order', 3], ['OK', 4], ['No alert level', 1]], 'All', { size: 'sm' })}</div>${table([{ h: 'Material', sort: 1 }, { h: 'Current', a: 'r', sort: 1 }, { h: 'Alert level', a: 'r' }, { h: 'Gap to alert', a: 'r' }, { h: 'Order qty', a: 'r' }, { h: 'Preferred supplier', sort: 1 }, { h: 'Status', sort: 'on' }, { h: '<span class="sr-only">Actions</span>', a: 'r' }], rows, { px: 'px-2', pad: 'first:pl-6 last:pr-6' })}`, 'overflow-hidden')}</div>`;
+}
+function ordersBody() {
+  const O = [['SD-1013-01', 'UD Beras Makmur', 'Waiting to be confirmed', 'Scheduled delivery · Beras pulen × 10.000 g · today, 08:00'], ['PO-1013-02', 'Toko Telur Pak Darmo', 'Ordered / On the Way', 'Telur ayam × 60 pcs · expected Wed, 14 Oct'], ['PO-1010-01', 'Pasar Segar Daging', 'Partially Received', 'Daging sapi slice · 3.000 of 4.000 g received'], ['PO-1009-03', 'PT Sumber Rasa Distribusi', 'Received', '2 lines · received Fri, 9 Oct'], ['PO-1006-01', 'Toko Aren Jaya', 'Cancelled', 'Gula aren × 2.000 g · ordered Tue, 6 Oct']];
+  const list = card(`<div class="divide-y divide-line">${O.map(([r, s, st, m], i) => `<a class="block px-5 py-3.5 ${i === 2 ? 'bg-brand-soft/60' : 'hover:bg-canvas'}" ${i === 2 ? 'aria-current="true"' : ''}><div class="flex items-center justify-between gap-2"><span class="text-table font-semibold">${r}</span>${chip(st)}</div><div class="text-table mt-0.5">${s}</div><div class="text-small text-ink-muted">${m}</div></a>`).join('')}</div>`, 'overflow-hidden');
+  const detail = card(`<div class="px-6 pt-5 pb-4"><div class="flex items-center gap-3"><h2 class="font-display text-title-2 whitespace-nowrap">PO-1010-01</h2>${chip('Partially Received', { lg: true })}</div><p class="text-table text-ink-muted mt-1">Pasar Segar Daging · ordered Sat, 10 Oct · expected Mon, 12 Oct</p><div class="flex items-center gap-1 mt-3 -ml-1">${btn('WhatsApp', 'secondary', { size: 'sm', icon: 'chat' })}${btn('Copy text', 'ghost', { size: 'sm', icon: 'copy' })}${btn('Edit', 'ghost', { size: 'sm', icon: 'edit' })}${ibtn('more', 'More actions for PO-1010-01', { size: 'sm' })}</div></div>
+    ${table([{ h: 'Material' }, { h: 'Ordered', a: 'r' }, { h: 'Received', a: 'r' }, { h: 'Unit cost', a: 'r' }, { h: 'Line total', a: 'r' }], [['Daging sapi slice', '4.000 g', '3.000 g', 'Rp 145 / g', 'Rp 580.000']], { foot: `<tr class="h-10 font-semibold border-t border-line"><td class="pl-6" colspan="4">Total cost · IDR</td><td class="pr-6 text-right">Rp 580.000</td></tr>` })}
+    <div class="mx-6 my-5 rounded-lg bg-canvas border border-line p-5"><div class="flex items-baseline justify-between"><h3 class="text-title-3">Receive</h3><span class="text-small text-ink-muted">Stock goes up when you record the receipt.</span></div><div class="mt-4 w-[200px]">${field('Received date', `<button type="button" class="h-11 w-full rounded-md border border-line-input bg-surface px-3.5 flex items-center gap-2 text-body">${I('cal', 'ico-sm text-ink-muted')}13 Oct 2026</button>`)}</div><div class="mt-4 rounded-md border border-line bg-surface overflow-hidden">${table([{ h: 'Line' }, { h: 'Remaining', a: 'r' }, { h: 'Received now', a: 'r', w: '170px' }], [{ c: ['Daging sapi slice', '1.000 g', input({ value: '1.000', suffix: 'g', align: 'right', state: 'focus', h: 'h-9', text: 'text-table' })], cls: '' }], { pad: 'first:pl-4 last:pr-2', comfy: true })}</div><div class="flex justify-end gap-2 mt-5">${btn('Cancel', 'ghost')}${btn('Record receipt', 'primary')}</div></div>
+    <div class="px-6 pb-6"><h3 class="text-title-3">Activity <span class="text-small text-ink-muted font-normal">· 3</span></h3><ol class="mt-2 text-table divide-y divide-line">${[['12 Oct, 18:40', 'Partial receipt: 3.000 g Daging sapi slice'], ['10 Oct, 10:05', 'Order text sent via WhatsApp'], ['10 Oct, 10:02', 'Order created']].map(([t, e]) => `<li class="py-2 grid grid-cols-[120px_1fr] gap-3"><span class="text-ink-muted">${t}</span><span>${e}</span></li>`).join('')}</ol></div>`, 'overflow-hidden');
+  return `<div class="flex items-center gap-2 flex-wrap">${select('All suppliers', { h: 'h-10', text: 'text-table', cls: 'w-48' })}${select('All materials', { h: 'h-10', text: 'text-table', cls: 'w-44' })}${seg(['On the Way', 'Open', 'All'], 'All', { size: 'sm' })}${btn('Dates', 'secondary', { size: 'sm', icon: 'cal' })}</div><div class="grid grid-cols-[360px_1fr] gap-5 mt-5 items-start">${list}${detail}</div>`;
+}
+function usageBody() {
+  const days = [['Tue, 13 Oct', 'Draft · not deducted', 'Waiting for close', '101', '—', '—'], ['Mon, 12 Oct', 'Complete', 'Calculated with exclusions', '84', '23', '0'], ['Sun, 11 Oct', 'Complete', 'Needs review', '148', '31', '2'], ['Sat, 10 Oct', 'Complete', 'Calculated', '141', '33', '0'], ['Fri, 9 Oct', 'Complete', 'Calculated', '118', '30', '0'], ['Thu, 8 Oct', 'Complete', 'Calculated', '92', '26', '0'], ['Wed, 7 Oct', 'Complete', 'Calculated', '86', '24', '0']];
+  const lines = [['Chicken Nanban', 14, 'Chicken thigh fillet', '2.100 g', 'Chicken Nanban → Chicken thigh fillet'], ['Chicken Nanban', 14, 'Kewpie Mayo', '280 ml', 'Chicken Nanban → Saus Mentai → Mayo'], ['Chicken Nanban', 14, 'Beras pulen', '1.680 g', 'Chicken Nanban → Beras pulen'], ['Nasi Goreng Charred', 12, 'Beras pulen', '2.160 g', 'Nasi Goreng Charred → Beras pulen'], ['Beef Teriyaki Bowl', 7, 'Saus Teriyaki', '210 ml', 'Beef Teriyaki Bowl → Saus Teriyaki'], ['Kopi Susu Aren', 9, 'Gula aren', '270 g', 'Kopi Susu Aren → Gula aren']];
+  const detail = `<div class="bg-canvas border-y border-line px-6 py-5"><div class="flex items-center justify-between gap-4"><div class="text-small text-ink-muted">Calculated 12 Oct, 22:14 · 23 material lines</div><div class="flex gap-2">${btn('Exclude an item…', 'ghost', { size: 'sm' })}${btn('Recalculate day', 'secondary', { size: 'sm', icon: 'refresh' })}</div></div>
+    <div class="mt-3 rounded-md bg-surface border border-line px-4 py-2.5 flex items-center gap-3 text-table">${chip('Excluded')}<span class="flex-1"><b class="font-semibold">Croffle Coklat</b> · 3 portions · not deducted — recipe not ready yet</span>${btn('Include', 'ghost', { size: 'sm' })}</div>
+    <div class="mt-3 rounded-md bg-surface border border-line overflow-hidden">${table([{ h: 'Menu item' }, { h: 'Portions', a: 'r' }, { h: 'Material' }, { h: 'Usage', a: 'r' }, { h: 'Recipe path' }], lines.map(([m, p, mat, u, path]) => [m, p, mat, `<b class="font-semibold">${u}</b>`, `<span class="text-ink-muted">${path}</span>`]), { pad: 'first:pl-4 last:pr-4' })}<div class="px-4 py-2.5 border-t border-line text-small text-ink-muted flex justify-between"><span>Showing 6 of 23 lines</span>${link('Show all', { arrow: false })}</div></div></div>`;
+  const rows = days.map(([d, c, u, p, l, i], k) => k === 1 ? { c: [`<button type="button" class="inline-flex items-center gap-2 font-semibold">${I('cu', 'ico-sm')}${d}</button>`, `<span class="text-ink-muted">${c}</span>`, chip(u), p, l, i], cls: 'bg-brand-soft/50' } : [`<button type="button" class="inline-flex items-center gap-2">${I('cd', 'ico-sm text-ink-muted')}${d}</button>`, `<span class="text-ink-muted">${c}</span>`, chip(u), p, l, i === '2' ? `<b class="font-semibold text-warn">${i}</b>` : `<span class="text-ink-muted">${i}</span>`]);
+  const T = table([{ h: 'Date' }, { h: 'Close' }, { h: 'Usage' }, { h: 'Portions', a: 'r' }, { h: 'Lines', a: 'r' }, { h: 'Issues', a: 'r' }], rows);
+  const totals = [['Chicken thigh fillet', '13.050 g'], ['Beras pulen', '21.480 g'], ['Kewpie Mayo', '1.760 ml'], ['Saus Teriyaki', '1.290 ml'], ['Telur ayam', '96 pcs'], ['Daging sapi slice', '5.040 g'], ['Gula aren', '1.740 g'], ['Susu UHT full cream', '9.600 ml']];
+  return `<p class="text-small text-ink-muted -mt-2 mb-5 max-w-[80ch]">Days saved from the go-live date (21 Sep 2026) are expanded into material usage through recipes. Excluded items stay visible but are not deducted.</p>
+  <div class="flex items-center gap-2">${btn('7 Oct – 13 Oct 2026', 'secondary', { icon: 'cal' })}${btn('Refresh', 'ghost', { icon: 'refresh' })}</div>
+  <div class="space-y-5 mt-5">${strip([statCell('Days calculated', '6'), statCell('Recorded portions', '669'), statCell('Material totals', '14'), statCell('Review issues', '2', { shape: 'warn', note: '1 review · 1 with exclusions' })], 4)}
+  ${card(`<div class="px-6 pt-5 pb-4">${cardHead('Days', '', 'Open one day to see how it was turned into usage.')}</div>${T.replace(/(<tr class="h-10 border-b border-line last:border-0 bg-brand-soft\/50">[\s\S]*?<\/tr>)/, `$1<tr><td colspan="6" class="p-0">${detail}</td></tr>`)}`, 'overflow-hidden')}
+  ${card(`${cardHead('Material totals', '', '7 Oct – 13 Oct · 14 materials')}<div class="mt-3 grid grid-cols-2 gap-x-10 text-table">${totals.map(([m, v]) => `<div class="flex justify-between h-10 items-center border-b border-line"><span>${m}</span><b class="font-semibold">${v}</b></div>`).join('')}</div><div class="mt-3">${link('Show all 14', { arrow: false })}</div>`, 'p-6')}</div>`;
+}
+
+/* ---------------- SETUP ---------------- */
+function menuBody() {
+  const SN = { 'Chicken Nanban': 'Nanban, Ckn nanban', 'Nasi Goreng Charred': 'Nasgor, NG charred', 'Chicken Katsu Curry': 'Katsu', 'Beef Teriyaki Bowl': 'Teriyaki, Beef teri', 'Iga Bakar Madu': 'Iga', 'Spaghetti Aglio Olio': 'Aglio', 'Nasi Ayam Sambal Matah': 'Ayam matah', 'Telur Ceplok': 'Tlr ceplok, Telor', 'Nasi Putih': 'Ns putih', 'Sambal Matah': 'Smbl matah', 'Extra Saus Mentai': 'Mentai', 'Kopi Susu Aren': 'Kopsus', 'Es Teh Manis': 'Es teh', 'Croffle Coklat': 'Croffle' };
+  const rows = [];
+  Object.entries(ITEMS).forEach(([cat, items]) => { rows.push({ band: `<b class="font-semibold">${cat}</b> <span class="text-small text-ink-muted">· ${items.length} items · sheet order</span>` }); items.forEach(([n, p], i) => { const editing = n === 'Iga Bakar Madu'; rows.push({ c: [`<span class="inline-flex items-center gap-0.5">${ibtn('cu', `Move ${n} up`, { size: 'sm', disabled: i === 0, cls: i === 0 ? 'text-ink-faint' : '' })}${ibtn('cd', `Move ${n} down`, { size: 'sm', disabled: i === items.length - 1, cls: i === items.length - 1 ? 'text-ink-faint' : '' })}<span class="w-6 text-center text-ink-muted">${i + 1}</span></span>`, `<span class="font-medium">${n}</span>`, `<span class="text-ink-muted">${cat}</span>`, editing ? input({ prefix: 'Rp', value: '68.000', align: 'right', state: 'focus', h: 'h-9', text: 'text-table', cls: 'w-36 ml-auto' }) : p ? rp(p) : `<span class="inline-flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}Missing price</span>`, `<span class="text-ink-muted">${SN[n]}</span>`, rowMenu(`More actions for ${n}`)], cls: editing ? 'bg-brand-soft/50' : '' }); }); });
+  return `<div class="flex items-center justify-between gap-4 flex-wrap"><p class="text-table"><b class="font-semibold">14 active items</b> <span class="text-ink-muted">·</span> <span class="inline-flex items-center gap-1.5 text-warn font-medium">${shape('warn', 'w-3 h-3 text-warn-mark')}1 missing a price</span></p><div class="flex items-center gap-2">${search('Item or category', { cls: 'w-56' })}${seg(['All', 'Main', 'Add On'], 'All', { size: 'sm' })}${seg(['Active', 'Archived', 'All'], 'Active', { size: 'sm' })}</div></div>
+  ${card(`${table([{ h: 'Sheet order', w: '140px' }, { h: 'Name', sort: 1 }, { h: 'Category', sort: 1, w: '120px' }, { h: 'Price', a: 'r', sort: 1, w: '170px' }, { h: 'Sheet names' }, { h: '<span class="sr-only">Actions</span>', w: '56px' }], rows)}<div class="px-6 py-3 border-t border-line text-small text-ink-muted">Changes save when you leave a field. Sheet names are the other spellings used on the paper sheet; scanning matches them.</div>`, 'mt-5 overflow-hidden')}`;
+}
+function recipesBody() {
+  const V = [['Chicken Nanban', 'v4 · Menu item · Per portion', 'Draft', true], ['Chicken Nanban', 'v3 · Menu item · Per portion', 'Active'], ['Saus Mentai', 'v2 · Prepared component · Yield 1.000 ml', 'Active'], ['Nasi Goreng Charred', 'v2 · Menu item · Per portion', 'Needs review'], ['Beef Teriyaki Bowl', 'v1 · Menu item · Per portion', 'Active'], ['Croffle Coklat', 'v1 · Menu item · Per portion', 'Draft'], ['Saus Teriyaki house', 'v1 · Prepared component · Yield 500 ml', 'Retired']];
+  const list = card(`<div class="p-4 border-b border-line">${search('Find a recipe')}</div><div class="divide-y divide-line">${V.map(([n, m, s, a]) => `<a class="flex items-center gap-3 px-5 py-3 ${a ? 'bg-brand-soft/60' : 'hover:bg-canvas'}" ${a ? 'aria-current="true"' : ''}><div class="flex-1 min-w-0"><div class="text-table font-semibold truncate">${n}</div><div class="text-small text-ink-muted truncate">${m}</div></div>${chip(s)}</a>`).join('')}</div>`, 'overflow-hidden');
+  const L = [['Chicken thigh fillet', '150', 'g', 'Workbook row 12', 'ok'], ['Saus Mentai <span class="text-ink-muted font-normal text-small">component</span>', '20', 'ml', 'Workbook row 13', 'ok'], ['Beras pulen', '120', 'g', 'Workbook row 14', 'ok'], ['Kol iris', '25', 'g', 'Manual · new garnish', 'approve'], ['Kewpie Mayo', '10', 'g', 'Manual', 'blocked']];
+  const rev = s => s === 'ok' ? chip('Approved') : s === 'approve' ? `<div class="flex items-center gap-2">${chip('Needs review')}${btn('Approve', 'secondary', { size: 'sm' })}</div>` : `<div><div class="flex items-center gap-2">${chip('Needs review')}${btn('Approve', 'secondary', { size: 'sm', disabled: true })}</div><div class="text-micro text-danger font-semibold mt-1 flex items-center gap-1.5">${shape('danger', 'w-2.5 h-2.5')}Unit must match the material: ml.</div></div>`;
+  const editor = card(`<div class="px-6 pt-5 pb-5 border-b border-line"><div class="flex items-start justify-between gap-4"><div class="min-w-0"><div class="flex items-center gap-3"><h2 class="font-display text-title-2 whitespace-nowrap">Chicken Nanban · v4</h2>${chip('Draft', { lg: true })}</div><p class="text-small text-ink-muted mt-1">Copied forward from v3, Active since 21 Sep 2026.</p></div><div class="flex items-center gap-2 flex-none">${btn('New version', 'ghost', { size: 'sm' })}${btn('Save recipe', 'primary')}</div></div><div class="mt-3 text-small text-warn font-medium flex items-center gap-1.5">${shape('warn', 'w-3 h-3 text-warn-mark')}Unsaved changes — save recipe to keep them.</div></div>
+    <div class="px-6 py-5 grid grid-cols-2 gap-x-5 gap-y-4 items-start">${field('Target type', seg(['Menu item', 'Prepared component'], 'Menu item', { size: 'sm' }))}${field('Target', select('Chicken Nanban'))}${field('Status', select('Draft'))}${field('Effective from', input({ ph: 'Not set', icon: 'cal' }), { hint: 'Needed before it can be Active.' })}</div>
+    <div class="px-6 -mt-1 pb-4 text-small text-ink-muted">Basis: <b class="text-ink font-medium">Per portion</b> — menu recipes are always per portion.</div>
+    ${table([{ h: 'Ingredient or component' }, { h: 'Quantity', a: 'r', w: '110px' }, { h: 'Unit', w: '80px' }, { h: 'Source · note' }, { h: 'Review', w: '230px' }, { h: '<span class="sr-only">Remove</span>', w: '48px' }], L.map(([n, q, u, s, r]) => ({ c: [`<span class="font-medium">${n}</span>`, q, `<span class="${r === 'blocked' ? 'text-danger font-semibold' : 'text-ink-muted'}">${u}</span>`, `<span class="text-ink-muted">${s}</span>`, rev(r), ibtn('trash', 'Remove line', { size: 'sm' })], cls: r === 'blocked' ? 'bg-danger-tint/30' : '' })), { comfy: true, px: 'px-2' })}
+    <div class="px-6 py-3 border-t border-line">${btn('Add line', 'ghost', { size: 'sm', icon: 'plus' })}</div>`, 'overflow-hidden');
+  return `<div class="grid grid-cols-[280px_1fr] gap-5 items-start">${list}${editor}</div>`;
+}
+
+/* ---------------- render desktop ---------------- */
+const U = 'pos.charred.id';
+$('screens').innerHTML = [
+  desk({ name: 'Home', url: U + '/home?month=2026-10', active: 'Home', display: true, title: 'Selamat malam', eyebrow: 'Tuesday, 13 October 2026', actions: btn('October 2026', 'secondary', { icon: 'cal', trail: 'cd' }), body: homeBody(), cap: 'The green Today card is the one solid-green element and holds the main action. Needs attention comes first. The month sits in one hairline-divided card rather than eight separate tiles.' }),
+  desk({ name: 'Daily close · in progress, unsaved', url: U + '/close?date=2026-10-13', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('unsaved'), cap: 'One column in paper-sheet order, so the closer reads down the sheet and down the screen together. The line amount helps catch typos. Everything about the day — portions, payments, actions and save state — is in one summary card, and Complete day is the only primary button.' }),
+  desk({ name: 'Daily close · completion review', url: U + '/close?date=2026-10-13', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('unsaved'), h: 780, overlay: scrim(reviewDialog), cap: 'Checks never block. Each one has a shape and one plain sentence. With checks, the button reads "Complete anyway"; with none, it reads "Complete day" above "No issues found."' }),
+  desk({ name: 'Daily close · recap with Undo', url: U + '/close?date=2026-10-13', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('done'), h: 1160, cap: 'For 10 s after completing, the recap replaces the actions in place, and the bar along its bottom counts down. Undo restores the day exactly as it was. The status chip has already changed to Complete.' }),
+  desk({ name: 'Scan sheet · reading', url: U + '/close?date=2026-10-13&scan=1', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('unsaved'), h: 720, overlay: scrim(readingDialog), cap: 'You can\'t close the dialog while it reads; Cancel scan is the only way out, and the photo is kept. Each step is shown with its status shape.' }),
+  desk({ name: 'Scan sheet · review', url: U + '/close?date=2026-10-13&scan=1', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('unsaved'), h: 1180, overlay: scrim('', { side: true }) + reviewSheet(), cap: 'A side sheet, so the day underneath stays recognisable. Every row shows what the sheet said beside what it was matched to. Saving is blocked until the one unmatched row is fixed, and the footer says why. Replace day opens the before/after diff (see Components).' }),
+  desk({ name: 'Daily close → History', url: U + '/close/history?period=week&date=2026-10-12', active: 'Daily close', title: 'Daily close', tab: 'History', body: historyBody(), h: 1120, cap: 'Entries are grouped under date bands, and each band opens its day. The period, search and filters sit above the card; the count and export sit on the card.' }),
+  desk({ name: 'Reports → Revenue', url: U + '/reports/revenue?period=this-month', active: 'Reports', title: 'Reports', tab: 'Revenue', actions: periodActions(), body: revenueBody(), cap: 'The three totals read as an equation (from direction C). In the chart, the best day is the darker bar, today is a dashed outline, and the day with no revenue is a dotted baseline. The legend names all of them, so no meaning relies on colour.' }),
+  desk({ name: 'Reports → Items', url: U + '/reports/items?period=this-month&item=chicken-nanban', active: 'Reports', title: 'Reports', tab: 'Items', actions: periodActions(), body: itemsBody(), cap: 'Item detail pairs the chart with the per-day table, using the four item-day statuses. The stepped Main card says plainly that it ignores the report period.' }),
+  desk({ name: 'Stock', url: U + '/stock', active: 'Stock', title: 'Stock', tab: 'Stock', actions: `${pushPill}${btn('Count stock', 'secondary')}${btn('Record movement', 'primary', { icon: 'plus' })}`, body: stockBody(), cap: 'A compact table: twelve materials fit on one screen, where Canopy fitted eight. Order appears only on rows that need it. The single danger banner explains the negative balance once, so the rows don\'t have to.' }),
+  desk({ name: 'Stock → To order', url: U + '/stock/to-order', active: 'Stock', title: 'Stock', tab: 'To order', body: toOrderBody(), cap: 'Sorted by status, so what needs ordering comes first. Materials that are negative or out show here as To order. A missing order quantity is flagged on its own row, in the inventory\'s words.' }),
+  desk({ name: 'Stock → Orders', url: U + '/stock/orders?status=all&order=PO-1010-01', active: 'Stock', title: 'Stock', tab: 'Orders', actions: btn('New order', 'secondary', { icon: 'plus' }), body: ordersBody(), cap: 'A list beside the detail (from direction C). The selected order is partly received, with the Receive form open inline. WhatsApp and Copy text sit at the top; Cancel order is in the ⋯ menu behind a destructive confirmation.' }),
+  desk({ name: 'Stock → Usage recap', url: U + '/stock/usage?from=2026-10-07&to=2026-10-13&day=2026-10-12', active: 'Stock', title: 'Stock', tab: 'Usage recap', body: usageBody(), cap: 'Days open one at a time, in place. The open day shows its exclusion, its material lines with the full recipe path, and the actions that change it.' }),
+  desk({ name: 'Setup → Menu', url: U + '/setup/menu', active: 'Setup', title: 'Setup', tab: 'Menu', actions: btn('New item', 'primary', { icon: 'plus' }), body: menuBody(), cap: 'Grouped in sheet order, which is the order Daily close uses. Fields edit in place and save when you leave them (Iga Bakar Madu\'s price is being edited). Archive is in the ⋯ menu.' }),
+  desk({ name: 'Setup → Recipes', url: U + '/setup/recipes?version=chicken-nanban-v4', active: 'Setup', title: 'Setup', tab: 'Recipes', actions: btn('New recipe', 'secondary', { icon: 'plus' }), body: recipesBody(), cap: 'Versions are listed beside the editor. Each line has its own review state, and a blocked Approve says exactly why. Unsaved edits are announced next to Save. The inventory notes there is no guard here today; the build should add the same guard Daily close has.' })
+].join('');
+
+/* ---------------- scan idle / error states (not framed) ---------------- */
+$('screens').insertAdjacentHTML('beforeend', `<div><div class="grid lg:grid-cols-3 gap-6">
+  ${card(`<div class="text-micro uppercase tracking-[0.12em] text-ink-muted font-semibold">Scan sheet · start</div><h3 class="font-display text-title-2 mt-2">Scan tonight's sheet</h3><p class="text-table text-ink-muted mt-1">Lay the sheet flat in good light, with all four corners showing.</p><div class="mt-5 space-y-2.5">${btn('Take a photo', 'primary', { icon: 'cam', cls: 'w-full', size: 'lg' })}${btn('Choose an image', 'secondary', { icon: 'image', cls: 'w-full' })}</div>`, 'p-6')}
+  ${card(`<div class="text-micro uppercase tracking-[0.12em] text-ink-muted font-semibold">Scan sheet · error</div><div class="mt-3">${banner('danger', '<b class="font-semibold">This image format isn\'t supported.</b> On iPhone, set Camera → Formats → Most Compatible so photos save as JPEG.')}</div><div class="mt-5 flex gap-2">${btn('Try again', 'primary', { icon: 'refresh' })}${btn('Choose another photo', 'secondary')}</div><p class="text-micro text-ink-muted mt-3">The other errors use the same layout: cancelled (photo kept), too large, took too long, no connection, couldn't read the sheet.</p>`, 'p-6')}
+  ${card(`<div class="text-micro uppercase tracking-[0.12em] text-ink-muted font-semibold">Scan sheet · conflict</div><div class="mt-3">${banner('warn', 'This day changed on another device. Nothing was saved. Check it again, then review what changes.')}</div><div class="mt-5">${btn('Check again', 'secondary', { icon: 'refresh' })}</div><p class="text-micro text-ink-muted mt-3">Saving stays blocked until the check passes.</p>`, 'p-6')}
+</div><p class="text-center text-small text-ink-muted mt-3"><b class="text-ink font-semibold">Scan sheet · other phases</b> — start, error and conflict, all inside the same dialog.</p></div>`);
+/* ============================================================
+   3 · SHELLS · 5 · TABLET · 6 · PHONE · 7 · OTHERS
+   ============================================================ */
+const ph = (label, cls = '') => `<div class="rounded-lg border-2 border-dashed border-line-strong flex items-center justify-center text-center text-small text-ink-muted p-3 ${cls}">${label}</div>`;
+
+/* ---------- phone frame + tab bar ---------- */
+const TB = [['Home', 'home'], ['Reports', 'reports'], ['Close', 'close'], ['Stock', 'stock'], ['Setup', 'setup']];
+const tabbar = active => `<nav class="h-[86px] bg-surface border-t border-line flex items-start pt-2 px-1 relative" aria-label="Sections">${TB.map(([n, i]) => { const a = n === active; if (n === 'Close') return `<a class="flex-1 flex flex-col items-center gap-1" aria-label="Daily close" ${a ? 'aria-current="page"' : ''}><span class="w-[60px] h-9 rounded-full flex items-center justify-center ${a ? 'bg-brand text-brand-on' : 'bg-brand-soft text-brand'}">${I(i, 'ico-lg')}</span><span class="text-micro text-brand font-semibold">Close</span></a>`; return `<a class="flex-1 flex flex-col items-center gap-1 relative" ${a ? 'aria-current="page"' : ''}><span class="w-[60px] h-9 rounded-full flex items-center justify-center ${a ? 'bg-brand-soft text-brand' : 'text-ink-muted'}">${I(i, 'ico-lg')}</span><span class="text-micro ${a ? 'text-brand font-semibold' : 'text-ink-muted font-medium'}">${n}</span>${n === 'Stock' ? '<span class="absolute -top-1 right-[14px] h-5 min-w-[20px] px-1.5 rounded-full bg-warn-tint text-warn text-[11px] font-semibold flex items-center justify-center ring-2 ring-surface">4</span>' : ''}</a>`; }).join('')}<span class="absolute bottom-2 left-1/2 -translate-x-1/2 w-[134px] h-[5px] rounded-full bg-ink"></span></nav>`;
+const statusBar = `<div class="h-[47px] flex items-center justify-between px-8 text-[15px] font-semibold relative flex-none"><span>21:52</span><span class="absolute left-1/2 -translate-x-1/2 top-[11px] w-[112px] h-[32px] rounded-full bg-[#1d1f1c]"></span><span class="flex items-center gap-1.5"><svg width="18" height="11" viewBox="0 0 18 11"><rect x="0" y="7" width="3" height="4" rx="1" fill="#1F2B25"/><rect x="5" y="5" width="3" height="6" rx="1" fill="#1F2B25"/><rect x="10" y="2.5" width="3" height="8.5" rx="1" fill="#1F2B25"/><rect x="15" y="0" width="3" height="11" rx="1" fill="#1F2B25"/></svg><svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3" fill="none" stroke="#1F2B25" opacity=".4"/><rect x="2" y="2" width="15" height="8" rx="1.5" fill="#1F2B25"/><rect x="24" y="4" width="1.6" height="4" rx=".8" fill="#1F2B25" opacity=".4"/></svg></span></div>`;
+function phone(o) {
+  return `<figure><div class="fit" data-w="390"><div class="frame w-[390px] h-[844px] rounded-[40px] bg-canvas relative overflow-hidden flex flex-col">${statusBar}
+    <div class="flex-1 min-h-0 overflow-hidden relative">${o.body}</div>
+    <div class="flex-none">${o.bar || ''}${o.tabbar === false ? '' : tabbar(o.active)}</div>
+  </div></div><figcaption class="text-center text-small text-ink-muted mt-3 max-w-[390px] mx-auto"><b class="text-ink font-semibold">${o.name}</b> — ${o.cap}</figcaption></figure>`;
+}
+const appBar = (title, right = '', o = {}) => `<div class="px-4 pt-1 pb-3 flex items-center justify-between gap-3">${o.back ? ibtn('cl', 'Back', { cls: '-ml-2' }) : ''}<h1 class="flex-1 font-display text-[24px] leading-[30px] font-medium text-brand truncate">${title}</h1><div class="flex items-center gap-1.5 flex-none">${right}</div></div>`;
+const pcard = (inner, cls = '') => `<div class="rounded-xl bg-surface border border-line shadow-card ${cls}">${inner}</div>`;
+
+/* ---------- shells ---------- */
+const shellDesk = `<div class="fit" data-w="1280"><div class="frame w-[1280px] h-[640px] rounded-[14px] overflow-hidden bg-canvas flex">
+  <div class="w-[232px] border-r border-line p-5 flex flex-col gap-4">${lockup()}<div class="mt-4 space-y-1.5">${NAV.map(([n, i], k) => `<div class="h-11 px-3.5 rounded-full flex items-center gap-3 text-[14.5px] ${k === 1 ? 'bg-brand-soft text-brand font-semibold' : 'text-ink'}">${I(i, k === 1 ? '' : 'text-ink-muted')}${n}</div>`).join('')}</div>${ph('Sidebar · 232 px<br>5 sections only. Status dot or count per section. Connection state at the bottom.', 'mt-auto h-28')}</div>
+  <div class="flex-1 p-10 flex flex-col gap-4">${ph('Offline notice — full width, only when offline', 'h-10')}<div class="flex gap-4">${ph('Page title (title-1, brand)', 'flex-1 h-14')}${ph('Page actions — at most one primary', 'w-80 h-14')}</div>${ph('Sub-section tabs — underline, always here, never in the sidebar', 'h-11')}${ph('Content on canvas · cards hold sections · max width 1120 px, left-aligned · 20 px between cards', 'flex-1')}</div></div></div>`;
+const shellTab = `<div class="fit" data-w="1024"><div class="frame w-[1024px] h-[640px] rounded-[14px] overflow-hidden bg-canvas flex">
+  <div class="w-[88px] border-r border-line pt-5 flex flex-col items-center gap-3">${lockup({ mark: true, size: 'w-11 h-11' })}<div class="mt-3 space-y-2">${NAV.map(([n, i], k) => `<div class="flex flex-col items-center gap-1"><span class="w-14 h-9 rounded-full flex items-center justify-center ${k === 1 ? 'bg-brand-soft text-brand' : 'text-ink-muted'}">${I(i)}</span><span class="text-micro ${k === 1 ? 'text-brand font-semibold' : 'text-ink-muted'}">${n}</span></div>`).join('')}</div></div>
+  <div class="flex-1 p-6 flex flex-col gap-4"><div class="flex gap-4">${ph('Page title', 'flex-1 h-14')}${ph('Actions', 'w-56 h-14')}</div>${ph('Sub-section tabs', 'h-11')}${ph('Content · comfortable density everywhere · 44 px targets · two columns for Daily close, one column elsewhere below 900 px', 'flex-1')}</div></div></div>`;
+const shellPhone = phone({ name: 'Phone shell', active: 'Close', cap: 'Docked tab bar, 86 px including the home-indicator area. Close is always tinted and sits in the centre; when active it is solid.', bar: `<div class="bg-surface border-t border-line px-4 py-3">${ph('Contextual bar slot — Daily close totals, Scan review save, Count sheet save', 'h-12')}</div>`, body: `<div class="px-4 space-y-3 pt-1">${ph('App bar — title (24 px) + one or two actions', 'h-12')}${ph('Sub-section tabs — scroll sideways when they don\'t fit', 'h-10')}${ph('Content · 16 px gutter · cards 16 px padding · tables become two-line lists', 'h-[420px]')}</div>` });
+$('shells').innerHTML = `<div class="space-y-10"><figure>${shellDesk}<figcaption class="text-center text-small text-ink-muted mt-3"><b class="text-ink font-semibold">Desktop shell · 1184 px and wider</b> — a cream sidebar separated by one hairline. Green appears only on the selected section's tint.</figcaption></figure>
+<div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-10 items-start"><figure>${shellTab}<figcaption class="text-center text-small text-ink-muted mt-3"><b class="text-ink font-semibold">Tablet shell · 768–1183 px</b> — an 88 px rail that keeps its labels, because icons alone don't say "Usage recap".</figcaption></figure>${shellPhone}</div></div>`;
+
+/* ---------- tablet ---------- */
+$('tablet-screens').innerHTML = desk({ w: 1024, tablet: true, name: 'Daily close on the counter tablet', url: U + '/close?date=2026-10-13', active: 'Daily close', title: 'Daily close', tab: 'Daily close', actions: closeActions, body: closeBody('unsaved', { tablet: true }), h: 1240, cap: 'Touch-size steppers (44 px buttons) and comfortable rows. The line amount is dropped to give names room. The summary column narrows to 300 px but keeps the same order: portions, payments, actions.' });
+
+/* ---------- phone screens ---------- */
+const phItems = (rows, o = {}) => rows.map(([n, p, q]) => `<div class="flex items-center gap-3 px-4 py-2"><div class="flex-1 min-w-0"><div class="text-body-lg font-medium truncate">${n}</div>${p ? `<div class="text-small text-ink-muted">Ref. ${rp(p)}</div>` : `<div class="text-small text-warn font-medium flex items-center gap-1.5">${shape('warn', 'w-2.5 h-2.5 text-warn-mark')}Missing price</div>`}</div>${stepper(q, { touch: true, name: n })}</div>`).join('');
+const closeBar = `<div class="bg-surface border-t border-line shadow-raised px-4 py-3 flex items-center gap-3"><div class="flex-1 min-w-0"><div class="font-display text-fig-m">Rp 3.215.000</div><div class="text-small text-ink-muted flex items-center gap-1.5 whitespace-nowrap">101 portions · ${shape('warn', 'w-2.5 h-2.5 text-warn-mark')}<span class="text-warn font-medium">Unsaved</span></div></div>${btn('Complete day', 'primary', { size: 'lg' })}</div>`;
+const recapBar = `<div class="bg-brand text-brand-on px-4 pt-3 pb-4 relative" role="status"><div class="flex items-center gap-3"><span class="w-9 h-9 rounded-full bg-brand-on/15 flex items-center justify-center flex-none">${I('check', 'ico-sm')}</span><div class="flex-1 min-w-0 font-display text-[17px] font-medium">13 Oct closed</div>${btn('Undo · 7 s', 'inverse', { icon: 'undo' })}</div><div class="text-small text-brand-on/80 mt-1.5 pl-12">101 portions · Rp 3.215.000 · stock updated</div><div class="absolute left-0 bottom-0 h-1 bg-brand-on/50" style="width:70%"></div></div>`;
+
+const pHome = phone({
+  name: 'Home', active: 'Home', cap: 'The Today card is the focus and holds Continue. Below it, the month is one list of label/value rows, so long figures never squeeze into half-width tiles.', body: `<div class="px-4 pt-1">
+  <div class="flex items-center justify-between"><div class="flex items-center gap-3">${lockup({ mark: true, size: 'w-10 h-10' })}<div><div class="text-small text-ink-muted">Tue, 13 Oct</div><div class="font-display text-[24px] leading-[30px] font-medium text-brand">Selamat malam</div></div></div>${btn('Oct', 'secondary', { size: 'sm', trail: 'cd', cls: 'h-11' })}</div>
+  <div class="mt-4 rounded-xl bg-brand text-brand-on p-5"><div class="flex items-center justify-between"><span class="text-small text-brand-on/80">Today</span><span class="h-6 px-2.5 rounded-full bg-brand-on/15 text-micro font-semibold flex items-center gap-1.5">${shape('info')}Draft</span></div><div class="font-display text-[34px] leading-[40px] font-medium mt-2">Rp 3.215.000</div><div class="text-small mt-1"><span class="text-[#A9D8B6] font-semibold">↑ 8,6%</span> <span class="text-brand-on/80">vs yesterday · 101 portions</span></div><div class="mt-4">${btn('Continue tonight\'s close', 'inverse', { size: 'lg', trail: 'arrow', cls: 'w-full' })}</div></div>
+  ${pcard(`<div class="px-4 pt-4 pb-2 flex items-center justify-between"><h2 class="font-display text-title-2">Needs attention</h2><span class="h-6 px-2.5 rounded-full bg-warn-tint text-warn text-micro font-semibold flex items-center">3</span></div><div class="divide-y divide-line border-t border-line">${[['Today is saved as a draft'], ['Sun, 11 Oct: no revenue recorded'], ['Mon, 5 Oct: no items closed']].map(([t]) => `<a class="flex items-center gap-3 px-4 min-h-[52px]">${shape('warn', 'w-3.5 h-3.5 text-warn-mark')}<span class="flex-1 text-body font-medium">${t}</span>${I('cr', 'ico-sm text-ink-muted')}</a>`).join('')}</div>`, 'mt-3 overflow-hidden')}
+  ${pcard(`<div class="px-4 pt-4 pb-1"><h2 class="font-display text-title-2">October at a glance</h2></div><dl class="divide-y divide-line">${[['Reported month total', 'Rp 43.570.000', delta('6,2%', 'vs Sep')], ['This week', 'Rp 6.175.000', delta('3,3%', 'vs last week')], ['Average per day', 'Rp 3.960.909', ''], ['Portions sold', '1.042', '']].map(([l, v, d]) => `<div class="px-4 py-2.5 flex items-start justify-between gap-3"><dt class="text-table text-ink-muted pt-0.5">${l}</dt><dd class="text-right"><div class="font-display text-[18px] font-medium">${v}</div>${d ? `<div class="text-small">${d}</div>` : ''}</dd></div>`).join('')}</dl>`, 'mt-3')}
+</div>` });
+
+const pClose = phone({
+  name: 'Daily close · entry', active: 'Close', cap: 'Rows are in sheet order with 44 px steppers inside the thumb zone. The totals bar is always visible: the live total, the save state, and Complete day.', bar: closeBar, body: `${appBar('Daily close', btn('Scan', 'secondary', { size: 'sm', icon: 'cam', cls: 'h-11' }))}<div class="px-4">${tabs(['Daily close', 'History'], 'Daily close', { gap: 'gap-6' })}</div>
+  <div class="px-4 pt-3 flex items-center justify-between">${ibtn('cl', 'Previous day', { cls: 'border border-line-input bg-surface' })}<button type="button" class="flex flex-col items-center"><span class="font-display text-[18px] font-medium">Tue, 13 Oct 2026</span><span class="text-micro text-brand font-semibold">Today</span></button><div class="flex">${ibtn('cr', 'Next day', { cls: 'border border-line-input bg-surface text-ink-faint', disabled: true })}${ibtn('cal', 'Pick a date')}</div></div>
+  <div class="px-4 mt-3 flex items-center gap-2 text-small text-ink-muted">${chip('Unsaved changes')}<span>Manual · saved 12 min ago</span></div>
+  <div class="px-4 mt-3">${search('Find an item', { h: 'h-11' })}</div>
+  ${pcard(`<div class="flex items-baseline justify-between px-4 pt-3 pb-2 border-b border-line"><h3 class="text-title-3">Main</h3><span class="text-small text-ink-muted">62 portions</span></div><div class="divide-y divide-line">${phItems(ITEMS.Main.slice(0, 5))}</div>`, 'mx-4 mt-3 overflow-hidden')}` });
+
+const pDone = phone({
+  name: 'Daily close · complete', active: 'Close', cap: 'Scrolled to Payments. For 10 s after completing, the recap with Undo takes the totals bar\'s place. Save draft and No sales live at the end of the page, not in the bar.', bar: recapBar, body: `${appBar('Daily close', btn('Scan', 'secondary', { size: 'sm', icon: 'cam', cls: 'h-11' }))}<div class="px-4">${tabs(['Daily close', 'History'], 'Daily close', { gap: 'gap-6' })}</div>
+  <div class="px-4 mt-3 flex items-center gap-2 text-small text-ink-muted">${chip('Complete')}<span>Tue, 13 Oct · Manual · saved just now</span></div>
+  ${pcard(`<div class="flex items-baseline justify-between px-4 pt-3 pb-2 border-b border-line"><h3 class="text-title-3">Other</h3><span class="text-small text-ink-muted">22 portions</span></div><div class="divide-y divide-line">${phItems(ITEMS.Other)}</div>`, 'mx-4 mt-3 overflow-hidden')}
+  ${pcard(`<div class="flex items-baseline justify-between"><h3 class="text-title-3">Payments</h3><span class="text-small text-ink-muted">≈ Rp 3.347.000 at menu</span></div><div class="mt-3 space-y-2.5">${PAYD.map(([m, v]) => moneyRow(m, v ? nf(v) : '', { text: 'text-body-lg' })).join('')}</div><div class="grid grid-cols-[88px_1fr] gap-3 items-baseline mt-3 pt-3 border-t border-line"><span class="text-table font-semibold">Total</span><span class="font-display text-fig-m text-right pr-3.5">Rp 3.215.000</span></div>`, 'mx-4 mt-3 p-4')}` });
+
+const pScan = phone({
+  name: 'Scan sheet · review', tabbar: false, cap: 'A full-screen sheet with no tab bar, so nothing can be left half-saved. Each row puts the sheet text on its own line above the match and quantity. The save bar explains why saving is blocked.', bar: `<div class="bg-surface border-t border-line shadow-raised px-4 pt-3 pb-8"><div class="text-small text-danger font-semibold flex items-center gap-1.5 mb-2">${shape('danger', 'w-3 h-3')}Match 1 row before saving.</div>${btn('Replace day…', 'primary', { size: 'lg', disabled: true, cls: 'w-full' })}</div>`, body: `<div class="px-4 pt-1 pb-3 flex items-center gap-3 border-b border-line">${ibtn('x', 'Close scan', { cls: '-ml-2' })}<div class="flex-1"><h1 class="font-display text-[20px] leading-[26px] font-medium">Review scan</h1><p class="text-small text-ink-muted">Sheet read. Review before saving.</p></div>${sheetPhoto(36)}</div>
+  <div class="px-4 pt-3"><button type="button" class="h-11 w-full rounded-md border border-line-input bg-surface px-3.5 flex items-center gap-2 text-body-lg">${I('cal', 'ico-sm text-ink-muted')}Tuesday, 13 Oct 2026</button><div class="mt-3">${banner('warn', '13 Oct already has a saved day. You\'ll see what changes before replacing it.', '', { cls: 'text-small' })}</div></div>
+  <div class="mt-3 px-4 pb-2 border-b border-line flex items-baseline justify-between"><h3 class="text-title-3">Items</h3><span class="text-small text-danger font-semibold">1 needs a match</span></div>
+  <div class="divide-y divide-line">${SCAN.slice(4, 10).map(([t, m, q]) => `<div class="px-4 py-2.5 ${m ? '' : 'bg-danger-tint/40'}"><div class="text-small text-ink-muted mb-1.5">Sheet: <span class="text-ink">${t}</span></div><div class="flex items-center gap-2">${m ? select(m, { cls: 'flex-1', text: 'text-body-lg' }) : select('', { ph: 'Choose a menu item', state: 'error', cls: 'flex-1', text: 'text-body-lg' })}${input({ value: q, align: 'right', cls: 'w-16', text: 'text-body-lg' })}${ibtn('x', 'Remove row ' + t)}</div>${m ? '' : `<div class="text-micro text-danger font-semibold mt-1.5 flex items-center gap-1.5">${shape('danger', 'w-2.5 h-2.5')}Choose the menu item for this row.</div>`}</div>`).join('')}</div>` });
+
+const pStock = phone({
+  name: 'Stock', active: 'Stock', cap: 'Sub-sections scroll sideways. Figures sit in a 2 × 2 strip. Each material is a two-line row with its status, and tapping it opens Order and Count for that material.', body: `${appBar('Stock', `${ibtn('bell', 'Stock alerts on this phone: off')}${btn('Record', 'primary', { size: 'sm', icon: 'plus', cls: 'h-11' })}`)}<div class="px-4">${tabs(['Stock', 'To order', 'Orders', 'Usage recap'], 'Stock', { gap: 'gap-6', scroll: true })}</div>
+  <div class="px-4 mt-3">${pcard(gridCells([statCell('To order', '4', { shape: 'warn', cls: '!px-4 !py-3' }), statCell('On order', '3', { cls: '!px-4 !py-3' }), statCell('Negative', '1', { shape: 'danger', tone: 'text-danger', cls: '!px-4 !py-3' }), statCell('Last count', 'Mon 12 Oct', { cls: '!px-4 !py-3', size: 'text-[20px] leading-[30px] font-medium' })], 2), 'overflow-hidden')}</div>
+  <div class="mt-3 px-4 scroll-x">${seg([['All', 12], ['Needs attention', 4], ['On order', 3], ['OK', 4]], 'Needs attention', { size: 'sm' })}</div>
+  ${pcard(`<div class="divide-y divide-line">${STOCK.slice(0, 4).map(([n, u, q, al, oo, s]) => `<a class="flex items-center gap-3 px-4 py-3"><div class="flex-1 min-w-0"><div class="text-body-lg font-medium truncate">${n}</div><div class="text-small text-ink-muted"><span class="${q < 0 ? 'text-danger font-semibold' : 'text-ink'}">${nf(q)} ${u}</span> on hand · alert ${nf(al)} ${u}</div></div>${chip(s)}${I('cr', 'ico-sm text-ink-muted')}</a>`).join('')}</div>`, 'mx-4 mt-3 overflow-hidden')}` });
+
+const pRev = phone({
+  name: 'Reports → Revenue', active: 'Reports', cap: 'The equation is stacked vertically. The chart drops to day numbers. Each day in the table becomes a row with its total on the right and the payment split underneath.', body: `${appBar('Reports', ibtn('down', 'Export CSV'))}<div class="px-4">${tabs(['Revenue', 'Items', 'Weekday patterns'], 'Revenue', { gap: 'gap-6', scroll: true })}</div>
+  <div class="px-4 mt-3 scroll-x">${seg(['This month', 'Last month', 'Last 30 days'], 'This month', { size: 'sm' })}</div>
+  ${pcard(`<dl class="divide-y divide-line text-table"><div class="px-4 py-2.5 flex justify-between"><dt class="text-ink-muted">Recorded sales</dt><dd class="font-semibold">Rp 43.570.000</dd></div><div class="px-4 py-2.5 flex justify-between"><dt class="text-ink-muted">+ Selisih</dt><dd class="text-right"><div>Rp 0</div><div class="text-micro text-info">Counts after October ends</div></dd></div><div class="px-4 py-3 flex justify-between items-baseline bg-brand-soft"><dt class="text-brand font-semibold">= Reported total</dt><dd class="font-display text-fig-m text-brand">Rp 43.570.000</dd></div></dl>`, 'mx-4 mt-3 overflow-hidden')}
+  ${pcard(`<div class="flex items-baseline justify-between"><h3 class="font-display text-title-2">Daily revenue</h3><span class="text-small text-ink-muted">avg Rp 3,96 jt</span></div><div class="mt-2">${revChart({ w: 340, h: 150, compact: true })}</div>`, 'mx-4 mt-3 p-4')}
+  ${pcard(`<div class="divide-y divide-line">${[12, 11, 10].map(d => { const s = SPLIT[d], w = DAYS[d - 1][1]; return `<div class="px-4 py-2.5"><div class="flex justify-between text-table"><span class="font-medium">${w}, ${d} Oct</span>${s ? `<b class="font-semibold">${rp(s.reduce((a, b) => a + b, 0))}</b>` : `<span class="text-warn font-medium inline-flex items-center gap-1.5">${shape('warn', 'w-3 h-3 text-warn-mark')}No revenue</span>`}</div>${s ? `<div class="text-small text-ink-muted mt-0.5">BCA ${nf(s[0])} · Cash ${nf(s[1])} · Soundbox ${nf(s[2])} · Other ${nf(s[3])}</div>` : ''}</div>`; }).join('')}</div>`, 'mx-4 mt-3 overflow-hidden')}` });
+
+const SETUP_IDX = [['bowl', 'Menu', '14 active items · 1 missing a price', true], ['box', 'Materials', 'Ingredients and packaging'], ['book', 'Recipes', '7 versions · 1 needs review', true], ['truck', 'Suppliers', 'Prices, reorder settings, deliveries'], ['upload', 'Import', 'Recipe workbook review'], ['bell', 'Notifications', 'Stock alerts on this phone: Off'], ['db', 'Data maintenance', 'Legacy rows, duplicates, supplier checks']];
+const pNav = phone({
+  name: 'Navigation · Setup open', active: 'Setup', cap: 'Five sections live in the tab bar. Sub-sections are tabs at the top of each page, except Setup: its seven pages are rarely used, so they open as a list with a one-line summary each. A page opened from the list shows a back arrow.', body: `${appBar('Setup')}<p class="px-4 -mt-1 text-small text-ink-muted">Catalog, stock rules and data checks. Usually the manager's job.</p>${pcard(`<div class="divide-y divide-line">${SETUP_IDX.map(([i, n, d, w]) => `<a class="flex items-center gap-3.5 px-4 min-h-[60px] py-2.5"><span class="w-10 h-10 rounded-md border border-line flex items-center justify-center text-brand flex-none">${I(i)}</span><div class="flex-1 min-w-0"><div class="text-body-lg font-medium">${n}</div><div class="text-small ${w ? 'text-warn font-medium flex items-center gap-1.5' : 'text-ink-muted'}">${w ? shape('warn', 'w-2.5 h-2.5 text-warn-mark') : ''}${d}</div></div>${I('cr', 'ico-sm text-ink-muted')}</a>`).join('')}</div>`, 'mx-4 mt-3 overflow-hidden')}` });
+
+$('phones').innerHTML = [pHome, pClose, pDone, pScan, pStock, pRev, pNav].join('');
+
+/* ---------- other screens: assembly list ---------- */
+const OTHER = [
+  ['Reports → Weekday patterns', 'Two cards stacked: Sales by weekday, then Main portions by weekday.', 'A segmented control for the metric. A 7-row compact table (Mon–Sun) with an inline bar in the metric column. A takeaway line. An "Early signal only" info chip when there are fewer than 3 observed days. A "How to read this" disclosure. A third card for Top Main item by weekday.'],
+  ['Stock → Opening stock (first run)', 'One card replaces the Stock page until opening stock is done.', 'A compact table of material, unit and opening quantity input; progress "N of M entered"; one primary button, Initialize opening stock. Empty: an empty state linking to Materials.'],
+  ['Stock → Record movement · stock count', 'A dialog on desktop and tablet, a full-screen sheet on phone.', 'A segmented type (Receive · Waste · Adjustment), a material combobox, a quantity input with unit, add/remove direction for adjustments, and reason. Receiving pre-fills the quantity and offers "Receive against this order" as a selectable row. The count shows the System / Difference / Change panel.'],
+  ['Stock → Count stock sheet', 'A full page with the same shell; the bar slot shows "N counted · Save counts".', 'A compact table with count inputs, the difference column filled in as you type, and a reason input that appears above 20%. An info banner says "Entries are kept on this device until saved."'],
+  ['Stock → Orders · create / edit', 'A side sheet, like Scan review.', 'Supplier select, reference, order and expected dates, notes. A lines table (material, quantity, unit cost, line total, remove), Add line, and a Total row. Warnings arriving from To order appear as warn banners at the top.'],
+  ['Setup → Materials', 'A compact table with an add row at the top.', 'Name, id (muted), type, base unit, review chip, Archived chip. Change unit… opens a normal confirmation, or the locked state with its reason.'],
+  ['Setup → Suppliers', 'One page, with a segmented control under the tabs: Reorder settings · Deliveries · Suppliers · Pricing · Audit.', 'Reorder settings is an editable table. Changed rows are tinted brand-soft, and the phone bar slot shows "N changes not saved · Discard · Save N changes". Schedules show Active/Paused chips. Suppliers and supplier links open in side-sheet forms. Price history is a disclosure inside the Pricing row.'],
+  ['Setup → Import', 'A stat strip, then three numbered step cards, then a footer.', 'Each step is a compact table with a select per row and import-row chips. A readiness banner. The footer has Save mappings (secondary) and Create draft recipes (primary, disabled until ready, with the reason beside it).'],
+  ['Setup → Notifications', 'One card.', 'A push-state chip, the alert explanation, an iPhone hint as an info banner, and Enable (primary) or Disable (secondary). Denied permission shows a danger banner explaining how to fix it.'],
+  ['Setup → Data maintenance', 'One card per check, stacked.', 'Each card has a status line (check "No duplicate dates." or a warn count) and Preview (secondary) before any change. Keep one duplicate record uses a radio list in a destructive dialog.'],
+  ['History · legacy rows', 'The same table as History.', 'Legacy rows have inline-editable date, item and quantity cells with a micro "Saving… / Saved" status. Delete is in the ⋯ menu behind a destructive confirmation. A warn banner links to Data maintenance.'],
+  ['Revenue · duplicates and delete', 'Shown in Components (banners, table, row menu).', 'A warn banner "N dates have more than one revenue record" with Review. Delete revenue entry uses the destructive confirmation.']
+];
+$('other-list').innerHTML = card(`<div class="scroll-x">${table([{ h: 'Screen or flow', w: '220px' }, { h: 'Layout' }, { h: 'Built from' }], OTHER.map(([a, b, c]) => [`<b class="font-semibold">${a}</b>`, `<span class="text-ink">${b}</span>`, `<span class="text-ink-muted">${c}</span>`]), { comfy: true, cls: 'min-w-[860px] [&_td]:py-3 [&_td]:align-top' })}</div>`, 'overflow-hidden');
+/* Scale fixed-width mock frames to the space available, so the page never scrolls sideways. */
+function fitFrames() { document.querySelectorAll('.fit').forEach(w => { const f = w.firstElementChild, W = +w.dataset.w; const z = Math.min(1, w.clientWidth / W); f.style.zoom = z; }); }
+window.addEventListener('resize', fitFrames); fitFrames(); setTimeout(fitFrames, 300);
+</script>
+</body></html>
