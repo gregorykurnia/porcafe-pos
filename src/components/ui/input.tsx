@@ -13,7 +13,8 @@ function Input({ className, type, onWheel, ...props }: React.ComponentProps<"inp
       }}
       data-slot="input"
       className={cn(
-        "h-11 w-full min-w-0 rounded-md border border-line-input bg-surface px-3 py-1 text-[16px] text-ink transition-colors outline-none placeholder:text-ink-muted disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-faint aria-invalid:border-danger sm:h-10 sm:text-body",
+        // 44 px and 16 px text on phone and tablet (touch); 40 px and body text on desk.
+        "h-11 w-full min-w-0 rounded-md border border-line-input bg-surface px-3 py-1 text-[16px] text-ink transition-colors outline-none placeholder:text-ink-muted disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-faint aria-invalid:border-danger desk:h-10 desk:text-body",
         className
       )}
       {...props}

@@ -22,8 +22,12 @@ function SheetClose(props: React.ComponentProps<typeof DialogPrimitive.Close>) {
 function SheetContent({
   className,
   children,
+  showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /** Set false when the screen draws its own close control, for example one that is disabled while work runs. */
+  showCloseButton?: boolean
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay
@@ -40,13 +44,15 @@ function SheetContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close
-          data-slot="sheet-close-button"
-          className="absolute top-3 right-3 inline-flex size-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-sunken hover:text-ink tablet:top-4 tablet:right-4"
-        >
-          <XIcon className="size-5" strokeWidth={1.5} aria-hidden="true" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        {showCloseButton ? (
+          <DialogPrimitive.Close
+            data-slot="sheet-close-button"
+            className="absolute top-3 right-3 inline-flex size-11 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-sunken hover:text-ink tablet:top-4 tablet:right-4"
+          >
+            <XIcon className="size-5" strokeWidth={1.5} aria-hidden="true" />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        ) : null}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   )

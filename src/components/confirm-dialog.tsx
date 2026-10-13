@@ -21,6 +21,8 @@ export type ConfirmOptions = {
   cancelLabel?: string;
   /** `danger` styles the confirm button as destructive and focuses Cancel first. */
   tone?: "danger" | "default";
+  /** A wider dialog for a before/after table. */
+  wide?: boolean;
 };
 
 export type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
@@ -60,7 +62,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <Dialog open={open} onOpenChange={(next) => { if (!next) settle(false); }}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className={options.wide ? "sm:max-w-lg" : "sm:max-w-sm"}>
           <DialogHeader>
             <DialogTitle className="pr-8">{options.title}</DialogTitle>
             <DialogDescription>{options.body}</DialogDescription>

@@ -1,27 +1,22 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { ScanLine } from "lucide-react";
+import { Camera, ImageIcon, Loader2, RotateCcw, ScanLine, X, type LucideIcon } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { ChangeDiff } from "@/components/change-diff";
 import { useConfirm } from "@/components/confirm-dialog";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Banner } from "@/components/patterns/banner";
+import { ToneShape } from "@/components/patterns/status-chip";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { CLOSE_PAYMENT_KEYS, EMPTY_CLOSE_PAYMENTS_TEXT, closePaymentsText, parseClosePayments, savedClosePayments, type ClosePaymentKey, type ClosePaymentsText } from "@/lib/close-draft";
 import { ConflictError, recordVersion } from "@/lib/concurrency";
 import { formatDisplay, idr, todayISO } from "@/lib/dates";
 import { getDailyItemLog, getSalesEntryByDate, listItemSalesByDate, replaceLegacyItemSalesForDate, saveDailyClose } from "@/lib/data";
 import { normalizeScanDate, planQuantities, quantityDiffRows, rowsFromScan, scanErrorMessage, type ScanRow, type ScanSheetItem } from "@/lib/scan-review";
+import { cn } from "@/lib/utils";
 import type { DailyItemLog, ItemSale, MenuItem, SalesEntry } from "@/lib/types";
 import { prepareSheetPhoto } from "./compress-image";
 import { PhotoViewer } from "./photo-viewer";
@@ -52,6 +47,10 @@ type ScanResponse = Partial<{
 
 const PAYMENT_LABELS: Record<ClosePaymentKey, string> = { cash: "Cash", bca: "BCA", soundbox: "Soundbox", other: "Other" };
 
+// Shown when the browser cannot decode the photo (for example HEIC on an iPhone). The old screen showed the raw browser error.
+const UNSUPPORTED_PHOTO_MESSAGE =
+  "This image format isn't supported. On iPhone, set Camera → Formats → Most Compatible so photos save as JPEG.";
+
 function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -59,6 +58,49 @@ function formatElapsed(seconds: number): string {
 async function loadSavedDay(date: string): Promise<SavedDay> {
   const [log, sales, legacyRows] = await Promise.all([getDailyItemLog(date), getSalesEntryByDate(date), listItemSalesByDate(date)]);
   return { log, sales, legacyRows };
+}
+
+/** One photo choice. The file input sits inside a button-styled label, so it stays keyboard reachable. */
+function PhotoPicker({
+  id,
+  label,
+  icon: Icon,
+  capture,
+  variant,
+  onFile,
+}: {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  capture?: "environment";
+  variant: "primary" | "secondary";
+  onFile: (file: File) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        buttonVariants({ variant, size: "lg" }),
+        "w-full cursor-pointer focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent"
+      )}
+    >
+      <Icon className="size-5" strokeWidth={1.5} aria-hidden="true" />
+      {label}
+      <input
+        id={id}
+        type="file"
+        accept="image/*"
+        capture={capture}
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          // Clear the value so choosing the same photo again still fires a change.
+          event.target.value = "";
+          if (file) onFile(file);
+        }}
+      />
+    </label>
+  );
 }
 
 /**
@@ -132,7 +174,10 @@ export function ScanSheet({
     setElapsed(0);
     timerRef.current = setInterval(() => setElapsed((seconds) => seconds + 1), 1000);
     try {
-      const photo = await prepareSheetPhoto(file);
+      const photo = await prepareSheetPhoto(file).catch(() => {
+        // The browser could not decode the photo. Say so, with the iPhone fix.
+        throw Object.assign(new Error(UNSUPPORTED_PHOTO_MESSAGE), { unsupported: true });
+      });
       dispatch({ type: "compressed" });
       const response = await fetch("/api/scan-ticket", {
         method: "POST",
@@ -166,13 +211,16 @@ export function ScanSheet({
       toast.success("Sheet read. Review before saving.");
     } catch (err) {
       const status = (err as { status?: unknown }).status;
+      const unsupported = (err as { unsupported?: unknown }).unsupported === true;
       dispatch({
         type: "scan-failed",
-        message: scanErrorMessage({
-          aborted: controller.signal.aborted,
-          status: typeof status === "number" ? status : undefined,
-          message: err instanceof Error ? err.message : undefined,
-        }),
+        message: unsupported
+          ? UNSUPPORTED_PHOTO_MESSAGE
+          : scanErrorMessage({
+              aborted: controller.signal.aborted,
+              status: typeof status === "number" ? status : undefined,
+              message: err instanceof Error ? err.message : undefined,
+            }),
       });
     } finally {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -263,17 +311,17 @@ export function ScanSheet({
         next: amounts[key],
         format: (value: number | string) => idr(Number(value)),
       }));
+      // One table for items and payments, so the count in the sentence covers both.
+      const diffRows = [...quantityDiffRows(saved?.log?.quantities ?? {}, plan.quantities, menuItems), ...paymentRows];
+      const changedCount = diffRows.filter((row) => row.current !== row.next).length;
       const ok = await confirm({
         title: `Replace the saved day for ${formatDisplay(scanDate)}?`,
-        body: "Only the values below will change.",
-        confirmLabel: "Replace day",
+        body: "The saved day will be replaced by what you reviewed from the sheet.",
+        confirmLabel: changedCount > 0 ? "Replace day" : "Save anyway",
+        cancelLabel: "Keep reviewing",
         tone: "danger",
-        details: (
-          <div className="space-y-4">
-            <ChangeDiff rows={quantityDiffRows(saved?.log?.quantities ?? {}, plan.quantities, menuItems)} currentLabel="Saved" nextLabel="Sheet" />
-            <ChangeDiff rows={paymentRows} currentLabel="Saved" nextLabel="Sheet" />
-          </div>
-        ),
+        wide: true,
+        details: <ChangeDiff rows={diffRows} currentLabel="Saved" nextLabel="Sheet" />,
       });
       if (!ok) return;
     }
@@ -337,11 +385,6 @@ export function ScanSheet({
     resetScan();
   }
 
-  const thumbnail = machine.photoUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={machine.photoUrl} alt="Ticker sheet thumbnail" className="h-20 w-20 shrink-0 rounded-md border object-cover" />
-  ) : null;
-
   const paymentHints: Partial<Record<ClosePaymentKey, string>> = sheet
     ? {
         cash: `Sheet reads ${idr(sheet.cash)}`,
@@ -360,157 +403,259 @@ export function ScanSheet({
           ? "Scan daily ticker sheet"
           : "Reading the sheet";
 
+  // What stops Save from going through. The button is disabled for the first four; the last three are checked on
+  // click, as before, and the bar says so before the click.
+  const blockers: { tone: "warn" | "danger"; text: string }[] = [];
+  if (saved === null) blockers.push({ tone: "warn", text: "Could not check the saved day for this date. Choose the date again." });
+  if (conflict) blockers.push({ tone: "warn", text: "This day changed on another device. Check it again before saving." });
+  if (plan.unmatched.length > 0) {
+    blockers.push({ tone: "danger", text: `Match ${plan.unmatched.length} ${plan.unmatched.length === 1 ? "row" : "rows"} before saving.` });
+  }
+  if (plan.invalid.length > 0) blockers.push({ tone: "danger", text: "Quantities must be whole numbers. Fix the highlighted rows." });
+  if (Object.keys(plan.quantities).length === 0) blockers.push({ tone: "danger", text: "Nothing to save. Add at least one item." });
+  if (!parseClosePayments(payments)) {
+    blockers.push({ tone: "danger", text: "Check the payment amounts. Use digits, for example 1.500.000 or 1,5jt." });
+  }
+
+  const saving = machine.phase === "saving";
+  const viewPhotoButton = machine.photoUrl ? (
+    <button
+      type="button"
+      onClick={() => setViewerOpen(true)}
+      className="inline-flex min-h-11 items-center gap-2.5 rounded-md text-small font-semibold text-accent underline-offset-4 hover:underline"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- object URL preview, not optimised by next/image */}
+      <img src={machine.photoUrl} alt="" className="h-11 w-8 rounded-sm border border-line object-cover" />
+      View photo
+    </button>
+  ) : null;
+
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => void handleOpenChange(next)}>
-        <DialogTrigger asChild>
-          <Button size="sm" variant={primary ? "default" : "outline"} className={primary ? "bg-primary shadow-sm shadow-primary/20 hover:bg-primary-hover" : undefined}>
-            <ScanLine className="size-4" /> Scan sheet
+      <Sheet open={open} onOpenChange={(next) => void handleOpenChange(next)}>
+        <SheetTrigger asChild>
+          <Button size="sm" variant={primary ? "primary" : "secondary"}>
+            <ScanLine className="size-4" strokeWidth={1.5} aria-hidden="true" /> Scan sheet
           </Button>
-        </DialogTrigger>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-2xl" showCloseButton={!busy}>
-          <DialogHeader>
-            <DialogTitle className="pr-8">{title}</DialogTitle>
-            <DialogDescription>
-              {machine.phase === "idle"
-                ? "Photograph or upload the handwritten sheet. Nothing is saved until you review it."
-                : "Items and payments are saved together, after you confirm."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {machine.phase === "idle" && (
-            <Input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              aria-label="Choose the sheet photo"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void choosePhoto(file);
-              }}
-            />
-          )}
-
-          {machine.phase === "compressing" && (
-            <p className="py-6 text-center text-sm text-muted-foreground" aria-live="polite">Preparing the photo…</p>
-          )}
-
-          {machine.phase === "scanning" && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                {thumbnail}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground" aria-live="polite">Reading sheet… {formatElapsed(elapsed)}</p>
-                  <p className="text-xs text-muted-foreground">Counting tally marks usually takes 30–60 seconds.</p>
-                </div>
-              </div>
-              <Button variant="outline" onClick={() => abortRef.current?.abort()}>Cancel scan</Button>
+        </SheetTrigger>
+        {/* The screen draws its own close control, so it can be disabled while the sheet is being read or saved. */}
+        <SheetContent showCloseButton={false} className="gap-5">
+          <SheetHeader className="flex-row items-start justify-between gap-3 pr-0">
+            <div className="min-w-0 space-y-1">
+              <SheetTitle>{title}</SheetTitle>
+              <SheetDescription>
+                {machine.phase === "idle"
+                  ? "Photograph or upload the handwritten sheet. Nothing is saved until you review it."
+                  : "Items and payments are saved together, after you confirm."}
+              </SheetDescription>
             </div>
-          )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="-mt-1 -mr-2 shrink-0"
+              disabled={busy}
+              aria-label={busy ? "Close (unavailable while working)" : "Close"}
+              onClick={() => void handleOpenChange(false)}
+            >
+              <X className="size-5" strokeWidth={1.5} aria-hidden="true" />
+            </Button>
+          </SheetHeader>
 
-          {machine.phase === "error" && (
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                {thumbnail}
-                <p role="alert" className="text-sm text-destructive">{machine.error}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => void retryScan()}>Try again</Button>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="scan-other-photo" className="text-xs text-muted-foreground">Or choose another photo</Label>
-                <Input
-                  id="scan-other-photo"
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void choosePhoto(file);
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-          {reviewing && (
-            <div className="space-y-5">
-              <div className="flex gap-3">
-                {machine.photoUrl && (
-                  <button type="button" onClick={() => setViewerOpen(true)} className="shrink-0 rounded-md" aria-label="View the full sheet photo">
-                    {thumbnail}
-                  </button>
-                )}
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <Label htmlFor="scan-date">Date <span className="font-normal text-muted-foreground">({formatDisplay(scanDate)})</span></Label>
-                  <Input
-                    id="scan-date"
-                    type="date"
-                    value={scanDate}
-                    disabled={machine.phase === "saving"}
-                    onChange={(event) => {
-                      if (event.target.value) void changeScanDate(event.target.value);
-                    }}
-                    className="h-11 sm:h-9"
+          <div className="space-y-6">
+            {machine.phase === "idle" && (
+              <div className="space-y-5">
+                <p className="text-table text-ink-muted">Lay the sheet flat in good light, with all four corners showing.</p>
+                <div className="grid gap-2.5">
+                  <PhotoPicker
+                    id="scan-take-photo"
+                    label="Take a photo"
+                    icon={Camera}
+                    capture="environment"
+                    variant="primary"
+                    onFile={(file) => void choosePhoto(file)}
+                  />
+                  <PhotoPicker
+                    id="scan-choose-image"
+                    label="Choose an image"
+                    icon={ImageIcon}
+                    variant="secondary"
+                    onFile={(file) => void choosePhoto(file)}
                   />
                 </div>
               </div>
+            )}
 
-              {conflict && (
-                <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/25 bg-warning/10 px-3 py-2 text-sm text-warning">
-                  <span>This day changed on another device. Nothing was saved. Check it again, then review what changes.</span>
-                  <Button size="sm" variant="outline" onClick={() => void loadDayFor(scanDate)}>Check again</Button>
+            {machine.phase === "compressing" && (
+              <p role="status" aria-live="polite" className="flex items-center gap-2.5 py-4 text-title-3 text-ink">
+                <Loader2 className="size-5 animate-spin text-accent" strokeWidth={1.5} aria-hidden="true" />
+                Preparing the photo…
+              </p>
+            )}
+
+            {machine.phase === "scanning" && (
+              <div className="flex flex-col gap-5">
+                <div className="space-y-2.5">
+                  <p role="status" aria-live="polite" className="flex items-center gap-2.5 text-title-3 text-ink">
+                    <Loader2 className="size-5 animate-spin text-accent" strokeWidth={1.5} aria-hidden="true" />
+                    Reading sheet… <span className="font-normal text-ink-muted">{formatElapsed(elapsed)}</span>
+                  </p>
+                  <p className="text-table text-ink-muted">
+                    Counting tally marks usually takes 30–60 seconds. If you cancel, the photo is kept.
+                  </p>
                 </div>
-              )}
-              {saved === null && (
-                <p className="text-xs text-warning">Could not check the saved day for this date. Choose the date again.</p>
-              )}
-              {replacing && (
-                <p className="rounded-md border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-warning">
-                  This date already has a saved day. Saving replaces its items and payments, and you will see what changes first.
-                </p>
-              )}
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">Items</p>
-                <p className="text-xs text-muted-foreground">Check each row against the correct menu item.</p>
-                {plan.merged.length > 0 && (
-                  <p className="text-xs text-muted-foreground">Rows for {plan.merged.join(", ")} were added together.</p>
-                )}
-                <ScanReviewTable
-                  rows={rows}
-                  menuItems={menuItems}
-                  unmatchedIds={unmatchedIds}
-                  invalidIds={invalidIds}
-                  onChange={updateRow}
-                  onRemove={removeRow}
-                  onAdd={addRow}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {Object.keys(plan.quantities).length} items · {totalPortions} portions
-                  {plan.unmatched.length > 0 ? ` · ${plan.unmatched.length} row${plan.unmatched.length === 1 ? "" : "s"} need a match` : ""}
-                </p>
+                <ol className="space-y-2.5 text-table">
+                  <li className="flex items-center gap-2.5 text-ink">
+                    <ToneShape tone="ok" className="text-ok" />
+                    Photo prepared
+                  </li>
+                  <li className="flex items-center gap-2.5 font-medium text-ink">
+                    <ToneShape tone="info" className="text-info" />
+                    Reading items and payments
+                  </li>
+                  <li className="flex items-center gap-2.5 text-ink-muted">
+                    <ToneShape tone="neutral" />
+                    Review before saving
+                  </li>
+                </ol>
+                {viewPhotoButton}
+                <Button variant="secondary" className="self-start" onClick={() => abortRef.current?.abort()}>
+                  Cancel scan
+                </Button>
               </div>
+            )}
 
-              <ScanPayments values={payments} hints={paymentHints} onChange={updatePayment} disabled={machine.phase === "saving"} />
-            </div>
-          )}
+            {machine.phase === "error" && (
+              <div className="space-y-5">
+                <Banner tone="danger">{machine.error}</Banner>
+                {viewPhotoButton}
+                <div className="grid gap-2.5">
+                  <Button size="lg" className="w-full" onClick={() => void retryScan()}>
+                    <RotateCcw className="size-5" strokeWidth={1.5} aria-hidden="true" /> Try again
+                  </Button>
+                  <PhotoPicker
+                    id="scan-other-photo"
+                    label="Choose another photo"
+                    icon={ImageIcon}
+                    variant="secondary"
+                    onFile={(file) => void choosePhoto(file)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {reviewing && (
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="min-w-[12rem] flex-1 space-y-1.5">
+                    <Label htmlFor="scan-date" className="text-small font-normal text-ink-muted">Date on the sheet</Label>
+                    <Input
+                      id="scan-date"
+                      type="date"
+                      value={scanDate}
+                      disabled={saving}
+                      onChange={(event) => {
+                        if (event.target.value) void changeScanDate(event.target.value);
+                      }}
+                    />
+                    <p className="text-body text-ink">{formatDisplay(scanDate)}</p>
+                  </div>
+                  {viewPhotoButton}
+                </div>
+
+                {conflict && (
+                  <div className="space-y-2.5">
+                    <Banner tone="warn">
+                      This day changed on another device. Nothing was saved. Check it again, then review what changes.
+                    </Banner>
+                    <Button variant="secondary" onClick={() => void loadDayFor(scanDate)}>
+                      <RotateCcw className="size-5" strokeWidth={1.5} aria-hidden="true" /> Check again
+                    </Button>
+                  </div>
+                )}
+                {saved === null && <Banner tone="warn">Could not check the saved day for this date. Choose the date again.</Banner>}
+                {replacing && (
+                  <Banner tone="warn">
+                    This date already has a saved day. Saving replaces its items and payments, and you will see what changes first.
+                  </Banner>
+                )}
+
+                <section aria-labelledby="scan-items-heading" className="space-y-3">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-line pb-2.5">
+                    <h3 id="scan-items-heading" className="text-title-3 text-ink">Items</h3>
+                    <p className="text-small text-ink-muted">
+                      {Object.keys(plan.quantities).length} items · {totalPortions} portions
+                      {plan.unmatched.length > 0 ? (
+                        <>
+                          {" · "}
+                          <span className="font-semibold text-danger">
+                            {plan.unmatched.length} {plan.unmatched.length === 1 ? "row needs" : "rows need"} a match
+                          </span>
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                  {plan.merged.length > 0 && (
+                    <p className="flex items-start gap-2 text-small text-info">
+                      <ToneShape tone="info" className="mt-1" />
+                      Rows for {plan.merged.join(", ")} were added together.
+                    </p>
+                  )}
+                  <ScanReviewTable
+                    rows={rows}
+                    menuItems={menuItems}
+                    unmatchedIds={unmatchedIds}
+                    invalidIds={invalidIds}
+                    onChange={updateRow}
+                    onRemove={removeRow}
+                    onAdd={addRow}
+                  />
+                </section>
+
+                <ScanPayments values={payments} hints={paymentHints} onChange={updatePayment} disabled={saving} />
+              </div>
+            )}
+          </div>
 
           {reviewing && (
-            <DialogFooter>
-              <Button variant="outline" onClick={() => void handleOpenChange(false)} disabled={machine.phase === "saving"}>
-                Close
-              </Button>
-              <Button
-                onClick={() => void saveScan()}
-                disabled={machine.phase === "saving" || saved === null || conflict || plan.unmatched.length > 0}
-                className="bg-primary hover:bg-primary-hover"
-              >
-                {machine.phase === "saving" ? "Saving…" : replacing ? "Replace day" : "Save day"}
-              </Button>
-            </DialogFooter>
+            <SheetFooter className="flex-col gap-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-raised tablet:flex-row tablet:items-center tablet:justify-between">
+              <div className="min-w-0 flex-1">
+                {machine.phase === "review" && blockers.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {blockers.map((blocker) => (
+                      <li
+                        key={blocker.text}
+                        className={cn("flex items-start gap-2 text-small font-semibold", blocker.tone === "danger" ? "text-danger" : "text-warn")}
+                      >
+                        <ToneShape tone={blocker.tone} className="mt-1" />
+                        {blocker.text}
+                      </li>
+                    ))}
+                  </ul>
+                ) : machine.phase === "review" ? (
+                  <p className="flex items-center gap-2 text-small font-semibold text-ok">
+                    <ToneShape tone="ok" />
+                    Ready to save.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-2 tablet:flex-row">
+                <Button variant="secondary" className="hidden tablet:inline-flex" disabled={saving} onClick={() => void handleOpenChange(false)}>
+                  Close
+                </Button>
+                <Button
+                  size="lg"
+                  className="w-full tablet:w-auto"
+                  loading={saving}
+                  disabled={saving || saved === null || conflict || plan.unmatched.length > 0}
+                  onClick={() => void saveScan()}
+                >
+                  {saving ? "Saving…" : replacing ? "Replace day" : "Save day"}
+                </Button>
+              </div>
+            </SheetFooter>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
       {machine.photoUrl && <PhotoViewer src={machine.photoUrl} open={viewerOpen} onOpenChange={setViewerOpen} />}
     </>
   );

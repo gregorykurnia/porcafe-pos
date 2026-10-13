@@ -30,7 +30,7 @@ export function Banner({
       <ToneShape tone={tone} className={cn("mt-1.5", tone === "info" ? "text-info" : tone === "warn" ? "text-warn-mark" : "text-danger")} />
       <div className="min-w-0 flex-1">{children}</div>
       {action ? (
-        <button type="button" onClick={action.onClick} className="shrink-0 self-center text-small font-medium text-accent underline underline-offset-4">
+        <button type="button" onClick={action.onClick} className="inline-flex min-h-11 shrink-0 items-center self-center text-small font-medium text-accent underline underline-offset-4">
           {action.label}
         </button>
       ) : null}
