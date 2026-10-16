@@ -54,6 +54,8 @@ const RECIPE_TONE: Record<InventoryRecipeVersion["status"], StatusTone> = {
  * The line grid. Desk: ingredient, quantity, unit and remove on the first line, then the source and review beneath.
  * Phone and tablet: the ingredient and remove first, then quantity and unit, source and review.
  */
+const NEW_COMPONENT = "__new-component__";
+
 const LINE_GRID =
   "grid grid-cols-[minmax(0,1fr)_44px] items-center gap-x-2 gap-y-2 desk:grid-cols-[minmax(0,1fr)_112px_96px_44px] desk:gap-x-3";
 
@@ -143,6 +145,8 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [leaveError, setLeaveError] = useState<string | null>(null);
+  // The name being typed for a brand-new prepared component. Null means the target is picked from the list.
+  const [newComponentName, setNewComponentName] = useState<string | null>(null);
 
   const dirty = draftRecipe !== null && recipeSnapshot(draftRecipe, draftLines) !== savedSnapshot;
   // Nav links, browser back and forward, reload and tab close are guarded by the shared provider.
@@ -177,6 +181,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   }
 
   function editRecipe(recipe: InventoryRecipeVersion) {
+    setNewComponentName(null);
     const lines = normalizeRecipeBoxLines(recipe, recipeLines.filter((line) => line.recipeId === recipe.id).map((line) => ({ ...line })));
     setSelectedId(recipe.id);
     setDraftRecipe({ ...recipe });
@@ -186,6 +191,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
 
   function startNewRecipe() {
     const recipe = newRecipe(menuItems, recipes);
+    setNewComponentName(null);
     setSelectedId(null);
     setDraftRecipe(recipe);
     setDraftLines([]);
@@ -197,6 +203,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   }
 
   function setTargetType(value: RecipeTargetType) {
+    setNewComponentName(null);
     const defaultComponent = componentOptions.find(([, name]) => name === "Rice") ?? componentOptions[0];
     const targetId = value === "menu_item"
       ? menuItems[0]?.id ?? ""
@@ -226,6 +233,19 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
       : componentOptions.find(([id]) => id === value)?.[1] ?? "";
     const version = Math.max(0, ...recipes.filter((recipe) => recipe.targetId === value).map((recipe) => recipe.version)) + 1;
     updateRecipe({ targetId: value, targetName, version, id: "" });
+  }
+
+  function startNewComponent() {
+    setNewComponentName("");
+    updateRecipe({ id: "", targetId: "", targetName: "", version: 1, status: "draft" });
+  }
+
+  function setNewComponent(name: string) {
+    setNewComponentName(name);
+    const trimmed = name.trim();
+    const targetId = slugifyInventoryId(trimmed) ? inventoryComponentId(trimmed) : "";
+    const version = Math.max(0, ...recipes.filter((recipe) => recipe.targetId === targetId).map((recipe) => recipe.version)) + 1;
+    updateRecipe({ id: "", targetId, targetName: trimmed, version });
   }
 
   function addLine() {
@@ -296,7 +316,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
   async function saveRecipe(): Promise<boolean> {
     if (!draftRecipe) return false;
     if (!draftRecipe.targetId) {
-      toast.error("Choose a recipe target before saving.");
+      toast.error(newComponentName !== null ? "Name the new component before saving." : "Choose a recipe target before saving.");
       return false;
     }
     const version = draftRecipe.version || 1;
@@ -331,6 +351,7 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
       await saveInventoryRecipeVersion(recipe, lines, { deleteLineIds: oldLineIds.filter((id) => !newLineIds.has(id)) });
       toast.success("Recipe version saved");
       setSelectedId(recipe.id);
+      setNewComponentName(null);
       setDraftRecipe(recipe);
       setDraftLines(lines);
       setSavedSnapshot(recipeSnapshot(recipe, lines));
@@ -462,7 +483,16 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
               </FieldRow>
               <FieldRow label="Target">
                 {(id) => (
-                  <Select value={draftRecipe.targetId} onValueChange={setTargetId}>
+                  <Select
+                    value={newComponentName !== null ? NEW_COMPONENT : draftRecipe.targetId}
+                    onValueChange={(value) => {
+                      if (value === NEW_COMPONENT) startNewComponent();
+                      else {
+                        setNewComponentName(null);
+                        setTargetId(value);
+                      }
+                    }}
+                  >
                     <SelectTrigger id={id} className="w-full">
                       <SelectValue placeholder="Choose a target" />
                     </SelectTrigger>
@@ -472,10 +502,33 @@ export function Recipes({ menuItems, materials, recipes, recipeLines, onChanged 
                           {option.label}
                         </SelectItem>
                       ))}
+                      {draftRecipe.targetType === "prepared_component" && (
+                        <SelectItem value={NEW_COMPONENT}>+ New component…</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 )}
               </FieldRow>
+              {draftRecipe.targetType === "prepared_component" && newComponentName !== null && (
+                <FieldRow
+                  label="New component name"
+                  hint={
+                    draftRecipe.version > 1
+                      ? `${draftRecipe.targetName} already has a recipe. Saving adds version ${draftRecipe.version}.`
+                      : "Once saved, it can be used as an ingredient in other recipes."
+                  }
+                >
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={newComponentName}
+                      onChange={(event) => setNewComponent(event.target.value)}
+                      placeholder="e.g. Pickled Cucumber"
+                      autoFocus
+                    />
+                  )}
+                </FieldRow>
+              )}
               <FieldRow label="Status">
                 {(id) => (
                   <Select value={draftRecipe.status} onValueChange={(value) => updateRecipe({ status: value as RecipeVersionStatus })}>
