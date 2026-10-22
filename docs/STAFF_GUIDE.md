@@ -53,7 +53,7 @@ How we use Porcafe POS on the phone and the counter tablet. Keep this to one pag
 ## Reports
 
 - Choose the period with the segmented control: **This month**, **Last month**, **Last 30 days** or **Custom range**. The button beside it shows the range in use.
-- **Custom range** opens a popover with **From** and **To** dates. **Apply** uses the range. An end date before the start date is not accepted.
+- **Custom range** opens a popover with **From** and **To** dates. **Apply** uses the range. An end date before the start date is not accepted. While a custom range is in use, **Clear** in the same popover goes back to **This month**.
 - The three tabs are **Revenue**, **Items** and **Weekday patterns**. The period applies to all three.
 - Selisih (the bank reconciliation adjustment, entered on the Revenue tab) counts only once its month is over. Until then the month shows as open.
 

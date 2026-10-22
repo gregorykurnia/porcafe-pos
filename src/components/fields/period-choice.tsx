@@ -11,6 +11,7 @@ import { formatPeriodRange, isValidPeriod, presetFor, presetRange, REPORT_PRESET
 /**
  * The period for a report (DESIGN_SYSTEM §10). A segmented control holds the presets and Custom range. The date-range
  * button opens a popover with From and To. An invalid range shows the danger message there and disables Apply.
+ * While a custom range is in use, Clear in the popover goes back to This month.
  */
 export function PeriodChoice({
   period,
@@ -90,6 +91,19 @@ export function PeriodChoice({
             </p>
           )}
           <div className="flex justify-end gap-2">
+            {preset === "custom" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-auto"
+                onClick={() => {
+                  onChange(presetRange("this-month", today));
+                  setOpen(false);
+                }}
+              >
+                Clear
+              </Button>
+            )}
             <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
               Cancel
             </Button>

@@ -38,13 +38,21 @@ export default function ReportsPage() {
 function ReportsWorkspace() {
   const today = todayISO();
   const [tab, setTab] = useQueryState<ReportsTab>("tab", { default: "revenue", validate: isReportsTab });
-  const [from] = useQueryState("from", { default: `${monthKey(today)}-01`, validate: isISODate });
+  const defaultFrom = `${monthKey(today)}-01`;
+  const [from] = useQueryState("from", { default: defaultFrom, validate: isISODate });
   const [to] = useQueryState("to", { default: today, validate: isISODate });
   const updateQuery = useQueryUpdate();
   const period = useMemo<ReportPeriod>(() => ({ from, to }), [from, to]);
 
-  // Both dates change in one navigation, so neither write overwrites the other.
-  const setPeriod = useCallback((next: ReportPeriod) => updateQuery({ from: next.from, to: next.to }), [updateQuery]);
+  // Both dates change in one navigation, so neither write overwrites the other. The default
+  // period (this month) drops both keys, so clearing a custom range also clears the address.
+  const setPeriod = useCallback(
+    (next: ReportPeriod) =>
+      updateQuery(
+        next.from === defaultFrom && next.to === today ? { from: null, to: null } : { from: next.from, to: next.to }
+      ),
+    [defaultFrom, today, updateQuery]
+  );
 
   const data = useReportData();
   const categoryByItemId = useMemo(
