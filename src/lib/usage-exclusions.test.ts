@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { daysNeedingExclusion, excludableItemsFor, sourceStatusLabel } from "./usage-exclusions";
+import { daysNeedingExclusion, daysNeedingRecalculation, excludableItemsFor, sourceStatusLabel } from "./usage-exclusions";
 import type { InventoryUsageEvent, InventoryUsageIssue } from "./types";
 
 function issue(code: InventoryUsageIssue["code"], menuItemId?: string, menuItemName?: string): InventoryUsageIssue {
@@ -64,4 +64,15 @@ test("the day's saved status reads the way the recap labels it", () => {
   assert.equal(sourceStatusLabel("draft"), "Draft (not deducted)");
   assert.equal(sourceStatusLabel("complete"), "Complete");
   assert.equal(sourceStatusLabel("no_sales"), "No sales");
+});
+
+test("only days still needing review are recalculated, oldest first", () => {
+  const review = (date: string) => event(date, [issue("missing-recipe", "nanban", "Nanban")]);
+  const calculated = { ...event("2026-10-04", []), status: "calculated" as const };
+  const withExclusions = { ...event("2026-10-03", [], ["tea"]), status: "calculated-with-exclusions" as const };
+  const draft = { ...event("2026-10-02", []), status: "pending-draft" as const };
+  assert.deepEqual(
+    daysNeedingRecalculation([review("2026-10-07"), calculated, withExclusions, draft, review("2026-10-05")]),
+    ["2026-10-05", "2026-10-07"]
+  );
 });

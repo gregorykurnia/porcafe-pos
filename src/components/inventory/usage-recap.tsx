@@ -25,7 +25,7 @@ import {
   summarizeInventoryUsage,
   usageStatusDeductsStock,
 } from "@/lib/inventory-usage";
-import { daysNeedingExclusion, excludableItemsFor, sourceStatusLabel } from "@/lib/usage-exclusions";
+import { daysNeedingExclusion, daysNeedingRecalculation, excludableItemsFor, sourceStatusLabel } from "@/lib/usage-exclusions";
 import type { InventoryUsageEvent, InventoryUsageLine, InventoryUsageStatus } from "@/lib/types";
 
 // Stock → Usage recap (inventory §3.6.4). Completed days are turned into material usage through recipes. A day
@@ -74,6 +74,7 @@ export function UsageRecap() {
   const [updatingExclusionFor, setUpdatingExclusionFor] = useState<string | null>(null);
   const [recalculatingDate, setRecalculatingDate] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{ menuItemId: string; done: number; total: number } | null>(null);
+  const [recalcProgress, setRecalcProgress] = useState<{ done: number; total: number } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!from || !to || from > to) {
@@ -111,7 +112,7 @@ export function UsageRecap() {
   const reviewEvents = events.filter((event) => event.status === "needs-review").length;
   const exclusionEvents = events.filter((event) => event.status === "calculated-with-exclusions").length;
   const issueCount = events.reduce((total, event) => total + event.issues.length, 0);
-  const busy = updatingExclusionFor !== null || recalculatingDate !== null || bulkProgress !== null;
+  const busy = updatingExclusionFor !== null || recalculatingDate !== null || bulkProgress !== null || recalcProgress !== null;
 
   async function updateMenuItemExclusion(menuItemId: string, menuItemName: string, excluded: boolean) {
     if (!selectedEvent) return;
@@ -166,17 +167,59 @@ export function UsageRecap() {
     }
   }
 
+  // Recalculates one saved close with the current menu and recipes, and puts the result in the list.
+  async function recalculateDay(sourceDate: string): Promise<InventoryUsageEvent> {
+    const log = await getDailyItemLog(sourceDate);
+    if (!log) throw new Error(`No saved daily close was found for ${sourceDate}.`);
+    const updatedEvent = await calculateAndPersistDailyInventoryUsage(log);
+    if (!updatedEvent) throw new Error(`Inventory usage calculation is not enabled for ${sourceDate}.`);
+    setEvents((current) => current.map((event) => event.sourceDate === sourceDate ? updatedEvent : event));
+    return updatedEvent;
+  }
+
+  // Recalculates every day in the range still needing review, for when a missing recipe has been added. Like
+  // the range exclusion, the days are done one at a time and a failure says how many were already done.
+  async function recalculateReviewDays() {
+    const dates = daysNeedingRecalculation(events);
+    if (dates.length === 0) return;
+    const count = `${dates.length} ${dates.length === 1 ? "day" : "days"}`;
+    const ok = await confirm({
+      title: `Recalculate ${count} needing review?`,
+      body: dates.length === 1
+        ? `${formatDisplay(dates[0])} will be recalculated using the current menu and recipes.`
+        : `${formatDisplay(dates[0])} to ${formatDisplay(dates[dates.length - 1])} will be recalculated using the current menu and recipes.`,
+      details: "Days whose recipes are now ready will deduct their material usage from stock. Days still missing a recipe stay in review. Exclusions are kept.",
+      confirmLabel: `Recalculate ${count}`,
+    });
+    if (!ok) return;
+
+    const changed: InventoryUsageEvent[] = [];
+    setRecalcProgress({ done: 0, total: dates.length });
+    try {
+      for (const date of dates) {
+        changed.push(await recalculateDay(date));
+        setRecalcProgress({ done: changed.length, total: dates.length });
+      }
+      const stillReview = changed.filter((event) => event.status === "needs-review").length;
+      const deducted = changed.length - stillReview;
+      toast.success(stillReview === 0
+        ? `${deducted} ${deducted === 1 ? "day" : "days"} recalculated and deducted from stock.`
+        : `${deducted} of ${changed.length} days now deduct from stock. ${stillReview} still need recipe review.`);
+    } catch (bulkError) {
+      console.error("Failed to recalculate days needing review", bulkError);
+      toast.error(`Stopped after ${changed.length} of ${dates.length} days. ${bulkError instanceof Error ? bulkError.message : "Could not recalculate the remaining days."}`);
+    } finally {
+      setRecalcProgress(null);
+      changed.forEach(notifyReorderTransition);
+    }
+  }
+
   async function recalculateSelectedDay() {
     if (!selectedEvent || recalculatingDate) return;
     const sourceDate = selectedEvent.sourceDate;
     setRecalculatingDate(sourceDate);
     try {
-      const log = await getDailyItemLog(sourceDate);
-      if (!log) throw new Error(`No saved daily close was found for ${sourceDate}.`);
-      const updatedEvent = await calculateAndPersistDailyInventoryUsage(log);
-      if (!updatedEvent) throw new Error(`Inventory usage calculation is not enabled for ${sourceDate}.`);
-
-      setEvents((current) => current.map((event) => event.sourceDate === sourceDate ? updatedEvent : event));
+      const updatedEvent = await recalculateDay(sourceDate);
       notifyReorderTransition(updatedEvent);
       toast.success(updatedEvent.status === "needs-review"
         ? "Day recalculated. Recipe review is still needed."
@@ -442,7 +485,7 @@ export function UsageRecap() {
             {(id) => <Input id={id} type="date" value={to} onChange={(event) => setTo(event.target.value)} />}
           </FieldRow>
         </div>
-        <Button variant="ghost" onClick={() => void refresh()} disabled={loading || recalculatingDate !== null} loading={loading} className="self-start tablet:self-end">
+        <Button variant="ghost" onClick={() => void refresh()} disabled={loading || busy} loading={loading} className="self-start tablet:self-end">
           {loading ? "Loading…" : (<><RefreshCw strokeWidth={1.5} aria-hidden="true" />Refresh</>)}
         </Button>
       </div>
@@ -459,6 +502,18 @@ export function UsageRecap() {
         <div className="px-4 pt-4 tablet:px-6 tablet:pt-6">
           <h2 className="font-display text-title-2 text-ink">Daily usage recap</h2>
           <p className="mt-1 text-small text-ink-muted">Review calculated material quantities and open a day to see its recipe-level detail.</p>
+          {reviewEvents > 0 && !loading && (
+            <div className="mt-3 flex flex-col gap-2 tablet:flex-row tablet:items-center tablet:justify-between">
+              <p className="text-small text-ink-muted">
+                {reviewEvents} {reviewEvents === 1 ? "day is" : "days are"} waiting on a recipe and not deducted yet. After adding the recipe, recalculate to deduct them.
+              </p>
+              <Button variant="secondary" size="sm" className="self-start tablet:self-auto" disabled={busy} loading={recalcProgress !== null} onClick={() => void recalculateReviewDays()}>
+                {recalcProgress
+                  ? `Recalculating… ${recalcProgress.done} of ${recalcProgress.total}`
+                  : (<><RefreshCw strokeWidth={1.5} aria-hidden="true" />Recalculate {reviewEvents} {reviewEvents === 1 ? "day" : "days"} needing review</>)}
+              </Button>
+            </div>
+          )}
         </div>
         {loading ? (
           <div className="mt-4 border-t border-line">

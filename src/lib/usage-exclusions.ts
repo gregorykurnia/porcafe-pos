@@ -1,5 +1,6 @@
 // Which menu items can be excluded from a day's material usage, and on which days. The usage recap
-// uses these to offer the exclusion for one day or for every day in the range that needs it.
+// uses these to offer the exclusion for one day or for every day in the range that needs it, and to
+// find the days to recalculate once a missing recipe is added.
 
 import type { InventoryUsageEvent } from "./types";
 
@@ -28,6 +29,17 @@ export function daysNeedingExclusion(events: InventoryUsageEvent[], menuItemId: 
       event.issues.some((issue) => issue.menuItemId === menuItemId && EXCLUDABLE_ISSUES.has(issue.code)) &&
       !(event.excludedItems ?? []).some((item) => item.menuItemId === menuItemId)
     )
+    .map((event) => event.sourceDate)
+    .sort();
+}
+
+/**
+ * The days, oldest first, still waiting on a recipe or mapping review. Recalculating them picks up recipes
+ * added since the close was saved; days that already deduct stock are left alone.
+ */
+export function daysNeedingRecalculation(events: InventoryUsageEvent[]): string[] {
+  return events
+    .filter((event) => event.status === "needs-review")
     .map((event) => event.sourceDate)
     .sort();
 }
