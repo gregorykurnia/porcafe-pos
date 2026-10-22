@@ -102,7 +102,7 @@ export function Nav() {
                 className={cn(
                   "flex min-h-11 items-center gap-3 rounded-full px-3 text-body font-medium transition-colors duration-fast",
                   "tablet:w-16 tablet:flex-col tablet:justify-center tablet:gap-0.5 tablet:px-0 tablet:py-2 tablet:text-micro",
-                  "desk:w-full desk:flex-row desk:gap-3 desk:px-4 desk:py-0 desk:text-body",
+                  "desk:w-full desk:flex-row desk:justify-start desk:gap-3 desk:px-4 desk:py-0 desk:text-body",
                   active ? "bg-brand-soft text-brand" : "text-ink-muted hover:text-ink"
                 )}
               >
