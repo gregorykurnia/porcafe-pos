@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { addDaysISO, formatDisplay, todayISO } from "@/lib/dates";
 import { acceptDateInput } from "@/lib/field-input";
+
+const TYPING_PAUSE_MS = 1000;
 
 type DateStepperProps = {
   id?: string;
@@ -21,7 +23,9 @@ type DateStepperProps = {
 
 /**
  * ‹ long date › with a Today tag (or a Future date chip), a Today button and the native picker (DESIGN_SYSTEM §10).
- * Clearing the picker keeps the current date instead of jumping to today.
+ * Clearing the picker keeps the current date instead of jumping to today. A date typed into
+ * the box moves the day once typing stops (Enter, leaving the box, or a short pause);
+ * one picked from the calendar moves it at once.
  */
 export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFuture = false }: DateStepperProps) {
   // The picker shows a draft set in the same event as each keystroke. Showing `value` alone
@@ -43,10 +47,30 @@ export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFu
     onChange(next);
   }
 
+  // Set by a key press in the box, so typing 14 doesn't open the 1st on the way.
+  const typing = useRef(false);
+  const pending = useRef<string | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(idleTimer.current), []);
+
+  function commitTyped() {
+    clearTimeout(idleTimer.current);
+    typing.current = false;
+    const next = pending.current;
+    pending.current = null;
+    if (next !== null) void move(next);
+  }
+
   function typeDate(raw: string) {
     const next = acceptDateInput(raw, value);
     setDraft(next);
-    void move(next);
+    if (!typing.current) {
+      void move(next);
+      return;
+    }
+    pending.current = next;
+    clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(commitTyped, TYPING_PAUSE_MS);
   }
 
   const isToday = value === todayISO();
@@ -85,6 +109,14 @@ export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFu
           type="date"
           value={draft}
           onChange={(event) => typeDate(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") commitTyped();
+            else typing.current = true;
+          }}
+          onPointerDown={() => {
+            typing.current = false;
+          }}
+          onBlur={commitTyped}
           className="h-11 w-[10.5rem] bg-surface pl-9 sm:h-10 [@media(pointer:coarse)]:h-11"
         />
       </div>
