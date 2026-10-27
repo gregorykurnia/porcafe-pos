@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +24,29 @@ type DateStepperProps = {
  * Clearing the picker keeps the current date instead of jumping to today.
  */
 export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFuture = false }: DateStepperProps) {
+  // The picker shows a draft set in the same event as each keystroke. Showing `value` alone
+  // would write the old date back while onBeforeChange runs, which resets the browser's
+  // typing in that segment: typing 14 into the day became 04.
+  const [draft, setDraft] = useState(value);
+  const [shownValue, setShownValue] = useState(value);
+  if (value !== shownValue) {
+    setShownValue(value);
+    setDraft(value);
+  }
+
   async function move(next: string) {
     if (next === value) return;
-    if (onBeforeChange && !(await onBeforeChange(next))) return;
+    if (onBeforeChange && !(await onBeforeChange(next))) {
+      setDraft(value);
+      return;
+    }
     onChange(next);
+  }
+
+  function typeDate(raw: string) {
+    const next = acceptDateInput(raw, value);
+    setDraft(next);
+    void move(next);
   }
 
   const isToday = value === todayISO();
@@ -63,8 +83,8 @@ export function DateStepper({ id, label, value, onChange, onBeforeChange, warnFu
           id={id}
           aria-label={label}
           type="date"
-          value={value}
-          onChange={(event) => void move(acceptDateInput(event.target.value, value))}
+          value={draft}
+          onChange={(event) => typeDate(event.target.value)}
           className="h-11 w-[10.5rem] bg-surface pl-9 sm:h-10 [@media(pointer:coarse)]:h-11"
         />
       </div>
